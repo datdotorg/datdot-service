@@ -8,7 +8,7 @@ a p2p solution for hosting files with Dat protocol
 ### Building
 
 Before running the service part of the datdot,
-make sure you have datdot-substrate running first.
+make sure you have [datdot-substrate](https://github.com/playproject-io/datdot-substrate) running first.
 After that, open a new tab in your CLI
 install and build the datdot service:
 
