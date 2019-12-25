@@ -1,0 +1,48 @@
+"use strict";
+
+var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault");
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = u8aConcat;
+
+var _toU8a = _interopRequireDefault(require("./toU8a"));
+
+// Copyright 2017-2019 @polkadot/util authors & contributors
+// This software may be modified and distributed under the terms
+// of the Apache-2.0 license. See the LICENSE file for details.
+
+/**
+ * @name u8aConcat
+ * @summary Creates a concatenated Uint8Array from the inputs.
+ * @description
+ * Concatenates the input arrays into a single `UInt8Array`.
+ * @example
+ * <BR>
+ *
+ * ```javascript
+ * import { u8aConcat } from '@polkadot/util';
+ *
+ * u8aConcat(
+ *   new Uint8Array([1, 2, 3]),
+ *   new Uint8Array([4, 5, 6])
+ * ); // [1, 2, 3, 4, 5, 6]
+ * ```
+ */
+function u8aConcat() {
+  for (var _len = arguments.length, _list = new Array(_len), _key = 0; _key < _len; _key++) {
+    _list[_key] = arguments[_key];
+  }
+
+  const list = _list.map(_toU8a.default);
+
+  const length = list.reduce((total, item) => total + item.length, 0);
+  const result = new Uint8Array(length);
+  let offset = 0;
+  return list.reduce((result, item) => {
+    result.set(item, offset);
+    offset += item.length;
+    return result;
+  }, result);
+}
