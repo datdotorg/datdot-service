@@ -78,17 +78,21 @@ async function start () {
   /* ---   registerSeeder()  ---*/
 
   const registerSeeder = api.tx.datVerify.registerSeeder()
-  // const hash_registerSeeder1 = await registerSeeder.signAndSend(ALICE)
-  const hash_registerSeeder2 = await registerSeeder.signAndSend(CHARLIE, (res) => {
+  const hash_registerSeeder1 = await registerSeeder.signAndSend(ALICE, res => {
+    console.log('Alice registered as a seeder')
+  })
+
+  const hash_registerSeeder2 = await registerSeeder.signAndSend(CHARLIE, res => {
     console.log('Charlie registered as a seeder')
   })
-  const hash_registerSeeder3 = await registerSeeder.signAndSend(FERDIE, (res) => {
+
+  const hash_registerSeeder3 = await registerSeeder.signAndSend(FERDIE, res => {
     console.log('Ferdie registered as a seeder')
   })
-  const hash_registerSeeder4 = await registerSeeder.signAndSend(DAVE, (res) => {
+  const hash_registerSeeder4 = await registerSeeder.signAndSend(DAVE, res => {
     console.log('Dave registered as a seeder')
   })
-  const hash_registerSeeder5 = await registerSeeder.signAndSend(EVE, (res) => {
+  const hash_registerSeeder5 = await registerSeeder.signAndSend(EVE, res => {
     console.log('Eve registered as a seeder')
   })
 
