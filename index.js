@@ -4,25 +4,74 @@ const fs = require('fs')
 const types = JSON.parse(fs.readFileSync('./src/types.json').toString())
 const hypercore = require('hypercore')
 var feed = hypercore('./tmp', {valueEncoding: 'json'})
+let archive = []
 
-// feed.append({
-//   hello: 'world'
-// })
-// feed.append({
-//   hej: 'verden'
-// })
-// feed.append({
-//   hola: 'mundo'
-// })
-// console.log(feed)
+/*-------------------------------------------------------------------------
 
-start()
-async function start () {
+                                DATA
 
-  const api = await ApiPromise.create({
+------------------------------------------------------------------------ */
+getApi()
+
+/*----------  get api ------------ */
+
+async function getApi () {
+  const API = await ApiPromise.create({
     provider,
     types
   })
+  getArchive(API, feed)
+}
+/*----------  get archive ------------ */
+
+function getArchive (api, feed) {
+  feed.append({
+    hello: 'world'
+  })
+
+  feed.append({
+    hej: 'verden'
+  })
+
+  feed.append({
+    hola: 'mundo'
+  })
+  feed.ready(() => {
+    getKey()
+  })
+  function getKey () {
+    archive.push(feed.key.toString('hex')) // ed25519::Public
+    console.log('Add archive key')
+    getRootHash(archive)
+  }
+  function getRootHash (archive) {
+    feed.rootHashes(0, (err, res) => {
+      if (err) console.log(err)
+      archive.push({
+        hashType: 2, // u8
+        children: [res[0].hash] //  Vec<ParentHashInRoot>
+      })
+      console.log('Add rootHash')
+      getSignature(archive)
+    })
+  }
+  function getSignature (archive) {
+    feed.signature((err, res) => {
+      if (err) console.log(err)
+      archive.push(res.signature.toString('hex')) // ed25519::Signature
+      console.log('Add signature')
+      start(api, archive)
+    })
+  }
+}
+
+/*-------------------------------------------------------------------------
+
+                                START
+
+------------------------------------------------------------------------ */
+
+async function start (api, archive) {
 
   /*----------  chain & node information via rpc calls ------------ */
 
@@ -97,7 +146,7 @@ async function start () {
   })
 
   /* ---   registerData(archive)  ---*/
-  const archive = getArchive()
+
   const registerData = api.tx.datVerify.registerData(archive)
   //const hashData1 = await registerData.signAndSend(DAVE)
 
@@ -138,25 +187,6 @@ async function start () {
   //     process.exit(0)
   //   }
   // })
-
-  function getArchive () {
-    let archive = []
-    feed.ready(() => {
-      archive.push(feed.key.toString('hex')) // ed25519::Public
-      feed.rootHashes(0, (err, res) => {
-        if (err) console.log(err)
-        archive.push({
-          hashType: 2, // u8
-          children: [res[0].hash] //  Vec<ParentHashInRoot>
-        })
-      })
-      feed.signature((err, res) => {
-        if (err) console.log(err)
-        archive.push(res.signature.toString('hex')) // ed25519::Signature
-      })
-    })
-    return archive
-  }
 
 
   // /*----------  QUERIES ------------ */
