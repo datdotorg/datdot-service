@@ -4,7 +4,7 @@ const fs = require('fs')
 const types = JSON.parse(fs.readFileSync('./src/types.json').toString())
 const hypercore = require('hypercore')
 var feed = hypercore('./tmp', {valueEncoding: 'json'})
-let archive = []
+let archiveArr = []
 
 /*-------------------------------------------------------------------------
 
@@ -22,7 +22,7 @@ async function getApi () {
   })
   getArchive(API, feed)
 }
-/*----------  get archive ------------ */
+/*----------  get archiveArr ------------ */
 
 function getArchive (api, feed) {
   feed.append({
@@ -40,27 +40,33 @@ function getArchive (api, feed) {
     getKey()
   })
   function getKey () {
-    archive.push(feed.key.toString('hex')) // ed25519::Public
-    console.log('Add archive key')
-    getRootHash(archive)
+    archiveArr.push(feed.key.toString('hex')) // ed25519::Public
+    getRootHash(archiveArr)
   }
-  function getRootHash (archive) {
-    feed.rootHashes(0, (err, res) => {
+  function getRootHash (archiveArr) {
+    const index = feed.length - 1
+    const childrenArr = []
+    feed.rootHashes(index, (err, res) => {
       if (err) console.log(err)
-      archive.push({
-        hashType: 2, // u8
-        children: [res[0].hash] //  Vec<ParentHashInRoot>
+      res.forEach(root => {
+        childrenArr.push({
+          hash: root.hash,
+          hash_number: root.index,
+          total_length: root.size
+        })
       })
-      console.log('Add rootHash')
-      getSignature(archive)
+      archiveArr.push({
+        hashType: 2, // u8 <= hard coded (internal substrate id)
+        children: childrenArr //  Vec<ParentHashInRoot>
+      })
+      getSignature(archiveArr)
     })
   }
-  function getSignature (archive) {
+  function getSignature (archiveArr) {
     feed.signature((err, res) => {
       if (err) console.log(err)
-      archive.push(res.signature.toString('hex')) // ed25519::Signature
-      console.log('Add signature')
-      start(api, archive)
+      archiveArr.push(res.signature.toString('hex')) // ed25519::Signature
+      start(api, archiveArr)
     })
   }
 }
@@ -71,7 +77,7 @@ function getArchive (api, feed) {
 
 ------------------------------------------------------------------------ */
 
-async function start (api, archive) {
+async function start (api, archiveArr) {
 
   /*----------  chain & node information via rpc calls ------------ */
 
@@ -127,39 +133,54 @@ async function start (api, archive) {
   /* ---   registerSeeder()  ---*/
 
   const registerSeeder = api.tx.datVerify.registerSeeder()
-  const hash_registerSeeder1 = await registerSeeder.signAndSend(ALICE, res => {
-    console.log('Alice registered as a seeder')
+  const hash_Seeder1 = await registerSeeder.signAndSend(ALICE, ({ events = [], status }) => {
+    console.log(`Registering user: `, status.type)
+    if (status.isFinalized) getUsersCount()
   })
 
-  const hash_registerSeeder2 = await registerSeeder.signAndSend(CHARLIE, res => {
-    console.log('Charlie registered as a seeder')
+  const hash_Seeder2 = await registerSeeder.signAndSend(CHARLIE, ({ events = [], status }) => {
+    console.log(`Registering user: `, status.type)
+    if (status.isFinalized) getUsersCount()
   })
 
-  const hash_registerSeeder3 = await registerSeeder.signAndSend(FERDIE, res => {
-    console.log('Ferdie registered as a seeder')
+  const hash_Seeder3 = await registerSeeder.signAndSend(FERDIE, ({ events = [], status }) => {
+    console.log(`Registering user: `, status.type)
+    if (status.isFinalized) getUsersCount()
   })
-  const hash_registerSeeder4 = await registerSeeder.signAndSend(DAVE, res => {
-    console.log('Dave registered as a seeder')
+  const hash_Seeder4 = await registerSeeder.signAndSend(DAVE, ({ events = [], status }) => {
+    console.log(`Registering user: `, status.type)
+    if (status.isFinalized) getUsersCount()
   })
-  const hash_registerSeeder5 = await registerSeeder.signAndSend(EVE, res => {
-    console.log('Eve registered as a seeder')
+  const hash_Seeder5 = await registerSeeder.signAndSend(EVE, ({ events = [], status }) => {
+    console.log(`Registering user: `, status.type)
+    if (status.isFinalized) getUsersCount()
   })
 
-  /* ---   registerData(archive)  ---*/
+  async function getUsersCount () {
+    usersCount = await api.query.datVerify.usersCount()
+    console.log('UsersCount is: ', usersCount)
+  }
 
-  const registerData = api.tx.datVerify.registerData(archive)
-  //const hashData1 = await registerData.signAndSend(DAVE)
+  /* ---   registerData(archiveArr)  ---*/
 
   // Get the nonce for the admin key
-  const hashData1 = await registerData.signAndSend(DAVE, async (res) => {
-    console.log('Dave registered the data he needs to be seeded')
+  const registerData = api.tx.datVerify.registerData(archiveArr)
 
+  const hashData = await registerData.signAndSend(ALICE, async ({ events = [], status }) => {
+    console.log(`Registering data: `, status.type)
+    if (status.isFinalized) {
+      getDatHosters()
+      getUsersStorage()
+    }
+  })
+
+  async function getUsersStorage () {
     const [a, c, f, d, e, ] = await Promise.all([
-      await api.query.datVerify.usersStorage(ALICE.publicKey),
-      await api.query.datVerify.usersStorage(CHARLIE.publicKey),
-      await api.query.datVerify.usersStorage(FERDIE.publicKey),
-      await api.query.datVerify.usersStorage(DAVE.publicKey),
-      await api.query.datVerify.usersStorage(EVE.publicKey)
+      await api.query.datVerify.usersStorage(ALICE.address),
+      await api.query.datVerify.usersStorage(CHARLIE.address),
+      await api.query.datVerify.usersStorage(FERDIE.address),
+      await api.query.datVerify.usersStorage(DAVE.address),
+      await api.query.datVerify.usersStorage(EVE.address)
     ])
     console.log(a.length, c.length, f.length, d.length, e.length)
     console.log('Alice is hosting: ', a.forEach(el => console.log(el)))
@@ -167,46 +188,13 @@ async function start (api, archive) {
     console.log('Ferdie is hosting: ', f.forEach(el => console.log(el)))
     console.log('Dave is hosting: ', d.forEach(el => console.log(el)))
     console.log('Eve is hosting: ', e.forEach(el => console.log(el)))
+  }
+
+  async function getDatHosters () {
     const datHosters = await api.query.datVerify.datHosters(feed.key.toString('hex'))
     console.log(datHosters.length)
     datHosters.forEach(el => console.log('Hosters for this archive: ', el))
-  })
-  // const nonce = await api.query.system.accountNonce(ALICE.address)
-  // const hashData2 = await registerData.signAndSend(ALICE, { nonce }, ({ events = [], status }) => {
-  //   console.log('Transaction status:', status.type)
-  //
-  //   if (status.isFinalized) {
-  //     console.log('Completed at block hash', status.asFinalized.toHex())
-  //     console.log('Alice registered the data she needs to be seeded')
-  //     console.log('Events:')
-  //
-  //     events.forEach(({ phase, event: { data, method, section } }) => {
-  //       console.log('\t', phase.toString(), `: ${section}.${method}`, data.toString())
-  //     })
-  //
-  //     process.exit(0)
-  //   }
-  // })
-
-
-  // /*----------  QUERIES ------------ */
-  //
-  // query one
-  // const UsersStorage = await api.query.datVerify.usersStorage(CHARLIE.publicKey)
-
-  // query multiple
-  // const [c, a] = await Promise.all([
-  //   await api.query.datVerify.usersStorage(ALICE.publicKey),
-  //   await api.query.datVerify.usersStorage(CHARLIE.publicKey),
-  //   await api.query.datVerify.usersStorage(DAVE.publicKey),
-  //   await api.query.datVerify.usersStorage(EVE.publicKey),
-  //   await api.query.datVerify.usersStorage(ALICE.publicKey)
-  // ])
-  // console.log('charlie', c)
-  // console.log('alice', a)
-
-  // let EveBalance = await api.query.balances.freeBalance(EVE.publicKey)
-  // console.log(`Eve has a balance: ${EveBalance}`)
+  }
 
 
 }
