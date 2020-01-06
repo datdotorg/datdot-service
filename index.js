@@ -1,4 +1,5 @@
 const { ApiPromise, WsProvider, Keyring, ApiRx } = require("@polkadot/api")
+  const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
 const provider = new WsProvider('ws://127.0.0.1:9944')
 const fs = require('fs')
 const types = JSON.parse(fs.readFileSync('./src/types.json').toString())
@@ -79,6 +80,7 @@ function getArchive (api, feed) {
 
 async function start (api, archiveArr) {
 
+  console.log('Archive array is: ', archiveArr)
   /*----------  chain & node information via rpc calls ------------ */
 
   const [chain, nodeName, nodeVersion] = await Promise.all([
@@ -108,6 +110,7 @@ async function start (api, archiveArr) {
 
   // default accounts in dev env (ALICE, CHARLIE, DAVE, FERDIE, EVE etc.)
   const keyring = new Keyring({ type: 'sr25519' })
+
   const ALICE = keyring.addFromUri('//Alice')
   const CHARLIE = keyring.addFromUri('//Charlie')
   const FERDIE = keyring.addFromUri('//Ferdie')
@@ -115,10 +118,8 @@ async function start (api, archiveArr) {
   const DAVE = keyring.addFromUri('//Dave')
 
   // // create a new account
-  const { randomAsU8a } = require('@polkadot/util-crypto')
   const NEW_ACCOUNT = keyring.addFromSeed(randomAsU8a(32))
   console.log('New account created with address: ', NEW_ACCOUNT.address)
-
 
   /* ------------------------------------------------------------------------
 
@@ -126,75 +127,99 @@ async function start (api, archiveArr) {
 
 ---------------------------------------------------------------------------- */
 
-
   /*-------------------------  TRANSACTIONS -------------------------------- */
+
+  /* --- This is  a test ---*/
+
+  const randomAmount = 123
+  // Create a extrinsic, transferring randomAmount units to Bob.
+  const transfer = api.tx.balances.transfer(CHARLIE.address, randomAmount);
+  // Sign and Send the transaction
+  const nonce = await api.query.system.accountNonce(ALICE.address)
+  transfer.signAndSend(ALICE, { nonce }, ({ events = [], status }) => {
+    if (status.isFinalized) {
+      console.log('Successful transfer of ' + randomAmount + ' with hash ' + status.asFinalized.toHex());
+    } else {
+      console.log('Status of transfer: ' + status.type);
+    }
+
+    events.forEach(({ phase, event: { data, method, section } }) => {
+      console.log(phase.toString() + ' : ' + section + '.' + method + ' ' + data.toString());
+    });
+});
 
 
   /* ---   registerSeeder()  ---*/
 
-  const registerSeeder = api.tx.datVerify.registerSeeder()
-  const hash_Seeder1 = await registerSeeder.signAndSend(ALICE, ({ events = [], status }) => {
-    console.log(`Registering user: `, status.type)
-    if (status.isFinalized) getUsersCount()
-  })
+  // const registerSeeder = api.tx.datVerify.registerSeeder()
+  // const hash_Seeder1 = await registerSeeder.signAndSend(
+  //   ALICE,
+  //   { nonce: await api.query.system.accountNonce(ALICE.address) },
+  //   ({ events = [], status }) => {
+  //   console.log(`Registering user: `, status.type)
+  //   if (status.isFinalized) {
+  //     console.log('It is finalized')
+  //     getUsersCount()
+  //   }
+  // })
 
-  const hash_Seeder2 = await registerSeeder.signAndSend(CHARLIE, ({ events = [], status }) => {
-    console.log(`Registering user: `, status.type)
-    if (status.isFinalized) getUsersCount()
-  })
+  // const hash_Seeder2 = await registerSeeder.signAndSend(CHARLIE, ({ events = [], status }) => {
+  //   console.log(`Registering user: `, status.type)
+  //   if (status.isFinalized) getUsersCount()
+  // })
+  //
+  // const hash_Seeder3 = await registerSeeder.signAndSend(FERDIE, ({ events = [], status }) => {
+  //   console.log(`Registering user: `, status.type)
+  //   if (status.isFinalized) getUsersCount()
+  // })
+  // const hash_Seeder4 = await registerSeeder.signAndSend(DAVE, ({ events = [], status }) => {
+  //   console.log(`Registering user: `, status.type)
+  //   if (status.isFinalized) getUsersCount()
+  // })
+  // const hash_Seeder5 = await registerSeeder.signAndSend(EVE, ({ events = [], status }) => {
+  //   console.log(`Registering user: `, status.type)
+  //   if (status.isFinalized) getUsersCount()
+  // })
+  //
+  // async function getUsersCount () {
+  //   usersCount = await api.query.datVerify.usersCount()
+  //   console.log('UsersCount is: ', usersCount)
+  // }
 
-  const hash_Seeder3 = await registerSeeder.signAndSend(FERDIE, ({ events = [], status }) => {
-    console.log(`Registering user: `, status.type)
-    if (status.isFinalized) getUsersCount()
-  })
-  const hash_Seeder4 = await registerSeeder.signAndSend(DAVE, ({ events = [], status }) => {
-    console.log(`Registering user: `, status.type)
-    if (status.isFinalized) getUsersCount()
-  })
-  const hash_Seeder5 = await registerSeeder.signAndSend(EVE, ({ events = [], status }) => {
-    console.log(`Registering user: `, status.type)
-    if (status.isFinalized) getUsersCount()
-  })
+  // /* ---   registerData(archiveArr)  ---*/
+  //
+  // // Get the nonce for the admin key
+  // const registerData = api.tx.datVerify.registerData(archiveArr)
+  //
+  // const hashData = await registerData.signAndSend(ALICE, async ({ events = [], status }) => {
+  //   console.log(`Registering data: `, status.type)
+  //   if (status.isFinalized) {
+  //     getDatHosters()
+  //     getUsersStorage()
+  //   }
+  // })
+  //
+  // async function getUsersStorage () {
+  //   const [a, c, f, d, e, ] = await Promise.all([
+  //     await api.query.datVerify.usersStorage(ALICE.address),
+  //     await api.query.datVerify.usersStorage(CHARLIE.address),
+  //     await api.query.datVerify.usersStorage(FERDIE.address),
+  //     await api.query.datVerify.usersStorage(DAVE.address),
+  //     await api.query.datVerify.usersStorage(EVE.address)
+  //   ])
+  //   console.log(a.length, c.length, f.length, d.length, e.length)
+  //   console.log('Alice is hosting: ', a.forEach(el => console.log(el)))
+  //   console.log('Charlie is hosting: ', c.forEach(el => console.log(el)))
+  //   console.log('Ferdie is hosting: ', f.forEach(el => console.log(el)))
+  //   console.log('Dave is hosting: ', d.forEach(el => console.log(el)))
+  //   console.log('Eve is hosting: ', e.forEach(el => console.log(el)))
+  // }
+  //
+  // async function getDatHosters () {
+  //   const datHosters = await api.query.datVerify.datHosters(feed.key.toString('hex'))
+  //   console.log(datHosters.length)
+  //   datHosters.forEach(el => console.log('Hosters for this archive: ', el))
+  // }
 
-  async function getUsersCount () {
-    usersCount = await api.query.datVerify.usersCount()
-    console.log('UsersCount is: ', usersCount)
+
   }
-
-  /* ---   registerData(archiveArr)  ---*/
-
-  // Get the nonce for the admin key
-  const registerData = api.tx.datVerify.registerData(archiveArr)
-
-  const hashData = await registerData.signAndSend(ALICE, async ({ events = [], status }) => {
-    console.log(`Registering data: `, status.type)
-    if (status.isFinalized) {
-      getDatHosters()
-      getUsersStorage()
-    }
-  })
-
-  async function getUsersStorage () {
-    const [a, c, f, d, e, ] = await Promise.all([
-      await api.query.datVerify.usersStorage(ALICE.address),
-      await api.query.datVerify.usersStorage(CHARLIE.address),
-      await api.query.datVerify.usersStorage(FERDIE.address),
-      await api.query.datVerify.usersStorage(DAVE.address),
-      await api.query.datVerify.usersStorage(EVE.address)
-    ])
-    console.log(a.length, c.length, f.length, d.length, e.length)
-    console.log('Alice is hosting: ', a.forEach(el => console.log(el)))
-    console.log('Charlie is hosting: ', c.forEach(el => console.log(el)))
-    console.log('Ferdie is hosting: ', f.forEach(el => console.log(el)))
-    console.log('Dave is hosting: ', d.forEach(el => console.log(el)))
-    console.log('Eve is hosting: ', e.forEach(el => console.log(el)))
-  }
-
-  async function getDatHosters () {
-    const datHosters = await api.query.datVerify.datHosters(feed.key.toString('hex'))
-    console.log(datHosters.length)
-    datHosters.forEach(el => console.log('Hosters for this archive: ', el))
-  }
-
-
-}
