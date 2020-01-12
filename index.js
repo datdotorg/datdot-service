@@ -1,10 +1,12 @@
 const { ApiPromise, WsProvider, Keyring, ApiRx } = require("@polkadot/api")
 const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
-const provider = new WsProvider('ws://127.0.0.1:9944')
+// const provider = new WsProvider('ws://127.0.0.1:9944')
 const fs = require('fs')
 const types = JSON.parse(fs.readFileSync('./src/types.json').toString())
 const hypercore = require('hypercore')
-var feed = hypercore('./tmp', {valueEncoding: 'json'})
+const hyperswarm = require('hyperswarm')
+const swarm = hyperswarm()
+var feed = hypercore('./feed', {valueEncoding: 'json'})
 let archiveArr = []
 
 /*-------------------------------------------------------------------------
@@ -12,8 +14,8 @@ let archiveArr = []
                                 DATA
 
 ------------------------------------------------------------------------ */
-getApi()
-
+// getApi()
+getArchive(null, feed)
 /*----------  get api ------------ */
 
 async function getApi () {
@@ -30,16 +32,11 @@ function getArchive (api, feed) {
     hello: 'world'
   })
 
-  feed.append({
-    hej: 'verden'
-  })
-
-  feed.append({
-    hola: 'mundo'
-  })
   feed.ready(() => {
     getKey()
   })
+
+
   function getKey () {
     archiveArr.push(feed.key.toString('hex')) // ed25519::Public
     getRootHash(archiveArr)
@@ -67,9 +64,24 @@ function getArchive (api, feed) {
     feed.signature((err, res) => {
       if (err) console.log(err)
       archiveArr.push(res.signature.toString('hex')) // ed25519::Signature
-      start(api, archiveArr)
+      // start(api, archiveArr)
+      joinSwarm()
     })
   }
+
+  function joinSwarm() {
+    const key = feed.key
+    console.log(key.toString('hex'))
+    swarm.join(key, {
+      lookup: true, // find & connect to peers
+      announce: true // optional- announce self as a connection target
+    })
+    swarm.on('connection', function (socket, info) {
+      console.log('New connection')
+      socket.pipe(feed.replicate(info.client)).pipe(socket)
+    })
+  }
+
 }
 
 /*-------------------------------------------------------------------------
@@ -138,7 +150,6 @@ async function start (api, archiveArr) {
       events.forEach(({ phase, event: { data, method, section } }) => {
         console.log('\t', phase.toString(), `: ${section}.${method}`, data.toString());
       });
-      getUsersCount()
     }
   })
 
@@ -147,7 +158,6 @@ async function start (api, archiveArr) {
       events.forEach(({ phase, event: { data, method, section } }) => {
         console.log('\t', phase.toString(), `: ${section}.${method}`, data.toString());
       });
-      getUsersCount()
     }
   })
 
@@ -156,7 +166,6 @@ async function start (api, archiveArr) {
       events.forEach(({ phase, event: { data, method, section } }) => {
         console.log('\t', phase.toString(), `: ${section}.${method}`, data.toString());
       });
-      getUsersCount()
     }
   })
   await registerSeeder.signAndSend(DAVE, ({ events = [], status }) => {
@@ -164,7 +173,6 @@ async function start (api, archiveArr) {
       events.forEach(({ phase, event: { data, method, section } }) => {
         console.log('\t', phase.toString(), `: ${section}.${method}`, data.toString());
       });
-      getUsersCount()
     }
   })
   await registerSeeder.signAndSend(EVE, ({ events = [], status }) => {
@@ -172,18 +180,11 @@ async function start (api, archiveArr) {
       events.forEach(({ phase, event: { data, method, section } }) => {
         console.log('\t', phase.toString(), `: ${section}.${method}`, data.toString());
       });
-      getUsersCount()
     }
   })
 
-  async function getUsersCount () {
-    usersCount = await api.query.datVerify.usersCount()
-    usersCount.toU8a().forEach(el => console.log('Users count is: ', el))
-  }
-
   /* ---   registerData(archiveArr)  ---*/
 
-  // Get the nonce for the admin key
   const registerData = api.tx.datVerify.registerData(archiveArr)
 
   await registerData.signAndSend(ALICE, async ({ events = [], status }) => {
@@ -192,8 +193,8 @@ async function start (api, archiveArr) {
       events.forEach(({ phase, event: { data, method, section } }) => {
         console.log('\t', phase.toString(), `: ${section}.${method}`, data.toString());
       });
-      getDatHosters(feed.key.toString('hex'))
-      getUsersStorage()
+      // getDatHosters(feed.key.toString('hex'))
+      // getUsersStorage()
     }
   })
 
