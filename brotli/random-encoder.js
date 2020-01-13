@@ -1,15 +1,16 @@
-const brotli = require('brotli')
+const compress = require('iltorb').compress;
+const decompress = require('iltorb').decompress;
 const fs = require('fs')
 const blake2b = require('blake2b')
 const hypercore = require('hypercore')
 const ram = require('random-access-memory')
 
-const origFeedKey = 'b2ca1ce20c95cbc594631e18893ce53d5440992ebcfd477035c35a3be001b6ea'
+const origFeedKey = 'a45b15bae23f8678ceb768d1af9490e2c5ade0047916894a9d6dc4c106788ae6'
 const hyperswarm = require('hyperswarm')
 
 const key = Buffer.from(origFeedKey, "hex")
 const feed = new hypercore(ram, key)
-const encodedFeed = hypercore('./encoded-feed', {valueEncoding: 'json'})
+const encodedFeed = hypercore('./encoded-feed')
 const swarm = hyperswarm()
 
 swarm.join(key, {
@@ -17,23 +18,11 @@ swarm.join(key, {
   announce: true // optional- announce self as a connection target
 })
 swarm.on('connection', function (socket, info) {
-  const {
-    priority,
-    status,
-    retries,
-    peer,
-    client
-  } = info
-  console.log('new connection to original!', `
-    priority: ${priority}
-    status: ${status}
-    retries: ${retries}
-    client: ${client}
-  `)
+  // console.log('New connection')
   socket.pipe(feed.replicate(info.client)).pipe(socket)
 })
 feed.on('peer-add', (peer) => {
-  console.log('got peer for original hypercore')
+  // console.log('got peer')
 })
 
 feed.ready(() => {
@@ -55,78 +44,35 @@ function reallyReady (feed, cb) {
 }
 
 function encodeFeed () {
-  console.log('Encoded hypercore: ', encodedFeed.key.toString('hex'))
+  console.log('Encoded hypercore key: ', encodedFeed.key.toString('hex'))
   const swarm1 = hyperswarm()
   swarm1.join(encodedFeed.key, {
     lookup: true, // find & connect to peers
     announce: true // optional- announce self as a connection target
   })
   swarm1.on('connection', function (socket, info) {
-    const {
-      priority,
-      status,
-      retries,
-      peer,
-      client
-    } = info
-    console.log('new connection!', `
-      priority: ${priority}
-      status: ${status}
-      retries: ${retries}
-      client: ${client}
-    `)
+    // console.log('New connection')
     socket.pipe(encodedFeed.replicate(info.client)).pipe(socket)
   })
+  var init = 0
   feed.createReadStream()
-    .on('data', res => {
-      const randomNum = Math.floor(Math.random() * 100)
-      // const chunk = res
-      const chunk = res.toString('utf8')
-      console.log(chunk.toString('utf8'))
-      console.log(chunk.length)
-      const len = chunk.length
-      const encodedChunk = brotli.compress(chunk, {
-        mode: 0, // 0 = generic, 1 = text, 2 = font (WOFF2)
-        quality: 11, // 0 - 11
-        lgwin: randomNum // window size
+    .on('data', chunk => {
+      console.log('Original Chunk', chunk.toString('utf8'))
+      compress(chunk, (err, encodedChunk) => {
+        console.log('Encoded chunk', encodedChunk.toString('utf8'))
+        encodedFeed.append(encodedChunk, (err) => {
+          if (err) console.log(err)
+        })
+        // fs.writeFile('compressed.js', encodedChunk, (err) => {
+        //     if (err) throw err;
+        //     console.log('File encoded and saved!');
+        //     console.log(encodedChunk)
+        // });
       })
-      encodedFeed.append(encodedChunk)
     })
     .on('end', console.log.bind(console, '\n(end)'))
 }
 
-//
-//
-// const originalFile= fs.readFileSync('src/types.json')
-// const length = originalFile.length
-//
-// const encoded = function getEncoded () {
-//   const content = brotli.compress(originalFile, {
-//     mode: 0, // 0 = generic, 1 = text, 2 = font (WOFF2)
-//     quality: 11, // 0 - 11
-//     lgwin: randomNum // window size
-//   })
-//
-//   const output = new Uint8Array(64)
-//   console.log('output', output)
-//   const input = Buffer.from(content)
-//   console.log('input', input)
-//   console.log('hash:', blake2b(output.length).update(input).digest('hex'))
-//
-//   return content
-// }
-// const decoded = function getDecoded () {
-//   const encodedFile = fs.readFileSync('brotli/encoded.js')
-//   return brotli.decompress(encodedFile, length);
-// }
-//
-// fs.writeFile('brotli/encoded.js', encoded(), (err) => {
-//     if (err) throw err;
-//     console.log('File encoded and saved!');
-//
-//
-//     fs.writeFile('brotli/decoded.js', decoded(), (err) => {
-//       if (err) throw err;
-//       console.log('File DECODED and saved!');
-//     });
-// });
+// prepend data so chunks are big enough or configure brotli
+// compress data => you get Uint8Array
+// check if you can append uint8Uint8Array to hypercore feed (onyl buffers or strings)

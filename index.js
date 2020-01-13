@@ -6,7 +6,7 @@ const types = JSON.parse(fs.readFileSync('./src/types.json').toString())
 const hypercore = require('hypercore')
 const hyperswarm = require('hyperswarm')
 const swarm = hyperswarm()
-var feed = hypercore('./feed', {valueEncoding: 'json'})
+var feed = hypercore('./feed', {valueEncoding: 'binary'})
 let archiveArr = []
 
 /*-------------------------------------------------------------------------
@@ -28,9 +28,26 @@ async function getApi () {
 /*----------  get archiveArr ------------ */
 
 function getArchive (api, feed) {
-  feed.append({
-    hello: 'world'
-  })
+  var demo = {
+  	"Node": {
+  		"index": "u64",
+  		"hash": "H256",
+  		"size": "u64"
+  	},
+    "Nod1e": {
+      "index": "u64",
+      "hash": "H256",
+      "size": "u64"
+    },
+    "Node3": {
+      "index": "u64",
+      "hash": "H256",
+      "size": "u64"
+    },
+  	"Proof": {}
+  }
+  const foo = Buffer.from(JSON.stringify(demo), 'utf8')
+  feed.append(foo)
 
   feed.ready(() => {
     getKey()

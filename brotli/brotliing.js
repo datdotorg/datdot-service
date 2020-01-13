@@ -2,18 +2,24 @@ const brotli = require('brotli')
 const fs = require('fs')
 
 const file = fs.readFileSync('src/types.json')
-console.log(file)
+console.log('THIS IS FILE', file)
 const length = file.length
 // encode some data with options (default options shown)
 const encoded = function getEncoded () {
-  return brotli.compress(file, {
+  const compressed = brotli.compress(file, {
     mode: 0, // 0 = generic, 1 = text, 2 = font (WOFF2)
     quality: 1, // 0 - 11
     lgwin: 50 // window size
   });
+  console.log('COMPRESSED', compressed)
+  return compressed
 }
 const decode = function getDecoded () {
-  return brotli.decompress(fs.readFileSync('encoded.js'));
+  const encodedFile = fs.readFileSync('encoded.js')
+  console.log('ENCODED FILE', encodedFile)
+  const decompressed =  brotli.decompress(encodedFile);
+  console.log(new TextDecoder("utf-8").decode(decompressed))
+  return decompressed
 }
 
 
