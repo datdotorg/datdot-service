@@ -5,7 +5,8 @@ const Hypercore = require('hypercore')
 const hyperswarm = require('hyperswarm')
 const swarm = hyperswarm()
 const ram = require('random-access-memory')
-var hypercore = new Hypercore(_ => ram())
+// var hypercore = new Hypercore(_ => ram())
+var hypercore = Hypercore('./hypercore-original')
 
 const colors = require('colors/safe');
 const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
@@ -96,7 +97,7 @@ function getHypercore () {
       announce: true // optional- announce self as a connection target
     })
     swarm.on('connection', function (socket, info) {
-      // LOG(colors.red(`[${NAME}] ` + `New connection`))
+      LOG('New connection')
       socket.pipe(hypercore.replicate(info.client)).pipe(socket)
     })
   }

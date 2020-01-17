@@ -20,7 +20,7 @@ start()
 
 function start () {
   var origHypercoreKey
-  const encodedHypercore = new Hypercore(_ => ram())
+  var encodedHypercore = Hypercore('./hypercore-encoded')
   encodedHypercore.ready(() => {
     LOG('Encoded hypercore key: ', encodedHypercore.key.toString('hex'))
     getKey()
@@ -57,6 +57,17 @@ function start () {
       LOG('Loaded origHypercore')
       reallyReady(origHypercore, () => {
         LOG('READY')
+        //test
+        // var d = Buffer.from('foo bar baz')
+        // compress(d, (err, encodedChunk) => {
+        //   LOG(`Encoded chunk: ${encodedChunk.toString('utf8')}`)
+        //   encodedHypercore.append(encodedChunk, (err) => {
+        //     if (err) LOG(err)
+        //   })
+        // })
+        //end of test
+
+        joinSwarm()
         origHypercore.createReadStream()
           .on('data', chunk => {
             LOG(`Original chunk: ${chunk.toString('utf8')}`)
@@ -66,9 +77,9 @@ function start () {
                 if (err) LOG(err)
               })
             })
+
           })
-          .on('end', LOG(`END`))
-        joinSwarm()
+          .on('end', console.log.bind(console, '\n(end)'))
       })
     })
     function joinSwarm () {

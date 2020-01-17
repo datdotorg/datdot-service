@@ -47,7 +47,7 @@ function start () {
     hypercore.ready(() => {
       reallyReady(hypercore, () => {
         LOG(`READY`)
-        getKey()
+        decodeHypercore()
       })
     })
 
@@ -63,7 +63,7 @@ function start () {
             LOG(`Decoded chunk: ${decompressed} `)
           });
         })
-        .on('end', LOG(`END`))
+        .on('end', console.log.bind(console, '\n(end)'))
     }
   }
 }
