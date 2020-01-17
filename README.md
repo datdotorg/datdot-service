@@ -20,7 +20,7 @@ after that run `cd datdot-service` and then install the dependencies by running
 
 ### Running
 
-To run the service, type `node index.js`
+To run the service, type `node start`
 
 
 ## License
