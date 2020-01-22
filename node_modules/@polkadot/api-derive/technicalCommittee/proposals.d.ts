@@ -1,4 +1,0 @@
-import { ApiInterfaceRx } from '@polkadot/api/types';
-import { DerivedCollectiveProposals } from '../types';
-import { Observable } from 'rxjs';
-export declare function proposals(api: ApiInterfaceRx): () => Observable<DerivedCollectiveProposals>;

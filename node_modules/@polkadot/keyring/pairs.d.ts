@@ -1,9 +1,0 @@
-import { KeyringPairs, KeyringPair } from './types';
-export default class Pairs implements KeyringPairs {
-    private _map;
-    constructor();
-    add(pair: KeyringPair): KeyringPair;
-    all(): KeyringPair[];
-    get(address: string | Uint8Array): KeyringPair;
-    remove(address: string | Uint8Array): void;
-}
