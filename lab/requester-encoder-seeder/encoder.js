@@ -6,7 +6,6 @@ const blake2b = require('blake2b')
 const Hypercore = require('hypercore')
 const ram = require('random-access-memory')
 
-// const origHypercoreKey = 'a45b15bae23f8678ceb768d1af9490e2c5ade0047916894a9d6dc4c106788ae6'
 const hyperswarm = require('hyperswarm')
 const colors = require('colors/safe');
 const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()

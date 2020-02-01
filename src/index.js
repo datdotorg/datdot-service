@@ -1,6 +1,6 @@
 const { ApiPromise, WsProvider, Keyring, ApiRx } = require("@polkadot/api")
+const provider = new WsProvider('ws://127.0.0.1:9944')
 const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
-// const provider = new WsProvider('ws://127.0.0.1:9944')
 const fs = require('fs')
 const types = JSON.parse(fs.readFileSync('./src/types.json').toString())
 const hypercore = require('hypercore')
@@ -14,8 +14,7 @@ let archiveArr = []
                                 DATA
 
 ------------------------------------------------------------------------ */
-// getApi()
-getArchive(null, feed)
+getApi()
 /*----------  get api ------------ */
 
 async function getApi () {
@@ -55,7 +54,7 @@ function getArchive (api, feed) {
 
 
   function getKey () {
-    archiveArr.push(feed.key.toString('hex')) // ed25519::Public
+    archiveArr.push(feed.key) // ed25519::Public
     getRootHash(archiveArr)
   }
   function getRootHash (archiveArr) {
@@ -80,22 +79,8 @@ function getArchive (api, feed) {
   function getSignature (archiveArr) {
     feed.signature((err, res) => {
       if (err) console.log(err)
-      archiveArr.push(res.signature.toString('hex')) // ed25519::Signature
-      // start(api, archiveArr)
-      joinSwarm()
-    })
-  }
-
-  function joinSwarm() {
-    const key = feed.key
-    console.log(key.toString('hex'))
-    swarm.join(key, {
-      lookup: true, // find & connect to peers
-      announce: true // optional- announce self as a connection target
-    })
-    swarm.on('connection', function (socket, info) {
-      console.log('New connection')
-      socket.pipe(feed.replicate(info.client)).pipe(socket)
+      archiveArr.push(res.signature) // ed25519::Signature
+      start(api, archiveArr)
     })
   }
 
@@ -109,7 +94,14 @@ function getArchive (api, feed) {
 
 async function start (api, archiveArr) {
 
+
+    /*-------------------------  EVENTS -------------------------------- */
+
+    listenToEvents()
+
+
   console.log('Archive array is: ', archiveArr)
+
   /*----------  chain & node information via rpc calls ------------ */
 
   const [chain, nodeName, nodeVersion] = await Promise.all([
@@ -146,6 +138,7 @@ async function start (api, archiveArr) {
   const EVE = keyring.addFromUri('//Eve')
   const DAVE = keyring.addFromUri('//Dave')
 
+  console.log('Alice', ALICE.address)
   // // create a new account
   const NEW_ACCOUNT = keyring.addFromSeed(randomAsU8a(32))
   console.log('New account created with address: ', NEW_ACCOUNT.address)
@@ -210,11 +203,19 @@ async function start (api, archiveArr) {
       events.forEach(({ phase, event: { data, method, section } }) => {
         console.log('\t', phase.toString(), `: ${section}.${method}`, data.toString());
       });
-      // getDatHosters(feed.key.toString('hex'))
+      // getDatHosters()
       // getUsersStorage()
+      // SelectedChallenges()
+      // getRequestor()
+      // getSelectedChallenges(CHARLIE.address)
+      // registerAttestor()
+      // getMerkleRoot()
+      usersCount()
     }
   })
 
+
+  /* ---   getUsersStorage  ---*/
   async function getUsersStorage () {
     const [a, c, f, d, e, ] = await Promise.all([
       await api.query.datVerify.usersStorage(ALICE.address),
@@ -231,9 +232,113 @@ async function start (api, archiveArr) {
   }
 
   async function getDatHosters () {
-    const datHosters = await api.query.datVerify.datHosters(feed.key.toString('hex'))
+    const datHosters = await api.query.datVerify.datHosters(feed.key)
     console.log('Dat Hosters', datHosters.length)
-    datHosters.toU8a().forEach(el => console.log('Hosters for this archive: ', el))
+    datHosters.forEach(el => console.log('Hosters for this archive: ', el.toString()))
+  }
+
+  async function getRequestor () {
+    const userRequestsMap = await api.query.datVerify.userRequestsMap(feed.key)
+    console.log('Requestor for this hypercore is:', userRequestsMap.toString())
+  }
+
+  /* ---   getSelectedChallenges  ---*/
+
+  async function getSelectedChallenges (address) {
+    const challengeIndeces = await getUserChallengeIndeces(address)
+    challengeIndeces.forEach(async challengeIndex => {
+      const challenge = await api.query.datVerify.selectedChallenges(challengeIndex)
+      console.log('Challenge', challenge.toString())
+      const archiveKey = challenge[0]
+      const chunkNumber = challenge[1]
+      const deadline = challenge[2]
+      //do stuff
+      //probably call submitProof()
+    })
+  }
+
+  async function getUserChallengeIndeces (address) {
+    const selectedUserIndex = await addressToSelectedUserIndex(address)
+    const allChallenges = await api.query.datVerify.challengeMap()
+    console.log('All challenges', allChallenges.toString()) //logs [[idsOfChallenges], [idsOfUsers]]
+    const idsOfUsers = allChallenges[1]
+    const userChallengeIndeces = []
+    for (var i = 0; i < idsOfUsers.length; i++) {
+      if (idsOfUsers[i].toString() === Number(selectedUserIndex).toString()) {
+        userChallengeIndeces.push(i)
+      }
+    }
+    console.log(`Indexes of all the challenges for user ${address}:`, userChallengeIndeces)
+    return userChallengeIndeces
+  }
+
+  async function addressToSelectedUserIndex(address){
+      const challengedUser = await api.query.datVerify.selectedUserIndex(address)
+      const userIndex = challengedUser[0]
+      const challengeCount = challengedUser[1]
+      console.log("User: "+address+", at index: "+userIndex+" has "+challengeCount+" challenges!")
+      return userIndex
+  }
+
+  /* ---   registerAttestor  ---*/
+
+  async function registerAttestor () {
+    const registerAttestor = api.tx.datVerify.registerAttestor()
+    const hash = await registerAttestor.signAndSend(CHARLIE, ({ events = [], status }) => {
+      console.log(`Registering user: `, status.type)
+    })
+  }
+
+  /* ---   getMerkleRoot  ---*/
+
+  async function getMerkleRoot () {
+    const merkleRoot = await api.query.datVerify.merkleRoot(feed.key)
+    console.log('Merkle root', merkleRoot.toString())
+  }
+
+  /* ---   usersCount  ---*/
+
+  async function usersCount () {
+    const usersCount = await api.query.datVerify.usersCount()
+    console.log(usersCount.toString())
+  }
+
+  // async function listenToDatHosters () {
+  //   api.query.system.events((events) => {
+  //     console.log(`\nReceived ${events.length} events:`);
+  //
+  //     // Loop through the Vec<EventRecord>
+  //     events.forEach((record) => {
+  //       // Extract the phase, event and the event types
+  //       const { event, phase } = record;
+  //       const types = event.typeDef;
+  //
+  //       // Show what we are busy with
+  //       console.log(`\t${event.section}:${event.method}:: (phase=${phase.toString()})`);
+  //       console.log(`\t\t Meta documentation: ${event.meta.documentation.toString()}`);
+  //
+  //       // Loop through each of the parameters, displaying the type and data
+  //       event.data.forEach((data, index) => {
+  //         console.log(`\t\t\t${types[index].type}: ${data.toString()}`);
+  //       });
+  //     });
+  //   });
+  // }
+
+  async function listenToEvents () {
+    api.query.system.events((events) => {
+      events.forEach(async (record) => {
+        const event = record.event
+        if (event.method === 'SomethingStored') {
+            console.log(`DATA FROM EVENT: ${event.data.toString()}`)
+            return(event.data)
+        }
+        if (event.method === 'NewPin') {
+            console.log(`DATA FROM EVENT: ${event.data.toString()}`)
+            return(event.data)
+        }
+      })
+    })
   }
 
 
