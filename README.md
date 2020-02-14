@@ -20,7 +20,20 @@ after that run `cd datdot-service` and then install the dependencies by running
 
 ### Running
 
-To run the service, type `node start`
+Currently you can run the scenarios, stored in /lab folder.
+
+To try out encoding, run `npm start`
+
+To run other scenarios, run `node/lab/scenarios/1` or `node/lab/scenarios/2`
+and so on.
+
+But what is each scenario about? You may ask.
+
+On top of each scenario file you will find a description and observed behavior.
+
+Why do we need scenarios?
+
+We are using scenarios to debug the flow. Once our code works as expected, the final scenario will be copied in index.js and this will be the main datdot-service code, which will be used in the DatDot app.
 
 
 ## License

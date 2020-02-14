@@ -5,10 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "npm-run-all --parallel scenario1:*",
-    "scenario1:serve": "node ./lab/requester-encoder-seeder/substrate-simulator.js",
-    "scenario1:feed1": "node ./lab/requester-encoder-seeder/requester.js",
-    "scenario1:feed2": "node ./lab/requester-encoder-seeder/encoder.js",
-    "scenario1:feed3": "node ./lab/requester-encoder-seeder/seeder.js"
+    "scenario1:serve": "node ./lab/publisher-encoder-host/substrate-simulator.js",
+    "scenario1:feed1": "node ./lab/publisher-encoder-host/publisher.js",
+    "scenario1:feed2": "node ./lab/publisher-encoder-host/encoder.js",
+    "scenario1:feed3": "node ./lab/publisher-encoder-host/host.js"
   },
   "author": "@ninabreznik",
   "license": "MIT",
@@ -16,6 +16,7 @@
     "@hyperswarm/replicator": "^1.4.1",
     "@polkadot/api": "^0.100.0-beta.19",
     "blake2b": "^2.1.3",
+    "buffer": "^5.4.3",
     "colors": "^1.4.0",
     "fetch": "^1.1.0",
     "hypercore": "^8.4.0",

@@ -5,8 +5,7 @@ const Hypercore = require('hypercore')
 const hyperswarm = require('hyperswarm')
 const swarm = hyperswarm()
 const ram = require('random-access-memory')
-// var hypercore = new Hypercore(_ => ram())
-var hypercore = Hypercore('./hypercore-original')
+var hypercore = Hypercore(ram)
 
 const colors = require('colors/safe');
 const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
@@ -22,11 +21,13 @@ function LOG (...msgs) {
                                 DATA
 
 ------------------------------------------------------------------------ */
-getHypercore()
+publishHypercore()
 
 /*----------  get hypercoreArr ------------ */
 
-function getHypercore () {
+function publishHypercore () {
+
+
   var demo = {
   	"Node": {
   		"index": "u64",
@@ -46,12 +47,7 @@ function getHypercore () {
   	"Proof": {}
   }
   const data = Buffer.from(JSON.stringify(demo), 'utf8')
-  hypercore.append(data)
-
-  hypercore.ready(() => {
-    getKey()
-  })
-
+  hypercore.append(data, () => getKey())
 
   function getKey () {
     var address = hypercore.key.toString('hex')
@@ -60,9 +56,11 @@ function getHypercore () {
       .then(response => response.status === 404 ? ERROR : response.text())
     LOG('published')
     hypercoreArr.push(hypercore.key.toString('hex')) // ed25519::Public
+    LOG('HYPERCORE ARR', hypercoreArr)
     getRootHash(hypercoreArr)
   }
   function getRootHash (hypercoreArr) {
+    LOG('Getting root hashes')
     const index = hypercore.length - 1
     const childrenArr = []
     hypercore.rootHashes(index, (err, res) => {
@@ -83,6 +81,7 @@ function getHypercore () {
   }
   function getSignature (hypercoreArr) {
     hypercore.signature((err, res) => {
+      LOG('Singanture', res.signature.toString('hex'))
       if (err) LOG(err)
       hypercoreArr.push(res.signature.toString('hex')) // ed25519::Signature
       joinSwarm()

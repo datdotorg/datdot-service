@@ -19,7 +19,8 @@ start()
 
 function start () {
   var origHypercoreKey
-  var encodedHypercore = Hypercore('./hypercore-encoded')
+  var encodedHypercore = Hypercore(_ => ram())
+  // var encodedHypercore = Hypercore('./hypercore-encoded')
   encodedHypercore.ready(() => {
     LOG('Encoded hypercore key: ', encodedHypercore.key.toString('hex'))
     getKey()
@@ -55,18 +56,8 @@ function start () {
     origHypercore.ready(() => {
       LOG('Loaded origHypercore')
       reallyReady(origHypercore, () => {
-        LOG('READY')
-        //test
-        // var d = Buffer.from('foo bar baz')
-        // compress(d, (err, encodedChunk) => {
-        //   LOG(`Encoded chunk: ${encodedChunk.toString('utf8')}`)
-        //   encodedHypercore.append(encodedChunk, (err) => {
-        //     if (err) LOG(err)
-        //   })
-        // })
-        //end of test
-
         joinSwarm()
+        LOG('READY')
         origHypercore.createReadStream()
           .on('data', chunk => {
             LOG(`Original chunk: ${chunk.toString('utf8')}`)
@@ -96,10 +87,15 @@ function start () {
 }
 
 function reallyReady (origHypercore, cb) {
+  LOG('Really ready check in progress')
+  LOG('origHypercore', origHypercore)
+  LOG('Peers length', origHypercore.peers.length)
   if (origHypercore.peers.length) {
     origHypercore.update({ ifAvailable: true }, cb)
   } else {
+    LOG('No peers')
     origHypercore.once('peer-add', () => {
+      LOG('On Peer add')
       origHypercore.update({ ifAvailable: true }, cb)
     })
   }
