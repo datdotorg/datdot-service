@@ -20,6 +20,7 @@
     "colors": "^1.4.0",
     "fetch": "^1.1.0",
     "hypercore": "^8.4.0",
+    "hypercore-crypto": "^1.0.0",
     "hyperswarm": "^2.4.0",
     "iltorb": "^2.4.4",
     "random-access-memory": "^3.1.1"
