@@ -82,6 +82,10 @@ async function start (chainAPI, serviceAPI, accounts) {
       const opts = {users: accounts, respondToChallenges}
       await chainAPI.getChallenges(opts)
     }
+    // async function getChallenges (address) {
+    //   const opts = {address, respondToChallenges}
+    //   await chainAPI.getChallenges(opts)
+    // }
 
     async function respondToChallenges (respondingChallenges) {
       const feeds = (await hypercoreArr_promise)[1]

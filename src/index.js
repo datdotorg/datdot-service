@@ -132,6 +132,7 @@ async function promiseRerun (promise) {
 
 async function start (api, archiveArr) {
   console.log('Archive array is: ', archiveArr)
+  listenToEvents()
   /* ----------  chain & node information via rpc calls ------------ */
 
   const [chain, nodeName, nodeVersion] = await Promise.all([
@@ -330,6 +331,21 @@ async function start (api, archiveArr) {
     }
   }
 
+
+  async function listenToEvents () {
+    const unsub = api.query.system.events((events) => {
+      events.forEach(async (record) => {
+        const event = record.event
+        if (event.method === 'Challenge') {
+            console.log('NEW CHALLENGE', event.data.toString())
+            const account = event.data[0]
+        }
+        if (event.method === 'ChallengeFailed') {
+            console.log('CHALLENGE FAILED', event.data.toString())
+        }
+      })
+    })
+  }
   /* ----------  listen to blocks ------------ */
   let count = 0
 
