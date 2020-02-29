@@ -1,3 +1,13 @@
+const hypercoreArr_promise = require('helpers/getHypercoreArr')
+const chainAPI_promise = require('datdot-chain/index') // to use substrate node
+const serviceAPI_promise = require('datdot-service') // to use dat stuff
+const colors = require('colors/safe');
+const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
+function LOG (...msgs) {
+  msgs = [`[${NAME}] `, ...msgs].map(msg => colors.green(msg))
+  console.log(...msgs)
+}
+
 /*
 Scenario:
 1. Create ACCOUNTS
@@ -10,37 +20,20 @@ Behavior:
 - SomethingStored could be renamed to NewPublishedData / DataPublished / PublishSucceeded?
 */
 
-console.log("Starting scenario 5")
-
-const hypercoreArr_promise = require('helpers/getHypercoreArr')
-const chainAPI_promise = require('datdot-chain/index') // to use substrate node
-const serviceAPI_promise = require('datdot-service') // to use dat stuff
-const colors = require('colors/safe');
-const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
-function LOG (...msgs) {
-  msgs = [`[${NAME}] `, ...msgs].map(msg => colors.green(msg))
-  console.log(...msgs)
-}
-
 /* --------------------------------------
               A. SETUP FLOW
 ----------------------------------------- */
 
-console.log("before setup fn")
 // 1. Get substrate chain API
 async function setup () {
-  console.log("starting setup")
   const chainAPI = await chainAPI_promise
-  LOG('ChainAPI ok')
   const serviceAPI = await serviceAPI_promise
-  LOG('ServiceAPI ok')
   makeAccount(chainAPI, serviceAPI)
 }
 setup()
 
 // 2. `make ACCOUNT`
 async function makeAccount(chainAPI, serviceAPI) {
-  LOG('makeAccount')
   const opts = {chainAPI, serviceAPI, cb: start}
   chainAPI.makeAccount(opts)
 }
