@@ -65,13 +65,12 @@ async function start (chainAPI, serviceAPI, accounts) {
     async function registerHoster() {
       const opts = {accounts, handleRegisterHoster}
       await chainAPI.registerHoster(opts)
-      await chainAPI.listenToEvents(getChallenges)
+      await chainAPI.listenToEvents(getChallenges, attestPhase)
     }
 
     // 2. `register ENCODER`
 
     // 3. `register ATTESTER`
-
 
     /* --------------------------------------
               D. CHALLENGES FLOW
@@ -92,8 +91,17 @@ async function start (chainAPI, serviceAPI, accounts) {
       await chainAPI.respondToChallenges(opts)
     }
 
+
     /* --------------------------------------
-              C. EVENTS
+              E. ATTEST PHASE
+    ----------------------------------------- */
+
+    async function attestPhase () {
+      await chainAPI.attest()
+    }
+
+    /* --------------------------------------
+              F. EVENTS
     ----------------------------------------- */
 
     function handleRegisterHoster (user, events) {
@@ -108,6 +116,9 @@ async function start (chainAPI, serviceAPI, accounts) {
         LOG(`publishData event for user: ${user}`, event.method, event.data.toString())
         if (event.method === 'SomethingStored') {
           registerHoster()
+        }
+        if (event.method === 'NewPin') {
+          LOG('Handling publishing - new pin: ', event.data)
         }
       })
     }
