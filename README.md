@@ -24,7 +24,7 @@ Currently you can run the scenarios, stored in /lab folder.
 
 To try out encoding, run `npm start`
 
-To run other scenarios, run `node lab/scenarios/index1` or `node lab/scenarios/index5`
+To run other scenarios, run `node lab/scenarios/*`, for example `node lab/scenarios/offerHosting.js`
 and so on.
 
 But what is each scenario about? You may ask.
