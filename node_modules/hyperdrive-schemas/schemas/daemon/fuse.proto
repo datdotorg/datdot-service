@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+import "daemon/common.proto";
+
+message MountRequest {
+  string path = 1;
+  HyperdriveOptions opts = 2;
+}
+message MountResponse {
+  string path = 1;
+  HyperdriveOptions mountInfo = 2;
+}
+
+message UnmountRequest {
+  string path = 1;
+}
+message UnmountResponse {}
+
+message InfoRequest {
+  string path = 1;
+}
+message InfoResponse {
+  string key = 1;
+  string path = 2;
+  string mountPath = 3;
+  bool writable = 4;
+}
+
+service Fuse {
+  rpc mount (MountRequest) returns (MountResponse);
+  rpc unmount (UnmountRequest) returns (UnmountResponse);
+  rpc info (InfoRequest) returns (InfoResponse);
+}
