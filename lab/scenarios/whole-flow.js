@@ -14,15 +14,7 @@ function LOG (...msgs) {
 }
 
 /*
-Scenario:
-1. Create ACCOUNTS
-2. Publish DATA
-3. Wait for event log (if Something Stored, then ->)
-4. Register HOSTERS
 
-Behavior:
-- NeWPin event logs always same account addres, but correct hypercore key
-- SomethingStored could be renamed to NewPublishedData / DataPublished / PublishSucceeded?
 */
 
 // --------------------------------------------------//
@@ -59,20 +51,25 @@ chainAPI.requestHosting(request, (err, confirmation) => {
 
 const opts = {}
 
-// ENCODE
-
+// ENCODING
 chainAPI.registerEncoder(opts, (err, request) => {
   const { feedkey, swarmkey, eid, hid} = request // eid = encoder id
   serviceAPI.encode(request, (err, merkleRoot) => {
     chainAPI.encodingDone(merkleRoot, (err, res) => {
-      LOG(res) // your new saldo is: ...
+      LOG(res) // your new ratio is: ...
     })
   })
 }
 
-// HOST
+// HOSTING
 chainAPI.registerHoster(opts, (err, request) => {
-  serviceAPI.host(request, (err, merkleRoot) => {
+  // request encoder
+  const { feedkey, swarmkey, eid, hid} = request // eid = encoder id
+  serviceAPI.host(request, (err, merkleRoot, next) => {
+    if (err ==='encoder time out') chainAPI.requestNewEncoder(request,  (encoder) => {
+      const { id } = encoder
+      next(encoder)
+    })
     chainAPI.hostingStarted(merkleRoot, (err, challenge) => {
       serviceAPI.solveChallenge(challenge, (err, merkleProof) => {
         chainAPI.provideProofOfHosting(merkleProof, (err, res) => {
