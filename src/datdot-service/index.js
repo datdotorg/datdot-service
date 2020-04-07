@@ -15,15 +15,10 @@ function datdotservice (opts) {
   // { HosterStorage, profile } = opts
 
   const API = {
-    // brotli w/ level 11 and using Mauve's module
     encode,
-    // store encoded hypercore using Mauve's module and make host send extension message on every connection
     host,
-    // connects to all peers in swarm until they find hoster (= the one who sends a specific extension message)
     attest,
-    // using Mauve's module
     solveChallenge,
-    // status messages for all these functions
     listen,
   }
   return API
@@ -81,6 +76,7 @@ function datdotservice (opts) {
     // const { hosterID, planID, chunkIndexes} = challenge
     // send the requested encoded chunk to the chain
   }
+  
   /* --------------------------------------
                 LISTEN TO EVENTS
   ----------------------------------------- */
