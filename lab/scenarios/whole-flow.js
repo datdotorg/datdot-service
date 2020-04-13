@@ -50,7 +50,7 @@ chainAPI.registerEncoder(opts, (err, request) => {
       LOG(res) // your new ratio is: ...
     })
   })
-}
+})
 
 // --------------------------------------------------
 // HOSTING
@@ -81,7 +81,7 @@ chainAPI.registerAttester(opts, (err, request) => {
       LOG(res)
     })
   })
-}
+})
 
 // --------------------------------------------------
 // VALIDATE
@@ -98,9 +98,9 @@ function getData (opts, cb) {
     feed.rootHashes(index, (err, res) => {
       if (err) return LOG(err)
       const roots = res.map(hash => {
-        hash: root.hash,
-        signature: getSignature(root.index),
-        length: root.size
+        root.hash,
+        getSignature(root.index),
+        root.size
       })
     })
     function getSignature (idx) {

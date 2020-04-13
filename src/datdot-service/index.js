@@ -30,17 +30,23 @@ function datdotservice (opts) {
   function encode (request, cb) {
     // get a request for encoding
     // const { feedkey, swarmkey, encoder_id, hoster_id, ranges } = request
-    // check if feedkey exists => if yes, get merkleRoot (when updates)
-    // connect to the original swarm and get the data for the requested ranges
+    // connect to the original swarm
+    // get the data for the requested ranges
     // encode the data
     // create custom swarmkey from encoder_id and hoster_id (example: 'datdot:encoder_id/hoster_id')
-    // connect to the hoster (custom swarmkey)
-    // SCENARIO A: encode, send merkleRoot, send data
+    // SCENARIO A: encode & send data
+      // connect to the hoster (custom swarmkey)
       // and send the encoded data to the hoster
-    // SCENARIO B: encode, send merkleRoot, but don't send data to the hoster (they will encode themselves)
+    // SCENARIO B: encode & don't send data to the hoster (they will encode themselves)
       // dont't send any data to the hoster
-    // call a callback with merkleRoot (has to match the ranges in the request)
+    // call a callback with treeHash (from the highest chunk in the requested ranges)
     // if anything goes wrong, send cb with err
+  }
+
+  function encode_update () {
+    // get a request for encoding
+    // const { feedkey, swarmkey, encoder_id, hoster_id, ranges } = request
+    // ...
   }
 
 /* --------------------------------------
@@ -48,13 +54,18 @@ function datdotservice (opts) {
 ----------------------------------------- */
 
   function host (request, cb) {
-    // get a request for encoding
-    // const { feedkey, swarmkey, encoder_id, hoster_id} = request
-    // join custom swarmkey to fetch encoded data
-    // when all encoded data is downloaded, join the original swarm
+    // get a request for hosting
+    // const { feedkey, swarmkey, encoder_id, hoster_id, ranges} = request
+    // SCENARIO A: get encoded data from encoder
+      // join custom swarmkey to fetch encoded data
+    // SCENARIO B: encode data yourself
+    // join the original swarm
     // if you receive request, decode data and send them to the peer
   }
 
+  function host_update () {
+
+  }
   /* --------------------------------------
                 ATTEST
   ----------------------------------------- */
@@ -76,7 +87,7 @@ function datdotservice (opts) {
     // const { hosterID, planID, chunkIndexes} = challenge
     // send the requested encoded chunk to the chain
   }
-  
+
   /* --------------------------------------
                 LISTEN TO EVENTS
   ----------------------------------------- */
