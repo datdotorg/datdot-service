@@ -45,24 +45,22 @@ chainAPI.requestHosting(request, (err, confirmation) => {
 // ENCODING
 chainAPI.registerEncoder(opts, (err, request) => {
   const { feedkey, swarmkey, eid, hid} = request // eid = encoder id
-  serviceAPI.encode(request, (err, merkleRoot) => {
-    chainAPI.encodingDone(merkleRoot, (err, res) => {
-      LOG(res) // your new ratio is: ...
-    })
+  serviceAPI.encode(request, (err) => {
+    LOG('Done')
   })
 })
 
 // --------------------------------------------------
 // HOSTING
 chainAPI.registerHoster(opts, (err, request) => {
-  // request encoder
   const { feedkey, swarmkey, eid, hid} = request // eid = encoder id
-  serviceAPI.host(request, (err, merkleRoot, next) => {
-    if (err ==='encoder time out') chainAPI.requestNewEncoder(request,  (encoder) => {
+  serviceAPI.host(request, (err, resume) => {
+    if (err === 'wrong encoded data') return chainAPI.abortRequest()
+    if (err ==='encoder time out') chainAPI.requestNewEncoder(request, (encoder) => {
       const { id } = encoder
-      next(encoder)
+      resume(encoder)
     })
-    chainAPI.hostingStarted(merkleRoot, (err, challenge) => {
+    chainAPI.hostingStarted((err, challenge) => {
       serviceAPI.solveChallenge(challenge, (err, merkleProof) => {
         chainAPI.provideProofOfHosting(merkleProof, (err, res) => {
           LOG(res)
