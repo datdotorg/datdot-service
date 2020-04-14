@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+/**
+ * Get the NOISE public key corresponding to an alias.
+ */
+message GetKeyRequest {
+  uint32 alias = 1;
+}
+message GetKeyResponse {
+  bytes key = 1;
+}
+
+/**
+ * Get or create an alias for a NOISE key.
+ */
+message GetAliasRequest {
+  bytes key = 1;
+}
+message GetAliasResponse {
+  uint32 alias = 1;
+}
+
+/**
+ * Start watching for peers joining/leaving a discovery key topic.
+ */
+message WatchPeersRequest {
+  bytes discoveryKey = 1;
+}
+
+message WatchPeersResponse {
+  enum Type {
+    Joined = 0;
+    Left = 1;
+  }
+  Type type = 1;
+  repeated uint32 peers = 2;
+}
+
+service Peers {
+  rpc getKey (GetKeyRequest) returns (GetKeyResponse);
+  rpc getAlias (GetAliasRequest) returns (GetAliasResponse);
+  rpc watchPeers (WatchPeersRequest) returns (stream WatchPeersResponse);
+}

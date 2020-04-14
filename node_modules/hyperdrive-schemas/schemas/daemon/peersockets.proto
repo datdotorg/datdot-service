@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+message DataMessage {
+  uint32 alias = 1;
+  bytes msg = 2;
+}
+
+message OpenMessage {
+  string topic = 1;
+}
+
+/**
+ * Wrapper type for any inbound or outbound peersocket message.
+ */
+message PeerMessage {
+  enum Type {
+    Open = 0;
+    Data = 1;
+  }
+  Type type = 1;
+  oneof content {
+    OpenMessage open = 2;
+    DataMessage data = 3;
+  }
+}
+
+service Peersockets {
+  rpc join (stream PeerMessage) returns (stream PeerMessage);
+}

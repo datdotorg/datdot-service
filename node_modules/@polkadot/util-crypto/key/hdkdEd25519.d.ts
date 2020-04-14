@@ -1,3 +1,0 @@
-import { Keypair } from '../types';
-import DeriveJunction from './DeriveJunction';
-export default function keyHdkdEd25519(keypair: Keypair, { chainCode, isHard }: DeriveJunction): Keypair;

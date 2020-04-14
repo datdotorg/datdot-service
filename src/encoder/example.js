@@ -17,8 +17,8 @@ async function run () {
   const communication1 = await Hypercommunication.create({ sdk: sdk1 })
   const communication2 = await Hypercommunication.create({ sdk: sdk2 })
 
-  const encoder = new Encoder({
-    Hypercore: sdk1.Hypercore,
+  const encoder = await Encoder.load({
+    sdk: sdk1,
     communication: communication1,
     EncoderDecoder
   })
