@@ -27,6 +27,7 @@
     "memdown": "^5.1.0",
     "promise-defer": "^1.0.0",
     "random-access-memory": "^3.1.1",
+    "sodium-universal": "^2.0.0",
     "subleveldown": "^4.1.4",
     "through2": "^3.0.1"
   },

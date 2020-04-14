@@ -10,13 +10,23 @@ const DEFAULT_OPTS = {
 }
 
 module.exports = class Hoster {
-  constructor ({ db, Hypercore, EncoderDecoder, onNeedsEncoding, communication }) {
+  constructor ({
+  	db,
+  	sdk,
+  	EncoderDecoder,
+  	onNeedsEncoding,
+  	communication
+  }) {
     this.storages = new Map()
     this.keyOptions = new Map()
     this.watchingFeeds = new Set()
     this.loaderCache = new Map()
+
     this.db = db
     this.hosterDB = sub(this.db, 'hoster', { valueEncoding: 'json' })
+
+		const {Hypercore} = sdk
+		this.sdk = sdk
     this.Hypercore = Hypercore
     this.EncoderDecoder = EncoderDecoder
     this.communication = communication

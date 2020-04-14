@@ -61,7 +61,7 @@ async function run () {
   const hoster = await Hoster.load({
     EncoderDecoder,
     db: hosterDB,
-    Hypercore: hosterSDK.Hypercore,
+    sdk: hosterSDK,
     communication: hosterCommuncation,
     onNeedsEncoding: async (key, index) => chain.requestEncoding(hosterCommuncation.publicKey, key, index)
   })

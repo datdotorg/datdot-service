@@ -41,59 +41,58 @@ module.exports = class Encoder {
     this.replicationPublicKey = replicationPublicKey
   }
 
-  async encodeFor (hosterKey, feedKey, index) {
+  async encodeFor (hosterKey, feedKey, ranges) {
     const feed = this.Hypercore(feedKey)
-
-    // TODO: Add timeout for when we can't get feed data
-    const data = await feed.get(index)
 
     // TODO: Add timeout for when we can't find the hoster
     const peer = await this.communication.findPeer(hosterKey)
 
-    const encoded = await this.EncoderDecoder.encode(data)
+    // const ranges = [[2, 5], [7, 15], [17, 27]]
+    for (const range in ranges) {
+      for (let index = range[0], len = range[1] + 1; index < len; index++) {
+        // TODO: Add timeout for when we can't get feed data
+        const data = await feed.get(index)
 
-    // Allocate buffer for the proof
-    const proof = Buffer.alloc(sodium.crypto_sign_BYTES)
+        const encoded = await this.EncoderDecoder.encode(data)
 
-    // Allocate buffer for the data that should be signed
-    const toSign = Buffer.alloc(encoded.length + varint.encodingLength(index))
+        // Allocate buffer for the proof
+        const proof = Buffer.alloc(sodium.crypto_sign_BYTES)
 
-    // Write the index to the buffer that will be signed
-    varint.encode(index, toSign, 0)
-    // Copy the encoded data into the buffer that will be signed
-    encoded.copy(toSign, varint.encode.bytes)
+        // Allocate buffer for the data that should be signed
+        const toSign = Buffer.alloc(encoded.length + varint.encodingLength(index))
 
-    // Sign the data with our singning scret key and write it to the proof buffer
-    sodium.crypto_sign_detached(proof, toSign, this.signingSecretKey)
+        // Write the index to the buffer that will be signed
+        varint.encode(index, toSign, 0)
+        // Copy the encoded data into the buffer that will be signed
+        encoded.copy(toSign, varint.encode.bytes)
 
-    // Send the encoded stuff over to the hoster so they can store it
-    // TODO: Figure out why this timing is necessary.
-    setTimeout(() => {
-      peer.send({
-        type: 'encoded',
-        feed: feedKey,
-        index,
-        encoded,
-        proof
-      })
-    }, 1000)
+        // Sign the data with our singning scret key and write it to the proof buffer
+        sodium.crypto_sign_detached(proof, toSign, this.signingSecretKey)
 
-    // TODO: Set up timeout for when peer doesn't respond to us
-    const [response] = await once(peer, 'message')
+        // Send the encoded stuff over to the hoster so they can store it
+        // TODO: Figure out why this timing is necessary.
+        setTimeout(() => {
+          peer.send({
+            type: 'encoded',
+            feed: feedKey,
+            index,
+            encoded,
+            proof
+          })
+        }, 1000)
+        // --------------------------------------------------------------
 
-    peer.close()
+        // Wait for the hoster to tell us they've handled the data
+        // TODO: Set up timeout for when peer doesn't respond to us
+        const [response] = await once(peer, 'message')
 
-    if (response.error) {
-      throw new Error(response.error)
+        if (response.error) {
+          throw new Error(response.error)
+        }
+      }
     }
 
-    return {
-      feedKey,
-      index,
-      hosterKey,
-      encoded,
-      proof,
-      response
-    }
+    // --------------------------------------------------------------
+    await peer.close()
   }
 }

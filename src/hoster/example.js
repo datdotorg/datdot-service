@@ -22,7 +22,7 @@ async function run () {
 
     console.log('Initializing hoster')
     var hoster = await Hoster.load({
-      Hypercore: sdk1.Hypercore,
+      sdk: sdk1,
       EncoderDecoder,
       db,
       communication,
