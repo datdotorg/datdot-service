@@ -49,10 +49,10 @@ async function run () {
 
   const encoderSDK = await SDK({ storage })
   const encoderCommunication = await Hypercommunication.create({ sdk: encoderSDK })
-  const encoder = new Encoder({
+  const encoder = await Encoder.load({
     EncoderDecoder,
     communication: encoderCommunication,
-    Hypercore: encoderSDK.Hypercore
+    sdk: encoderSDK
   })
 
   const hosterSDK = await SDK({ storage })
