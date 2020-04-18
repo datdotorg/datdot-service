@@ -3,6 +3,7 @@ const SDK = require('dat-sdk')
 const p2plex = require('p2plex')
 const ndjson = require('ndjson')
 const pump = require('pump')
+const { PassThrough } = require('stream')
 
 const Encoder = require('./')
 const EncoderDecoder = require('../EncoderDecoder')
@@ -29,22 +30,35 @@ async function run () {
   plex.on('connection', async (peer) => {
     console.log('Got connection from encoder', peer.publicKey, peer.publicKey.equals(encoder.publicKey))
 
+    peer.on('stream', (stream, id) => console.log('Got stream from encoder', id))
+
     const responseStream = ndjson.serialize()
-    const encodingStream = ndjson.parse()
+    const rawEncodingStream = ndjson.parse()
+    // This is needed to make the stream async iterable
+    const encodingStream = new PassThrough({ objectMode: true })
 
-    pump(responseStream, peer.receiveStream('datdot-encoding-results'), encodingStream)
+    pump(responseStream, peer.receiveStream('datdot-encoding-results'), rawEncodingStream, encodingStream)
+    encodingStream.resume()
 
-    for await (const { feed, index, encoded, proof } of encodingStream) {
+    for await (const { feed, index, encoded } of encodingStream) {
       const encodedBuff = Buffer.from(encoded)
       const feedBuff = Buffer.from(feed)
 
       const decoded = await EncoderDecoder.decode(encodedBuff)
       const isSame = TEST_MESSAGE.equals(decoded)
+      const decodedString = decoded.toString('utf8')
 
-      console.log('Got encoding', { feedBuff, index, encodedBuff, decoded, isSame })
+      console.log('Got encoding', {
+        feedBuff,
+        index,
+        encodedBuff,
+        decoded,
+        isSame,
+        decodedString
+      })
 
       // Respond to the peer saying we got the data
-      responseStream.send({
+      responseStream.write({
         type: 'encoding',
         ok: true
       })
@@ -57,15 +71,22 @@ async function run () {
   await feed.append(TEST_MESSAGE)
 
   console.log('Sending feed to be encoded', {
-    publicKey: communication2.publicKey.toString('hex'),
+    publicKey: plex.publicKey.toString('hex'),
     feed: feed.key.toString('hex'),
     index: 0
   })
 
-  await encoder.encodeFor(communication2.publicKey, feed.key, 0)
+  await encoder.encodeFor(plex.publicKey, feed.key, 0)
 
   console.log('Done!')
+  console.log('Cleaning up')
 
-  await sdk1.close()
-  await sdk2.close()
+  await Promise.all([
+    encoder.close(),
+    sdk1.close(),
+    sdk2.close(),
+    plex.destroy()
+  ])
+
+  console.log('Cleaned up')
 }

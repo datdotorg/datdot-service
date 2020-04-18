@@ -53,6 +53,11 @@ module.exports = class Encoder {
   }
 
   async encodeFor (hosterKey, feedKey, ranges) {
+    if (!Array.isArray(ranges)) {
+      const index = ranges
+      ranges = [[index, index]]
+    }
+
     const feed = this.Hypercore(feedKey)
 
     // TODO: Add timeout for when we can't find the hoster
@@ -60,10 +65,11 @@ module.exports = class Encoder {
     const resultStream = ndjson.serialize()
     const confirmStream = ndjson.parse()
 
-    pump(resultStream, peer.createStream(ENCODING_RESULTS_STREAM), confirmStream)
+    const encodingStream = peer.createStream(ENCODING_RESULTS_STREAM)
+    pump(resultStream, encodingStream, confirmStream)
 
     // const ranges = [[2, 5], [7, 15], [17, 27]]
-    for (const range in ranges) {
+    for (const range of ranges) {
       for (let index = range[0], len = range[1] + 1; index < len; index++) {
         // TODO: Add timeout for when we can't get feed data
         const data = await feed.get(index)
@@ -83,7 +89,6 @@ module.exports = class Encoder {
 
         // Sign the data with our singning scret key and write it to the proof buffer
         sodium.crypto_sign_detached(proof, toSign, this.signingSecretKey)
-
         // Send the encoded stuff over to the hoster so they can store it
         resultStream.write({
           type: 'encoded',
@@ -104,7 +109,13 @@ module.exports = class Encoder {
       }
     }
 
+    encodingStream.end()
+
     // --------------------------------------------------------------
     await peer.disconnect()
+  }
+
+  async close () {
+    return this.communication.destroy()
   }
 }
