@@ -7,6 +7,7 @@ const { PassThrough } = require('stream')
 
 const Encoder = require('./')
 const EncoderDecoder = require('../EncoderDecoder')
+const {ENCODING_RESULTS_STREAM} = require('../constants')
 
 run()
 
@@ -37,7 +38,7 @@ async function run () {
     // This is needed to make the stream async iterable
     const encodingStream = new PassThrough({ objectMode: true })
 
-    pump(responseStream, peer.receiveStream('datdot-encoding-results'), rawEncodingStream, encodingStream)
+    pump(responseStream, peer.receiveStream(ENCODING_RESULTS_STREAM), rawEncodingStream, encodingStream)
     encodingStream.resume()
 
     for await (const { feed, index, encoded } of encodingStream) {

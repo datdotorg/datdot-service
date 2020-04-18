@@ -6,10 +6,10 @@ const pump = require('pump')
 const ndjson = require('ndjson')
 const { seedKeygen } = require('noise-peer')
 
+const {ENCODING_RESULTS_STREAM} = require('../constants')
 const NAMESPACE = 'datdot-encoder'
 const IDENITY_NAME = 'signing'
 const NOISE_NAME = 'noise'
-const ENCODING_RESULTS_STREAM = 'datdot-encoding-results'
 
 module.exports = class Encoder {
   constructor ({
