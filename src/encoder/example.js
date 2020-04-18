@@ -1,7 +1,10 @@
 const RAM = require('random-access-memory')
 const SDK = require('dat-sdk')
+const p2plex = require('p2plex')
+const ndjson = require('ndjson')
+const pump = require('pump')
+
 const Encoder = require('./')
-const Hypercommunication = require('../hypercommunication')
 const EncoderDecoder = require('../EncoderDecoder')
 
 run()
@@ -14,31 +17,38 @@ async function run () {
     storage: RAM
   })
 
-  const communication1 = await Hypercommunication.create({ sdk: sdk1 })
-  const communication2 = await Hypercommunication.create({ sdk: sdk2 })
+  const plex = p2plex()
 
   const encoder = await Encoder.load({
     sdk: sdk1,
-    communication: communication1,
     EncoderDecoder
   })
 
   const TEST_MESSAGE = Buffer.from('Hello World!')
 
-  communication2.on('message', async ({ feed, index, encoded, proof }, peer) => {
-    const encodedBuff = Buffer.from(encoded)
-    const feedBuff = Buffer.from(feed)
+  plex.on('connection', async (peer) => {
+    console.log('Got connection from encoder', peer.publicKey, peer.publicKey.equals(encoder.publicKey))
 
-    const decoded = await EncoderDecoder.decode(encodedBuff)
-    const isSame = TEST_MESSAGE.equals(decoded)
+    const responseStream = ndjson.serialize()
+    const encodingStream = ndjson.parse()
 
-    console.log('Got encoding', { feedBuff, index, encodedBuff, decoded, isSame })
+    pump(responseStream, peer.receiveStream('datdot-encoding-results'), encodingStream)
 
-    // Respond to the peer saying we got the data
-    peer.send({
-      type: 'encoding',
-      ok: true
-    })
+    for await (const { feed, index, encoded, proof } of encodingStream) {
+      const encodedBuff = Buffer.from(encoded)
+      const feedBuff = Buffer.from(feed)
+
+      const decoded = await EncoderDecoder.decode(encodedBuff)
+      const isSame = TEST_MESSAGE.equals(decoded)
+
+      console.log('Got encoding', { feedBuff, index, encodedBuff, decoded, isSame })
+
+      // Respond to the peer saying we got the data
+      responseStream.send({
+        type: 'encoding',
+        ok: true
+      })
+    }
   })
 
   console.log('initializing feed')
