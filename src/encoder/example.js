@@ -49,10 +49,10 @@ async function run () {
   console.log('Sending feed to be encoded', {
     publicKey: communication2.publicKey.toString('hex'),
     feed: feed.key.toString('hex'),
-    index: 0
+    ranges: [[2, 5], [7, 15], [17, 27]]
   })
 
-  await encoder.encodeFor(communication2.publicKey, feed.key, 0)
+  await encoder.encodeFor(communication2.publicKey, feed.key, ranges)
 
   console.log('Done!')
 

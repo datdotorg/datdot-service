@@ -15,8 +15,29 @@ const reallyReady = require('hypercore-really-ready')
 module.exports = datdotservice
 
 function datdotservice (opts) {
-
   // { HosterStorage, profile } = opts
+
+  // initialize encoder
+  const encoderSDK = await SDK({ storage })
+  const encoderCommunication = await Hypercommunication.create({ sdk: encoderSDK })
+  const encoder = await Encoder.load({
+    EncoderDecoder,
+    communication: encoderCommunication,
+    sdk: encoderSDK
+  })
+
+  // initialize hoster
+  const hosterSDK = await SDK({ storage })
+  const hosterCommunication = await Hypercommunication.create({ sdk: hosterSDK })
+  const hosterDB = levelup(memdown())
+  const hoster = await Hoster.load({
+    EncoderDecoder,
+    db: hosterDB,
+    sdk: hosterSDK,
+    communication: hosterCommunication,
+    onNeedsEncoding: //async (key, index) => chain.requestEncoding(hosterCommunication.publicKey, key, index)
+  })
+
 
   const API = {
     encode,
@@ -32,19 +53,22 @@ function datdotservice (opts) {
   ----------------------------------------- */
 
   function encode (request, done) {
+
     // get a request for encoding
-    const { feedkey, swarmkey, encoder_id, hoster_id, ranges } = request
+    const { feedkey, ranges } = request
+    const hoster = hosterCommunication.publicKey
     // connect to the original swarm
     // create custom swarmkey from encoder_id and hoster_id (example: 'datdot:encoder_id/hoster_id')
     // connect to the hoster (custom swarmkey)
 
     // loop over ranges
-      // get the data for index in range
-      // get the merkle proof for index in range
-      // encode the data
-      // sign the data
-      // send data to hoster
-      // data = encoded chunk + signature + merkle proof
+    // get the data for index in range
+    // get the merkle proof for index in range
+    // encode the data
+    // sign the data
+    // send data to hoster
+    // data = encoded chunk + signature + merkle proof
+    await encoder.encodeFor(hoster, feedkey, ranges)
 
     // call cb, if anything goes wrong, send cb with err
     done()
@@ -56,7 +80,9 @@ function datdotservice (opts) {
 ----------------------------------------- */
 
   function host (request, cb) {
+    const {feedkey, plan} = request
     // get a request for hosting
+    await this.hoster.addFeed(feedkey, plan)
     // download merkleRoot from chain
     // connect to the encoder (custom swarmkey)
     // listen for disconnect/timeout of encoder

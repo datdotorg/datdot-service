@@ -12,5 +12,5 @@ const encoder = new Encoder({
 // This will tell the encoder to encode some data
 // It will get data from the feed and encode it
 // It will them attempt to send the data to the hoster
-await encoder.encodeFor(hosterKey, feedKey, index)
+await encoder.encodeFor(hosterKey, feedKey, ranges)
 ```

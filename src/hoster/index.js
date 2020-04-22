@@ -93,7 +93,7 @@ module.exports = class Hoster {
 
     const deferred = defer()
 
-    // If we're aloready loading this feed, queue up our promise after the current one
+    // If we're already loading this feed, queue up our promise after the current one
     if (this.loaderCache.has(stringKey)) {
       // Get the existing promise for the loader
       const existing = this.loaderCache.get(stringKey)

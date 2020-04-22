@@ -36,7 +36,7 @@ getData( feed, (err, roots) => {
 
 // --------------------------------------------------
 // REQUEST SERVICE
-const request = {}
+const request = {feedkey, plan, ranges}
 chainAPI.requestHosting(request, (err, confirmation) => {
   LOG(confirmation) // get confirmation => update dashboard
 })
@@ -44,7 +44,7 @@ chainAPI.requestHosting(request, (err, confirmation) => {
 // --------------------------------------------------
 // ENCODING
 chainAPI.registerEncoder(opts, (err, request) => {
-  const { feedkey, swarmkey, eid, hid} = request // eid = encoder id
+  const { feedkey, ranges } = request
   serviceAPI.encode(request, (err) => {
     LOG('Done')
   })
@@ -53,7 +53,7 @@ chainAPI.registerEncoder(opts, (err, request) => {
 // --------------------------------------------------
 // HOSTING
 chainAPI.registerHoster(opts, (err, request) => {
-  const { feedkey, swarmkey, eid, hid} = request // eid = encoder id
+  const {feedkey, plan} = request
   serviceAPI.host(request, (err, resume) => {
     if (err === 'wrong encoded data') return chainAPI.abortRequest()
     if (err ==='encoder time out') chainAPI.requestNewEncoder(request, (encoder) => {
