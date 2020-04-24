@@ -76,6 +76,12 @@ async function start (chainAPI, serviceAPI, accounts) {
     /* --------------------------------------
               D. CHALLENGES FLOW
     ----------------------------------------- */
+    async function newChallenge (data) { //submitChallenge
+      const user = data[0]
+      const dat = data[1]
+      const opts = { account: accounts[0], user, dat}
+      await chainAPI.submitChallenge(opts)
+    }
 
     async function getChallenges (address) {
       const opts = {users: accounts, respondToChallenges}
@@ -116,6 +122,7 @@ async function start (chainAPI, serviceAPI, accounts) {
         await registerAttestor()
       }
       if (event.method === 'NewPin') {
+        await newChallenge(event.data)
       }
       if (event.method === 'Challenge') getChallenges(address)
       if (event.method === 'ChallengeFailed') { }

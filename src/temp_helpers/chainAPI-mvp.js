@@ -44,8 +44,9 @@ async function datdotChain (resolve, reject) {
     registerHoster,
     registerAttestor,
     publishData,
-    // getChallenges,
-    // respondToChallenges,
+    submitChallenge,
+    getChallenges,
+    respondToChallenges,
     attest,
     listenToEvents
   }
@@ -70,10 +71,13 @@ async function datdotChain (resolve, reject) {
 
   // PUBLISH DATA
   async function publishData (opts) {
-    const {registerPayload, account} = opts
-    const registerData = API.tx.datVerify.registerData(registerPayload)
-    await registerData.signAndSend(account, ({ events = [], status }) => {
-      LOG(`Publishing data: ${account.address} `, status.type)
+    return new Promise(async (resolve, reject) => {
+      const {registerPayload, account} = opts
+      const registerData = API.tx.datVerify.registerData(registerPayload)
+      await registerData.signAndSend(account, ({ events = [], status }) => {
+        LOG(`Publishing data: ${account.address} `, status.type)
+        if (status.isFinalized) resolve()
+      })
     })
   }
 
@@ -109,6 +113,19 @@ async function register () {
     })
   }
 
+  // REQUEST A CHALLENGE
+  async function submitChallenge (opts) {
+    return new Promise(async (resolve, reject) => {
+      const {account, user, dat} = opts
+      LOG('Requesting a new challenge')
+      const challenge = API.tx.datVerify.submitChallenge(user, dat)
+      await challenge.signAndSend(account, ({ events = [], status }) => {
+        LOG(`Requesting a new challenge: ${user.toString('hex')}, ${dat.toString('hex')} `, status.type)
+        if (status.isFinalized) resolve()
+      })
+    })
+  }
+
 // ATTEST PHASE
 
 async function attest (opts) {
@@ -125,10 +142,11 @@ async function attest (opts) {
 // GET CHALLENGES
 async function getChallenges (opts) {
   const {users, respondToChallenges} = opts
-  const allChallenges = await API.query.datVerify.challengeMap()
+  const allChallenges = await API.query.datVerify.challengeMap(users[0])
   for (var i = 0; i < users.length; i++) {
     getChallenge(users[i], allChallenges, respondingChallenges = [])
   }
+  LOG('responding challenges', respondingChallenges)
   respondToChallenges(respondingChallenges)
 }
 
