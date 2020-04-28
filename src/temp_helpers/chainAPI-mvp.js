@@ -1,6 +1,7 @@
 const { ApiPromise, WsProvider, Keyring, ApiRx } = require("@polkadot/api")
 const provider = new WsProvider('ws://127.0.0.1:9944')
 const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
+const { hexToBn } = require('@polkadot/util');
 const fs = require('fs')
 const crypto = require('hypercore-crypto')
 const path = require('path')
@@ -143,12 +144,12 @@ async function getChallenges (opts) {
   const responses = []
 
   // Get challenges [all challenge ids, all sellected user ids] => mapping
-  const allChallenges = await API.query.datVerify.challengeMap.entries()
+  const allChallenges = await API.query.datVerify.challengeMap.entries() //[ challengeID1, sellectedUserID1, challengeID2, sellectedUserID2, ]
   // key: challengeID
   // value: sellectedUserID
 
   // get all sellectedUserIDs
-  const sellectedUserIDs = Object.keys(allChallenges)
+  const sellectedUserIDs = Object.keys(allChallenges) // [sllectedUserID1, sellectedUserID2...]
   LOG('sellectedUserIDs', sellectedUserIDs.toString('hex'))
 
   // get challenged user ID
@@ -167,7 +168,9 @@ async function getChallenges (opts) {
 
       // then get a challenge based on challenge ID
       // const challengeTuple = await API.query.datVerify.selectedChallenges(challengeID)
-      const challenge = await API.query.datVerify.selectedChallenges(challengeID)
+      const parsedChallengeID = hexToBn(challengeID.toString('hex').substring(82), { isLe: true }).toNumber()
+      LOG('parsed', parsedChallengeID)
+      const challenge = await API.query.datVerify.selectedChallenges(parsedChallengeID)
       LOG('challenge', challenge.toString('hex'))
 
       const challengeDetails = challenge.toJSON()
@@ -197,21 +200,24 @@ async function getChallenges (opts) {
 
 async function sendProof (opts) {
   const { responses, feeds } = opts
+  LOG('Feeds', feeds)
   for (var i = 0; i < responses.length; i++) {
     const challenge = responses[i]
     const pubkey = challenge.pubkey.slice(2)
     const { user, deadline, challengeIndex } = challenge
     const feed = feeds[pubkey]
     feed.seek(challenge.index, step1)
+    LOG('Feed', feed)
 
     async function step1 (err, offsetIndex, offset) {
+      const index = offsetIndex
       if (err) {
-        LOG(`Failed to complete challenge for chunk: ${(offsetIndex||'').toString()}/${feed.length}`)
+        LOG(`Failed to complete challenge for chunk: ${(index||'').toString()}/${feed.length}`)
         return LOG('Reason: ', err)
       }
-      feed.rootHashes(offsetIndex, step2)
+      feed.rootHashes(index, step2)
     }
-    async function step2 (err, roots) {
+    async function step2 (err, roots, index) {
       if (err) {
         LOG(`Failed to get merkle tree: ${roots}`)
         return LOG('Reason: ', err)
