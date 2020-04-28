@@ -76,15 +76,18 @@ async function start (chainAPI, serviceAPI, accounts) {
     /* --------------------------------------
               D. CHALLENGES FLOW
     ----------------------------------------- */
-    async function newChallenge (data) { //submitChallenge
-      const user = data[0]
-      const dat = data[1]
-      const opts = { account: accounts[0], user, dat}
+    let triggerer = 0
+    async function submitChallenge (data) { //submitChallenge
+      const userID = data[0]
+      const feedID = data[1]
+      const opts = { account: accounts[triggerer], userID, feedID}
+      triggerer <= accounts.length - 1 ? triggerer ++ : triggerer = 0
       await chainAPI.submitChallenge(opts)
     }
 
-    async function getChallenges (address) {
-      const opts = {users: accounts, respondToChallenges}
+    async function getChallenges (data) {
+      const user = data[0]
+      const opts = {user, accounts, respondToChallenges}
       await chainAPI.getChallenges(opts)
     }
     // async function getChallenges (address) {
@@ -92,10 +95,11 @@ async function start (chainAPI, serviceAPI, accounts) {
     //   await chainAPI.getChallenges(opts)
     // }
 
-    async function respondToChallenges (respondingChallenges) {
+    async function respondToChallenges (responses) {
+      LOG('Responding to challenges', JSON.stringify(responses))
       const feeds = (await hypercoreArr_promise)[1]
-      const opts = {challengeObjects: respondingChallenges, feeds}
-      await chainAPI.respondToChallenges(opts)
+      const opts = {responses, feeds}
+      await chainAPI.sendProof(opts)
     }
 
 
@@ -121,10 +125,8 @@ async function start (chainAPI, serviceAPI, accounts) {
         await registerHoster()
         await registerAttestor()
       }
-      if (event.method === 'NewPin') {
-        await newChallenge(event.data)
-      }
-      if (event.method === 'Challenge') getChallenges(address)
+      if (event.method === 'NewPin') await submitChallenge(event.data)
+      if (event.method === 'Challenge') getChallenges(event.data)
       if (event.method === 'ChallengeFailed') { }
       if (event.method === 'AttestPhase') attestPhase(address)
     }

@@ -46,7 +46,7 @@ async function datdotChain (resolve, reject) {
     publishData,
     submitChallenge,
     getChallenges,
-    respondToChallenges,
+    sendProof,
     attest,
     listenToEvents
   }
@@ -60,7 +60,6 @@ async function datdotChain (resolve, reject) {
     const FERDIE = keyring.addFromUri('//Ferdie')
     const EVE = keyring.addFromUri('//Eve')
     const DAVE = keyring.addFromUri('//Dave')
-    LOG(`ALICE: ${ALICE.address}`)
     LOG(`CHARLIE: ${CHARLIE.address}`)
     LOG(`FERDIE: ${FERDIE.address}`)
     LOG(`EVE: ${EVE.address}`)
@@ -80,10 +79,6 @@ async function datdotChain (resolve, reject) {
       })
     })
   }
-
-async function register () {
-
-}
 
 // REGISTER HOSTER
   async function registerHoster (opts) {
@@ -116,11 +111,11 @@ async function register () {
   // REQUEST A CHALLENGE
   async function submitChallenge (opts) {
     return new Promise(async (resolve, reject) => {
-      const {account, user, dat} = opts
+      const {account, userID, feedID} = opts // userID index, dat index
       LOG('Requesting a new challenge')
-      const challenge = API.tx.datVerify.submitChallenge(user, dat)
+      const challenge = API.tx.datVerify.submitChallenge(userID, feedID)
       await challenge.signAndSend(account, ({ events = [], status }) => {
-        LOG(`Requesting a new challenge: ${user.toString('hex')}, ${dat.toString('hex')} `, status.type)
+        LOG(`Requesting a new challenge: ${userID.toString('hex')}, ${feedID.toString('hex')} `, status.type)
         if (status.isFinalized) resolve()
       })
     })
@@ -139,59 +134,71 @@ async function attest (opts) {
 
 }
 
+
+
 // GET CHALLENGES
 async function getChallenges (opts) {
-  const {users, respondToChallenges} = opts
-  const allChallenges = await API.query.datVerify.challengeMap(users[0])
-  for (var i = 0; i < users.length; i++) {
-    getChallenge(users[i], allChallenges, respondingChallenges = [])
-  }
-  LOG('responding challenges', respondingChallenges)
-  respondToChallenges(respondingChallenges)
-}
+  LOG('Getting challenges')
+  const {user, accounts, respondToChallenges} = opts
+  const responses = []
 
-async function getChallenge (user, allChallenges, respondingChallenges) {
-  const userChallengeTuple = await API.query.datVerify.selectedUserIndex(user.address)
-  if (userChallengeTuple[1].length) {
-    const userChallengeID = userChallengeTuple[0] // this is the user's ID in the challenge context
-    const userChallengePromises = await Promise.all(
-      allChallenges.map(async (challengeID, j) => {
-        const challengesIDs = allChallenges[1]
-        if (challengesIDs[j] && challengesIDs[j] === userChallengeID) {
-          const challengeTuple = await API.query.datVerify.selectedChallenges(challengeID)
-          const challengeDetails = challengeTuple.toJSON()
-          challengeDetails[3] = challengeID
-          return challengeDetails.flat()
-        }
-      }
-    ))
-    const userChallengeUnfiltered = await Promise.all(userChallengePromises)
-    const userChallenges = userChallengeUnfiltered.filter((e) => {return e})
-    pushChallengeObj(userChallenges)
-  }
-}
+  // Get challenges [all challenge ids, all sellected user ids] => mapping
+  const allChallenges = await API.query.datVerify.challengeMap.entries()
+  // key: challengeID
+  // value: sellectedUserID
 
-function pushChallengeObj (userChallenges) {
-  if (userChallenges.length) {
-    for (var j = 0; j < userChallenges.length; j ++) {
-      const challengeDetails = userChallenges[j]
-      const challengeObj = {}
-      challengeObj.user = user
-      challengeObj.pubkey = challengeDetails[0]
-      challengeObj.index = challengeDetails[1]
-      challengeObj.deadline = challengeDetails[2]
-      challengeObj.challengeIndex = challengeDetails[3]
-      respondingChallenges.push(challenge)
+  // get all sellectedUserIDs
+  const sellectedUserIDs = Object.keys(allChallenges)
+  LOG('sellectedUserIDs', sellectedUserIDs.toString('hex'))
+
+  // get challenged user ID
+  const challengedUser = await API.query.datVerify.selectedUserIndex(user)
+  const challengedUserID = challengedUser[0]
+  LOG('challengedUserID', challengedUserID.toString('hex'))
+
+
+  // go through sellectedUserIDs and get out all where sellected user ID === challenged user
+  for (var i = 0; i < allChallenges.length; i ++) {
+    const challengeID = allChallenges[i][0]
+    LOG('challengeID', challengeID.toString('hex'))
+
+    const sellectedUserID = allChallenges[i][1]
+    if (sellectedUserID.toString('hex') === challengedUserID.toString('hex')) {
+
+      // then get a challenge based on challenge ID
+      // const challengeTuple = await API.query.datVerify.selectedChallenges(challengeID)
+      const challenge = await API.query.datVerify.selectedChallenges(challengeID)
+      LOG('challenge', challenge.toString('hex'))
+
+      const challengeDetails = challenge.toJSON()
+      challengeDetails[3] = challengeID
+      LOG('challengeDetails', challengeDetails.toString('hex'))
+
+      const flattenDetails = challengeDetails.flat()
+      LOG('flattenDetails', flattenDetails.toString('hex'))
+
+      // prepare challenge response for each challenge
+      const response = { }
+      response.user = user
+      response.pubkey = flattenDetails[0]
+      response.index = flattenDetails[1]
+      response.deadline = flattenDetails[2]
+      response.challengeIndex = challengeID
+      LOG('Response:', JSON.stringify(response))
+
+      // push to all responses
+      responses.push(response)
     }
   }
+  respondToChallenges(responses)
 }
 
 // RESPOND TO CHALLENGE
 
-async function respondToChallenges (opts) {
-  const { challengeObjects, feeds } = opts
-  for (const i in challengeObjects) {
-    const challenge = challengeObjects[i]
+async function sendProof (opts) {
+  const { responses, feeds } = opts
+  for (var i = 0; i < responses.length; i++) {
+    const challenge = responses[i]
     const pubkey = challenge.pubkey.slice(2)
     const { user, deadline, challengeIndex } = challenge
     const feed = feeds[pubkey]
