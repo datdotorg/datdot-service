@@ -2,9 +2,13 @@ const SDK = require('dat-sdk')
 const RAM = require('random-access-memory')
 const levelup = require('levelup')
 const memdown = require('memdown')
+const p2plex = require('p2plex')
+const { once } = require('events')
+const ndjson = require('ndjson')
+const pump = require('pump')
 
-const Hypercommunication = require('../hypercommunication')
 const EncoderDecoder = require('../EncoderDecoder')
+const { ENCODING_RESULTS_STREAM } = require('../constants')
 
 const Hoster = require('./')
 
@@ -18,14 +22,11 @@ async function run () {
     })
     var db = levelup(memdown())
 
-    var communication = await Hypercommunication.create({ sdk: sdk1 })
-
     console.log('Initializing hoster')
     var hoster = await Hoster.load({
       sdk: sdk1,
       EncoderDecoder,
       db,
-      communication,
       onNeedsEncoding
     })
 
@@ -33,18 +34,23 @@ async function run () {
     var sdk2 = await SDK({
       storage: RAM
     })
-    var communication2 = await Hypercommunication.create({ sdk: sdk2 })
+    var communication2 = p2plex()
 
     // - Initialize a feed
     var feed = sdk2.Hypercore('Example Feed')
 
-    await feed.append('Hello')
-    await feed.append('World')
+    await feed.append('Hello World')
 
     console.log('Adding feed to hoster')
     await hoster.addFeed(feed.key)
+
+    console.log('Done!')
   } catch (e) {
     console.error(e.stack)
+  } finally {
+    console.log('Cleaning up')
+    hoster.close()
+    communication2.destroy()
     db.close()
     sdk1.close()
     sdk2.close()
@@ -60,27 +66,36 @@ async function run () {
 
     const proof = Buffer.from('Pranked')
 
+    console.log('Connecting to peer')
+
+    const peer = await communication2.findByPublicKey(hoster.publicKey)
+    const resultStream = ndjson.serialize()
+    const confirmStream = ndjson.parse()
+    const encodingStream = peer.createStream(ENCODING_RESULTS_STREAM)
+
+    pump(resultStream, encodingStream, confirmStream)
+
+    confirmStream.resume()
+
     console.log('Storing data for', key, index)
 
-    const peer = await communication2.findPeer(communication.publicKey)
-
-    setTimeout(() => {
-    peer.send({
+    resultStream.write({
       type: 'encoded',
       feed: key,
       index,
       encoded,
       proof
     })
-    }, 1000)
 
-    const message = await new Promise((resolve, reject) => {
-      peer.once('message', (message) => {
-        if (message.error) reject(Object.assign(new Error(message.error), message))
-        else resolve(message)
-      })
-    })
+    console.log('Waiting for result')
+
+    const message = await once(confirmStream, 'data')
+
+    if (message.error) throw new Error(message.error)
 
     console.log('Storage result:', message)
+
+    console.log('Disconnecting from peer')
+    await peer.disconnect()
   }
 }

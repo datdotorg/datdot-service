@@ -25,6 +25,8 @@
     "intercept-hypercore-storage": "^1.0.0",
     "levelup": "^4.3.2",
     "memdown": "^5.1.0",
+    "ndjson": "^1.5.0",
+    "p2plex": "^1.0.0",
     "promise-defer": "^1.0.0",
     "random-access-memory": "^3.1.1",
     "sodium-universal": "^2.0.0",

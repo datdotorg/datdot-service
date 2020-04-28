@@ -1,8 +1,17 @@
-const HosterStorage = require('../hoster-storage')
 const sub = require('subleveldown')
 const defer = require('promise-defer')
 const reallyReady = require('hypercore-really-ready')
+const ndjson = require('ndjson')
+const { PassThrough } = require('stream')
+const pump = require('pump')
+const p2plex = require('p2plex')
+const { seedKeygen } = require('noise-peer')
 
+const HosterStorage = require('../hoster-storage')
+
+const { ENCODING_RESULTS_STREAM } = require('../constants')
+const NAMESPACE = 'datdot-hoster'
+const NOISE_NAME = 'noise'
 const ALL_KEYS_KEY = 'all_keys'
 const DEFAULT_OPTS = {
   ranges: [{ start: 0, end: Infinity }],
@@ -11,11 +20,10 @@ const DEFAULT_OPTS = {
 
 module.exports = class Hoster {
   constructor ({
-  	db,
-  	sdk,
-  	EncoderDecoder,
-  	onNeedsEncoding,
-  	communication
+    db,
+    sdk,
+    EncoderDecoder,
+    onNeedsEncoding
   }) {
     this.storages = new Map()
     this.keyOptions = new Map()
@@ -25,11 +33,10 @@ module.exports = class Hoster {
     this.db = db
     this.hosterDB = sub(this.db, 'hoster', { valueEncoding: 'json' })
 
-		const {Hypercore} = sdk
-		this.sdk = sdk
+    const { Hypercore } = sdk
+    this.sdk = sdk
     this.Hypercore = Hypercore
     this.EncoderDecoder = EncoderDecoder
-    this.communication = communication
     this.onNeedsEncoding = onNeedsEncoding
   }
 
@@ -40,35 +47,45 @@ module.exports = class Hoster {
   }
 
   // TODO: Should we verify that the peer can be trusted?
-  async onMessage (message, peer) {
-    const { type } = message
+  async onConnection (peer) {
+    const resultStream = new PassThrough({ objectMode: true })
+    const rawResultStream = ndjson.parse()
+    const confirmStream = ndjson.serialize()
 
-    if (type === 'encoded') {
-      const { feed, index, encoded, proof } = message
+    const encodingStream = peer.receiveStream(ENCODING_RESULTS_STREAM)
 
-      const key = Buffer.from(feed)
+    pump(confirmStream, encodingStream, rawResultStream, resultStream)
 
-      const isExisting = await this.hasKey(key)
+    for await (const message of resultStream) {
+      const { type } = message
 
-      if (!isExisting) return sendError('UNKNOWN_FEED', { key: key.toString('hex') })
-      try {
-        await this.storeEncoded(key, index, Buffer.from(proof), Buffer.from(encoded))
+      if (type === 'encoded') {
+        const { feed, index, encoded, proof } = message
 
-        peer.send({
-          type: 'encoded:stored',
-          ok: true
-        })
-      } catch (e) {
-      	// Uncomment for better stack traces
-      	// console.error(e)
-        sendError(`ERROR_STORING: ${e.message}`, { e })
+        const key = Buffer.from(feed)
+
+        const isExisting = await this.hasKey(key)
+
+        if (!isExisting) return sendError('UNKNOWN_FEED', { key: key.toString('hex') })
+        try {
+          await this.storeEncoded(key, index, Buffer.from(proof), Buffer.from(encoded))
+
+          confirmStream.write({
+            type: 'encoded:stored',
+            ok: true
+          })
+        } catch (e) {
+          // Uncomment for better stack traces
+          // console.error(e)
+          sendError(`ERROR_STORING: ${e.message}`, { e })
+        }
+      } else {
+        sendError('UNKNOWN_MESSAGE', { messageType: type })
       }
-    } else {
-      sendError('UNKNOWN_MESSAGE', { messageType: type })
     }
 
     function sendError (message, details = {}) {
-      peer.send({
+      confirmStream.write({
         type: 'encoded:error',
         error: message,
         ...details
@@ -230,7 +247,13 @@ module.exports = class Hoster {
   }
 
   async init () {
-    this.communication.on('message', (message, peer) => this.onMessage(message, peer))
+    const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
+    const noiseKeyPair = seedKeygen(noiseSeed)
+
+    this.publicKey = noiseKeyPair.publicKey
+
+    this.communication = p2plex({ keyPair: noiseKeyPair })
+    this.communication.on('connection', (peer) => this.onConnection(peer))
 
     const keys = await this.listKeys()
 
@@ -250,6 +273,7 @@ module.exports = class Hoster {
   }
 
   async close () {
+    await this.communication.destroy()
     // Close the DB and hypercores
     for (const storage of this.storages.values()) {
       await storage.close()

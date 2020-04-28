@@ -1,20 +1,24 @@
 const { once } = require('events')
 const sodium = require('sodium-universal')
 const varint = require('varint')
+const p2plex = require('p2plex')
+const pump = require('pump')
+const ndjson = require('ndjson')
+const { seedKeygen } = require('noise-peer')
 
+const {ENCODING_RESULTS_STREAM} = require('../constants')
 const NAMESPACE = 'datdot-encoder'
-const IDENITY_NAME = 'identity'
+const IDENITY_NAME = 'signing'
+const NOISE_NAME = 'noise'
 
 module.exports = class Encoder {
   constructor ({
     sdk,
-    communication,
     EncoderDecoder
   }) {
     const { Hypercore } = sdk
     this.sdk = sdk
     this.Hypercore = Hypercore
-    this.communication = communication
     this.EncoderDecoder = EncoderDecoder
   }
 
@@ -29,26 +33,43 @@ module.exports = class Encoder {
   async init () {
     const { publicKey: replicationPublicKey } = await this.sdk.getIdentity()
 
-    const seed = await this.sdk.deriveSecret(NAMESPACE, IDENITY_NAME)
+    const signingSeed = await this.sdk.deriveSecret(NAMESPACE, IDENITY_NAME)
 
-    const publicKey = Buffer.alloc(sodium.crypto_sign_PUBLICKEYBYTES)
-    const secretKey = Buffer.alloc(sodium.crypto_sign_SECRETKEYBYTES)
+    const signingPublicKey = Buffer.alloc(sodium.crypto_sign_PUBLICKEYBYTES)
+    const signingSecretKey = Buffer.alloc(sodium.crypto_sign_SECRETKEYBYTES)
 
-    sodium.crypto_sign_seed_keypair(publicKey, secretKey, seed)
+    sodium.crypto_sign_seed_keypair(signingPublicKey, signingSecretKey, signingSeed)
 
-    this.signingPublicKey = publicKey
-    this.signingSecretKey = secretKey
+    const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
+
+    const noiseKeyPair = seedKeygen(noiseSeed)
+
+    this.signingPublicKey = signingPublicKey
+    this.signingSecretKey = signingSecretKey
     this.replicationPublicKey = replicationPublicKey
+    this.publicKey = noiseKeyPair.publicKey
+
+    this.communication = p2plex({ keyPair: noiseKeyPair })
   }
 
   async encodeFor (hosterKey, feedKey, ranges) {
+    if (!Array.isArray(ranges)) {
+      const index = ranges
+      ranges = [[index, index]]
+    }
+
     const feed = this.Hypercore(feedKey)
 
     // TODO: Add timeout for when we can't find the hoster
-    const peer = await this.communication.findPeer(hosterKey)
+    const peer = await this.communication.findByPublicKey(hosterKey)
+    const resultStream = ndjson.serialize()
+    const confirmStream = ndjson.parse()
+
+    const encodingStream = peer.createStream(ENCODING_RESULTS_STREAM)
+    pump(resultStream, encodingStream, confirmStream)
 
     // const ranges = [[2, 5], [7, 15], [17, 27]]
-    for (const range in ranges) {
+    for (const range of ranges) {
       for (let index = range[0], len = range[1] + 1; index < len; index++) {
         // TODO: Add timeout for when we can't get feed data
         const data = await feed.get(index)
@@ -68,23 +89,19 @@ module.exports = class Encoder {
 
         // Sign the data with our singning scret key and write it to the proof buffer
         sodium.crypto_sign_detached(proof, toSign, this.signingSecretKey)
-
         // Send the encoded stuff over to the hoster so they can store it
-        // TODO: Figure out why this timing is necessary.
-        setTimeout(() => {
-          peer.send({
-            type: 'encoded',
-            feed: feedKey,
-            index,
-            encoded,
-            proof
-          })
-        }, 1000)
+        resultStream.write({
+          type: 'encoded',
+          feed: feedKey,
+          index,
+          encoded,
+          proof
+        })
         // --------------------------------------------------------------
 
         // Wait for the hoster to tell us they've handled the data
         // TODO: Set up timeout for when peer doesn't respond to us
-        const [response] = await once(peer, 'message')
+        const [response] = await once(confirmStream, 'data')
 
         if (response.error) {
           throw new Error(response.error)
@@ -92,7 +109,13 @@ module.exports = class Encoder {
       }
     }
 
+    encodingStream.end()
+
     // --------------------------------------------------------------
-    await peer.close()
+    await peer.disconnect()
+  }
+
+  async close () {
+    return this.communication.destroy()
   }
 }
