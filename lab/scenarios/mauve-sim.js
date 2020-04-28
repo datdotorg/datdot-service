@@ -5,7 +5,6 @@ const memdown = require('memdown')
 
 const Encoder = require('../../src/encoder')
 const Hoster = require('../../src/hoster')
-const Hypercommunication = require('../../src/hypercommunication')
 const EncoderDecoder = require('../../src/EncoderDecoder')
 
 /**
@@ -41,29 +40,24 @@ class FakeBlockchain {
   }
 }
 
-
 run()
 
 async function run () {
   const chain = new FakeBlockchain()
 
   const encoderSDK = await SDK({ storage })
-  const encoderCommunication = await Hypercommunication.create({ sdk: encoderSDK })
   const encoder = await Encoder.load({
     EncoderDecoder,
-    communication: encoderCommunication,
     sdk: encoderSDK
   })
 
   const hosterSDK = await SDK({ storage })
-  const hosterCommuncation = await Hypercommunication.create({ sdk: hosterSDK })
   const hosterDB = levelup(memdown())
   const hoster = await Hoster.load({
     EncoderDecoder,
     db: hosterDB,
     sdk: hosterSDK,
-    communication: hosterCommuncation,
-    onNeedsEncoding: async (key, index) => chain.requestEncoding(hosterCommuncation.publicKey, key, index)
+    onNeedsEncoding: async (key, index) => chain.requestEncoding(hoster.publicKey, key, index)
   })
 
   chain.init(hoster, encoder)
