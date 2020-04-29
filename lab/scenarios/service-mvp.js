@@ -76,12 +76,12 @@ async function start (chainAPI, serviceAPI, accounts) {
     /* --------------------------------------
               D. CHALLENGES FLOW
     ----------------------------------------- */
-    let triggerer = 0
+    let signer = 0
     async function submitChallenge (data) { //submitChallenge
       const userID = data[0]
       const feedID = data[1]
-      const opts = { account: accounts[triggerer], userID, feedID}
-      triggerer <= accounts.length - 1 ? triggerer ++ : triggerer = 0
+      const opts = { account: accounts[signer], userID, feedID}
+      signer <= accounts.length - 1 ? signer ++ : signer = 0
       await chainAPI.submitChallenge(opts)
     }
 
@@ -98,7 +98,7 @@ async function start (chainAPI, serviceAPI, accounts) {
     async function respondToChallenges (responses) {
       LOG('Responding to challenges', JSON.stringify(responses))
       const feeds = (await hypercoreArr_promise)[1]
-      const opts = {responses, feeds}
+      const opts = {responses, feeds, accounts}
       await chainAPI.sendProof(opts)
     }
 

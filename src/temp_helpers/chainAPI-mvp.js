@@ -1,5 +1,6 @@
 const { ApiPromise, WsProvider, Keyring, ApiRx } = require("@polkadot/api")
 const provider = new WsProvider('ws://127.0.0.1:9944')
+const keyring = new Keyring({ type: 'sr25519' })
 const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
 const { hexToBn } = require('@polkadot/util');
 const fs = require('fs')
@@ -54,7 +55,7 @@ async function datdotChain (resolve, reject) {
   resolve(chainAPI)
   function makeAccount (opts) {
     const {chainAPI, serviceAPI, cb} = opts
-    const keyring = new Keyring({ type: 'sr25519' })
+
     // const account = keyring.addFromSeed(randomAsU8a(32))
     const ALICE = keyring.addFromUri('//Alice')
     const CHARLIE = keyring.addFromUri('//Charlie')
@@ -150,18 +151,15 @@ async function getChallenges (opts) {
 
   // get all sellectedUserIDs
   const sellectedUserIDs = Object.keys(allChallenges) // [sllectedUserID1, sellectedUserID2...]
-  LOG('sellectedUserIDs', sellectedUserIDs.toString('hex'))
 
   // get challenged user ID
   const challengedUser = await API.query.datVerify.selectedUserIndex(user)
   const challengedUserID = challengedUser[0]
-  LOG('challengedUserID', challengedUserID.toString('hex'))
 
 
   // go through sellectedUserIDs and get out all where sellected user ID === challenged user
   for (var i = 0; i < allChallenges.length; i ++) {
     const challengeID = allChallenges[i][0]
-    LOG('challengeID', challengeID.toString('hex'))
 
     const sellectedUserID = allChallenges[i][1]
     if (sellectedUserID.toString('hex') === challengedUserID.toString('hex')) {
@@ -169,16 +167,12 @@ async function getChallenges (opts) {
       // then get a challenge based on challenge ID
       // const challengeTuple = await API.query.datVerify.selectedChallenges(challengeID)
       const parsedChallengeID = hexToBn(challengeID.toString('hex').substring(82), { isLe: true }).toNumber()
-      LOG('parsed', parsedChallengeID)
       const challenge = await API.query.datVerify.selectedChallenges(parsedChallengeID)
-      LOG('challenge', challenge.toString('hex'))
 
       const challengeDetails = challenge.toJSON()
       challengeDetails[3] = challengeID
-      LOG('challengeDetails', challengeDetails.toString('hex'))
 
       const flattenDetails = challengeDetails.flat()
-      LOG('flattenDetails', flattenDetails.toString('hex'))
 
       // prepare challenge response for each challenge
       const response = { }
@@ -199,15 +193,13 @@ async function getChallenges (opts) {
 // RESPOND TO CHALLENGE
 
 async function sendProof (opts) {
-  const { responses, feeds } = opts
-  LOG('Feeds', feeds)
+  const { responses, feeds, accounts } = opts
   for (var i = 0; i < responses.length; i++) {
     const challenge = responses[i]
     const pubkey = challenge.pubkey.slice(2)
     const { user, deadline, challengeIndex } = challenge
     const feed = feeds[pubkey]
     feed.seek(challenge.index, step1)
-    LOG('Feed', feed)
 
     async function step1 (err, offsetIndex, offset) {
       const index = offsetIndex
@@ -215,35 +207,21 @@ async function sendProof (opts) {
         LOG(`Failed to complete challenge for chunk: ${(index||'').toString()}/${feed.length}`)
         return LOG('Reason: ', err)
       }
-      feed.rootHashes(index, step2)
-    }
-    async function step2 (err, roots, index) {
-      if (err) {
-        LOG(`Failed to get merkle tree: ${roots}`)
-        return LOG('Reason: ', err)
-      }
-      feed.get(index, (err, chunk) => {
+      feed.get(index, async (err, chunk) => {
         if (err) {
           LOG(`Failed to get index: ${index} in ${feed}`)
           return LOG('Reason: ', err)
         }
-        LOG('CHUNK: ' + chunk.toString('hex'))
-        feed.proof(index, (err, nodes) => {
-          if (err) {
-            LOG(`Failed to get proof for: ${index} in ${feed}`)
-            return LOG('Reason: ', err)
-          }
-          step3(chunk, nodes, crypto.tree(roots))
+        const parsedChallengeID = hexToBn(challengeIndex.toString('hex').substring(82), { isLe: true }).toNumber()
+        LOG('parsedChallengeID: ', parsedChallengeID)
+        const proof = API.tx.datVerify.submitProof(parsedChallengeID, [])
+        accounts.forEach(async account => {
+          // user is address, we need the account for signing => loop through all accounts @TODO improve
+          if (account.address === user) await promiseRerun(proof.signAndSend(account, step2)).catch(LOG)
         })
       })
     }
-    async function step3 (chunk, nodes, merkleRoot) {
-      if (nodes && chunk) {
-        const challengeResponseExt = API.tx.datVerify.submitProof(challengeIndex, nodes, merkleRoot, chunk.toString('hex'))
-        await promiseRerun(challengeResponseExt.signAndSend(user, step4)).catch(LOG)
-      }
-    }
-    async function step4 ({ events = [], status }) {
+    async function step2 ({ events = [], status }) {
       LOG('Challenge succesfully responded')
       if (status.isInBlock) events.forEach(({ phase, event: { data, method, section } }) => {
         LOG('\t', phase.toString(), `: ${section}.${method}`, data.toString())
