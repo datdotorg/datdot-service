@@ -98,7 +98,7 @@ async function start (chainAPI, serviceAPI, accounts) {
     async function respondToChallenges (responses) {
       LOG('Responding to challenges', JSON.stringify(responses))
       const feeds = (await hypercoreArr_promise)[1]
-      const opts = {responses, feeds, accounts}
+      const opts = {responses, feeds}
       await chainAPI.sendProof(opts)
     }
 

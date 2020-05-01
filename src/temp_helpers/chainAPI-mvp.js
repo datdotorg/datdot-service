@@ -144,60 +144,46 @@ async function getChallenges (opts) {
   const {user, accounts, respondToChallenges} = opts
   const responses = []
 
-  // Get challenges [all challenge ids, all sellected user ids] => mapping
-  const allChallenges = await API.query.datVerify.challengeMap.entries() //[ challengeID1, sellectedUserID1, challengeID2, sellectedUserID2, ]
-  // key: challengeID
-  // value: sellectedUserID
+  // Get all challenges [key: challengeID, value: chalengedUserID ] => mapping
+  const allChallenges = await API.query.datVerify.challengeMap.entries()
+  // get selected user ID based on the account address
+  const selectedUser = await API.query.datVerify.selectedUserIndex(user)
+  const selectedUserID = selectedUser[0]
 
-  // get all sellectedUserIDs
-  const sellectedUserIDs = Object.keys(allChallenges) // [sllectedUserID1, sellectedUserID2...]
-
-  // get challenged user ID
-  const challengedUser = await API.query.datVerify.selectedUserIndex(user)
-  const challengedUserID = challengedUser[0]
-
-
-  // go through sellectedUserIDs and get out all where sellected user ID === challenged user
+  // go through allChallenges and get out all where sellected user ID === challenged user
   for (var i = 0; i < allChallenges.length; i ++) {
     const challengeID = allChallenges[i][0]
-
-    const sellectedUserID = allChallenges[i][1]
-    if (sellectedUserID.toString('hex') === challengedUserID.toString('hex')) {
-
+    const chalengedUserID = allChallenges[i][1]
+    if (chalengedUserID.toString('hex') === selectedUserID.toString('hex')) {
       // then get a challenge based on challenge ID
       // const challengeTuple = await API.query.datVerify.selectedChallenges(challengeID)
       const parsedChallengeID = hexToBn(challengeID.toString('hex').substring(82), { isLe: true }).toNumber()
       const challenge = await API.query.datVerify.selectedChallenges(parsedChallengeID)
-
-      const challengeDetails = challenge.toJSON()
-      challengeDetails[3] = challengeID
-
-      const flattenDetails = challengeDetails.flat()
-
-      // prepare challenge response for each challenge
-      const response = { }
-      response.user = user
-      response.pubkey = flattenDetails[0]
-      response.index = flattenDetails[1]
-      response.deadline = flattenDetails[2]
-      response.challengeIndex = challengeID
+      // prepare response object
+      const response = {
+        user,
+        pubkey: challenge.toJSON().flat()[0],
+        index: challenge.toJSON().flat()[1],
+        deadline: challenge.toJSON().flat()[2],
+        parsedChallengeID
+      }
       LOG('Response:', JSON.stringify(response))
-
       // push to all responses
       responses.push(response)
     }
   }
+
   respondToChallenges(responses)
 }
 
 // RESPOND TO CHALLENGE
 
 async function sendProof (opts) {
-  const { responses, feeds, accounts } = opts
+  const { responses, feeds } = opts
   for (var i = 0; i < responses.length; i++) {
     const challenge = responses[i]
     const pubkey = challenge.pubkey.slice(2)
-    const { user, deadline, challengeIndex } = challenge
+    const { user, deadline, parsedChallengeID } = challenge
     const feed = feeds[pubkey]
     feed.seek(challenge.index, step1)
 
@@ -212,27 +198,21 @@ async function sendProof (opts) {
           LOG(`Failed to get index: ${index} in ${feed}`)
           return LOG('Reason: ', err)
         }
-        const parsedChallengeID = hexToBn(challengeIndex.toString('hex').substring(82), { isLe: true }).toNumber()
-        LOG('parsedChallenge ', parsedChallengeID)
         const proof = API.tx.datVerify.submitProof(parsedChallengeID, [])
-        accounts.forEach(async account => {
-          // user is address, we need the account for signing => loop through all accounts @TODO improve
-          if (account.address.toString('hex') === user.toString('hex')) {
-            LOG('Submitting the proof')
-            await promiseRerun(proof.signAndSend(account, step2)).catch(LOG)
-          }
-        })
+        const account = keyring.getPair(user.toString('hex'))
+        // await promiseRerun(proof.signAndSend(account, step2)).catch(LOG)
+        proof.signAndSend(account, step2)
       })
     }
     async function step2 ({ events = [], status }) {
       LOG('STATUS', status.type)
-      LOG('Challenge succesfully responded')
       if (status.isInBlock) events.forEach(({ phase, event: { data, method, section } }) => {
         LOG('\t', phase.toString(), `: ${section}.${method}`, data.toString())
       })
     }
   }
 }
+
 
 // LISTEN TO EVENTS
 
