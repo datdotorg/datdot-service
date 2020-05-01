@@ -213,15 +213,19 @@ async function sendProof (opts) {
           return LOG('Reason: ', err)
         }
         const parsedChallengeID = hexToBn(challengeIndex.toString('hex').substring(82), { isLe: true }).toNumber()
-        LOG('parsedChallengeID: ', parsedChallengeID)
+        LOG('parsedChallenge ', parsedChallengeID)
         const proof = API.tx.datVerify.submitProof(parsedChallengeID, [])
         accounts.forEach(async account => {
           // user is address, we need the account for signing => loop through all accounts @TODO improve
-          if (account.address === user) await promiseRerun(proof.signAndSend(account, step2)).catch(LOG)
+          if (account.address.toString('hex') === user.toString('hex')) {
+            LOG('Submitting the proof')
+            await promiseRerun(proof.signAndSend(account, step2)).catch(LOG)
+          }
         })
       })
     }
     async function step2 ({ events = [], status }) {
+      LOG('STATUS', status.type)
       LOG('Challenge succesfully responded')
       if (status.isInBlock) events.forEach(({ phase, event: { data, method, section } }) => {
         LOG('\t', phase.toString(), `: ${section}.${method}`, data.toString())
