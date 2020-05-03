@@ -42,9 +42,7 @@ async function start (chainAPI, serviceAPI, accounts) {
   /* --------------------------------------
             B. COMMIT FLOW
   ----------------------------------------- */
-
   // 1. `publish DATA`
-
   async function publishData () {
     const hypercoreArr = (await hypercoreArr_promise)[0]
     const opts = {
@@ -59,7 +57,6 @@ async function start (chainAPI, serviceAPI, accounts) {
     /* --------------------------------------
           C. REGISTERING FLOW
     ----------------------------------------- */
-
     // 1. `register HOSTER`
     async function registerHoster() {
       const opts = {accounts}
@@ -101,34 +98,31 @@ async function start (chainAPI, serviceAPI, accounts) {
       const opts = {responses, feeds}
       await chainAPI.sendProof(opts)
     }
-
-
     /* --------------------------------------
               E. ATTEST PHASE
     ----------------------------------------- */
-
-    async function attestPhase (address) {
-      const opts = {account: address}
+    async function attestPhase (data) {
+      LOG('EVENT', data.toString('hex'))
+      const challengeID = data[0]
+      const obj = JSON.parse(data[1])
+      const attestorIDs = obj['expected_attestors']
+      const opts = {challengeID, attestorIDs}
       await chainAPI.attest(opts)
     }
-
     /* --------------------------------------
               F. EVENTS
     ----------------------------------------- */
-
-
-
     async function handleEvent (event) {
       const address = event.data[0]
       LOG(`New event:`, event.method, event.data.toString())
       if (event.method === 'SomethingStored') {
-        await registerHoster()
         await registerAttestor()
+        await registerHoster()
       }
       if (event.method === 'NewPin') await submitChallenge(event.data)
       if (event.method === 'Challenge') getChallenges(event.data)
       if (event.method === 'ChallengeFailed') { }
-      if (event.method === 'AttestPhase') attestPhase(address)
+      if (event.method === 'AttestPhase') attestPhase(event.data)
     }
 
 }

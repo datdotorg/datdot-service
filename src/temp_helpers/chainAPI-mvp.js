@@ -77,7 +77,7 @@ async function datdotChain (resolve, reject) {
       const registerData = API.tx.datVerify.registerData(registerPayload)
       await registerData.signAndSend(account, ({ events = [], status }) => {
         LOG(`Publishing data: ${account.address} `, status.type)
-        if (status.isFinalized) resolve()
+        if (status.isInBlock) resolve()
       })
     })
   }
@@ -90,7 +90,7 @@ async function datdotChain (resolve, reject) {
         const register = API.tx.datVerify.registerSeeder()
         await register.signAndSend(account, ({ events = [], status }) => {
           LOG(`Registering hoster: ${account.address} `, status.type)
-          if (status.isFinalized) resolve()
+          if (status.isInBlock) resolve()
         })
       })
     })
@@ -104,7 +104,7 @@ async function datdotChain (resolve, reject) {
         const register = API.tx.datVerify.registerAttestor()
         await register.signAndSend(account, ({ events = [], status }) => {
           LOG(`Registering attestor: ${account.address} `, status.type)
-          if (status.isFinalized) return resolve()
+          if (status.isInBlock) return resolve()
         })
       })
     })
@@ -118,7 +118,7 @@ async function datdotChain (resolve, reject) {
       const challenge = API.tx.datVerify.submitChallenge(userID, feedID)
       await challenge.signAndSend(account, ({ events = [], status }) => {
         LOG(`Requesting a new challenge: ${userID.toString('hex')}, ${feedID.toString('hex')} `, status.type)
-        if (status.isFinalized) resolve()
+        if (status.isInBlock) resolve()
       })
     })
   }
@@ -126,13 +126,25 @@ async function datdotChain (resolve, reject) {
 // ATTEST PHASE
 
 async function attest (opts) {
-  const {account} = opts
-  LOG('Attest phase started')
-  const submit = API.tx.datVerify.submitAttestation()
-  await submit.signAndSend(account, ({ events = [], status }) => {
-    LOG(`Registering hoster: ${account.address} `, status.type)
-    if (status.isFinalized) resolve()
+  return new Promise((resolve, reject) => {
+    const {challengeID, attestorIDs} = opts
+    LOG('Attestor IDs', attestorIDs.toString('hex'))
+    attestorIDs.forEach(async id => {
+      const address = await API.query.datVerify.attestors(id)
+      LOG('ADDRESS', address.toString('hex'))
+      const account = keyring.getPair(address.toString('hex'))
+      LOG('ACCOUNT', account.toString('hex'))
+      const attestation = getAttestation()
+      const submit = API.tx.datVerify.submitAttestation(challengeID, attestation)
+      await submit.signAndSend(account, ({ events = [], status }) => {
+        LOG(`Registering hoster: ${account.address} `, status.type)
+        if (status.isInBlock) resolve()
+      })
+    })
   })
+  // get account from the challenge
+  // const user = await API.query.datVerify.attestors(challengeID)
+  // LOG('CHALLENGE DETAILS', challenge.toString('hex'))
 
 }
 
@@ -157,7 +169,7 @@ async function getChallenges (opts) {
     if (chalengedUserID.toString('hex') === selectedUserID.toString('hex')) {
       // then get a challenge based on challenge ID
       // const challengeTuple = await API.query.datVerify.selectedChallenges(challengeID)
-      const parsedChallengeID = hexToBn(challengeID.toString('hex').substring(82), { isLe: true }).toNumber()
+      const parsedChallengeID = getHexToBn(challengeID)
       const challenge = await API.query.datVerify.selectedChallenges(parsedChallengeID)
       // prepare response object
       const response = {
@@ -227,15 +239,14 @@ async function listenToEvents (handleEvent) {
 
 // HELPERS
 
-async function promiseRerun (promise) {
-  var success = true
-  do {
-    return promise.catch((e) => {
-      success = false
-      console.error(e)
-      console.log('Retrying!')
-    })
-  } while (!success)
+function getHexToBn (val) {
+  return hexToBn(val.toString('hex').substring(82), { isLe: true }).toNumber()
+}
+
+function getAttestation () {
+  const location = 0
+  const latency = 0
+  return [location, latency]
 }
 
 }
