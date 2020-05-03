@@ -45,9 +45,11 @@ const EncoderDecoder = require('../EncoderDecoder')
     // JSON encode the data from the feed
     const encodedData = await EncoderDecoder.encode(SAMPLE_DATA)
 
+    const { nodes, signature } = await writerFeed.proof(0)
+
     console.log('Storing encoded data in host')
     // Try sending encoding to storage
-    await host.storeEncoded(0, SAMPLE_PROOF, encodedData)
+    await host.storeEncoded(0, SAMPLE_PROOF, encodedData, nodes, signature)
 
     console.log('Getting data from host')
     // Get the data from the host's feed

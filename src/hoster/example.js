@@ -66,6 +66,8 @@ async function run () {
 
     const proof = Buffer.from('Pranked')
 
+    const { nodes, signature } = await feed.proof(index)
+
     console.log('Connecting to peer')
 
     const peer = await communication2.findByPublicKey(hoster.publicKey)
@@ -84,7 +86,9 @@ async function run () {
       feed: key,
       index,
       encoded,
-      proof
+      proof,
+      nodes,
+      signature
     })
 
     console.log('Waiting for result')

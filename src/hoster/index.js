@@ -60,15 +60,27 @@ module.exports = class Hoster {
       const { type } = message
 
       if (type === 'encoded') {
-        const { feed, index, encoded, proof } = message
+        const { feed, index, encoded, proof, nodes, signature } = message
 
         const key = Buffer.from(feed)
 
         const isExisting = await this.hasKey(key)
 
+        // Fix up the JSON serialization by converting things to buffers
+        for (const node of nodes) {
+          node.hash = Buffer.from(node.hash)
+        }
+
         if (!isExisting) return sendError('UNKNOWN_FEED', { key: key.toString('hex') })
         try {
-          await this.storeEncoded(key, index, Buffer.from(proof), Buffer.from(encoded))
+          await this.storeEncoded(
+            key,
+            index,
+            Buffer.from(proof),
+            Buffer.from(encoded),
+            nodes,
+            Buffer.from(signature)
+          )
 
           confirmStream.write({
             type: 'encoded:stored',
@@ -167,10 +179,10 @@ module.exports = class Hoster {
     }
   }
 
-  async storeEncoded (key, index, proof, encoded) {
+  async storeEncoded (key, index, proof, encoded, nodes, signature) {
     const storage = await this.getStorage(key)
 
-    return storage.storeEncoded(index, proof, encoded)
+    return storage.storeEncoded(index, proof, encoded, nodes, signature)
   }
 
   async getProofOfStorage (key, index) {

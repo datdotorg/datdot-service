@@ -21,31 +21,31 @@ module.exports = class HosterStorage {
   }
 
   // Invoked by the encoder so that the host will store the encoded data
-  async storeEncoded (index, proof, encoded) {
+  async storeEncoded (index, proof, encoded, nodes, signature) {
     // Get the decoded data at the index
     // In parallel, decode the encoded data
-    const [expected, decoded] = await Promise.all([
-      this.feed.get(index, {
-      	valueEncoding: 'binary'
-      }),
-      this.EncoderDecoder.decode(encoded)
-    ])
+    const decoded = this.EncoderDecoder.decode(encoded)
 
-    // Check if the two are the same
-    const isSame = decoded.equals(Buffer.from(expected))
-
-    if (isSame) {
-      // If it's the same save the encoded data
-      // and delete the decoded data if it exists
-      await this._putEncoded(index, encoded)
-      await this._delDecoded(index)
-      await this._putProof(index, proof)
-
-      // Boom we're good to go
-    } else {
-      // If not, throw an error
-      throw new Error('Encoded data does not match original')
+    const packet = {
+      index,
+      value: decoded,
+      nodes,
+      signature
     }
+
+    // This should throw if the data is invalid
+    await new Promise((resolve, reject) => {
+      this.feed._putBuffer(index, decoded, packet, {}, (err) => {
+        if (err) reject(err)
+        else resolve()
+      })
+    })
+
+    // If it's the same save the encoded data
+    // and delete the decoded data if it exists
+    await this._putEncoded(index, encoded)
+    await this._delDecoded(index)
+    await this._putProof(index, proof)
   }
 
   // Invoked by whoever to test that the hoster is actually hosting stuff

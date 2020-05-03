@@ -7,7 +7,7 @@ const { PassThrough } = require('stream')
 
 const Encoder = require('./')
 const EncoderDecoder = require('../EncoderDecoder')
-const {ENCODING_RESULTS_STREAM} = require('../constants')
+const { ENCODING_RESULTS_STREAM } = require('../constants')
 
 run()
 
@@ -70,18 +70,17 @@ async function run () {
   const feed = sdk2.Hypercore('Example Feed')
 
   await feed.append(TEST_MESSAGE)
+  await feed.append(TEST_MESSAGE)
+
+  const ranges = [[0, 1]]
 
   console.log('Sending feed to be encoded', {
     publicKey: plex.publicKey.toString('hex'),
     feed: feed.key.toString('hex'),
-    ranges: [[2, 5], [7, 15], [17, 27]]
+    ranges
   })
 
-<<<<<<< HEAD
-  await encoder.encodeFor(communication2.publicKey, feed.key, ranges)
-=======
-  await encoder.encodeFor(plex.publicKey, feed.key, 0)
->>>>>>> p2plex
+  await encoder.encodeFor(plex.publicKey, feed.key, ranges)
 
   console.log('Done!')
   console.log('Cleaning up')

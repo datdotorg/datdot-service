@@ -6,7 +6,7 @@ const pump = require('pump')
 const ndjson = require('ndjson')
 const { seedKeygen } = require('noise-peer')
 
-const {ENCODING_RESULTS_STREAM} = require('../constants')
+const { ENCODING_RESULTS_STREAM } = require('../constants')
 const NAMESPACE = 'datdot-encoder'
 const IDENITY_NAME = 'signing'
 const NOISE_NAME = 'noise'
@@ -76,6 +76,8 @@ module.exports = class Encoder {
 
         const encoded = await this.EncoderDecoder.encode(data)
 
+        const { nodes, signature } = await feed.proof(index)
+
         // Allocate buffer for the proof
         const proof = Buffer.alloc(sodium.crypto_sign_BYTES)
 
@@ -95,7 +97,9 @@ module.exports = class Encoder {
           feed: feedKey,
           index,
           encoded,
-          proof
+          proof,
+          nodes,
+          signature
         })
         // --------------------------------------------------------------
 
