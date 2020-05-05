@@ -6,7 +6,7 @@ const ram = require('random-access-memory')
 const hyperswarm = require('hyperswarm')
 const swarm = hyperswarm()
 
-const colors = require('colors/safe');
+const colors = require('colors/safe')
 const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
 function LOG (...msgs) {
   msgs = [`[${NAME}] `, ...msgs].map(msg => colors.green(msg))
@@ -26,7 +26,7 @@ chainAPI.makeAccount(opts, (err, confirmation) => {
 // --------------------------------------------------
 // REGISTER FEED
 const feed = { feedkey: '', swarmkey: '' }
-getData( feed, (err, roots) => {
+getData(feed, (err, roots) => {
   const { feedkey, swarmkey } = feed
   const data = { feedkey, swarmkey, roots }
   chainAPI.publishData(data, (err, confirmation) => {
@@ -36,7 +36,7 @@ getData( feed, (err, roots) => {
 
 // --------------------------------------------------
 // REQUEST SERVICE
-const request = {feedkey, plan, ranges}
+const request = { feedkey, plan, ranges }
 chainAPI.requestHosting(request, (err, confirmation) => {
   LOG(confirmation) // get confirmation => update dashboard
 })
@@ -53,13 +53,15 @@ chainAPI.registerEncoder(opts, (err, request) => {
 // --------------------------------------------------
 // HOSTING
 chainAPI.registerHoster(opts, (err, request) => {
-  const {feedkey, plan} = request
+  const { feedkey, plan } = request
   serviceAPI.host(request, (err, resume) => {
     if (err === 'wrong encoded data') return chainAPI.abortRequest()
-    if (err ==='encoder time out') chainAPI.requestNewEncoder(request, (encoder) => {
-      const { id } = encoder
-      resume(encoder)
-    })
+    if (err === 'encoder time out') {
+      chainAPI.requestNewEncoder(request, (encoder) => {
+        const { id } = encoder
+        resume(encoder)
+      })
+    }
     chainAPI.hostingStarted((err, challenge) => {
       serviceAPI.solveChallenge(challenge, (err, merkleProof) => {
         chainAPI.provideProofOfHosting(merkleProof, (err, res) => {
@@ -91,7 +93,7 @@ function getData (opts, cb) {
   const { feedkey, feedswarm } = opts
   const feed = new Hypercore(ram, swarmkey)
   swarm.join(swarmkey, { lookup: true })
-  swarm.on('connection',(socket, info) => {
+  swarm.on('connection', (socket, info) => {
     const index = feed.length - 1
     feed.rootHashes(index, (err, res) => {
       if (err) return LOG(err)

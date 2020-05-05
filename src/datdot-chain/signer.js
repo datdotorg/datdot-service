@@ -9,7 +9,7 @@ function sign (opts, myAccount) {
   // @TODO: sign data properly
   const signature = `signature_${signature++}`
   map.set(signature, [opts, ID])
-  return(signature)
+  return (signature)
 }
 
 sign.verify = (signature, opts) => {

@@ -1,14 +1,14 @@
-const { ApiPromise, WsProvider, Keyring, ApiRx } = require("@polkadot/api")
+const { ApiPromise, WsProvider, Keyring, ApiRx } = require('@polkadot/api')
 const provider = new WsProvider('ws://127.0.0.1:9944')
 const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
-const { hexToBn } = require('@polkadot/util');
+const { hexToBn } = require('@polkadot/util')
 const fs = require('fs')
 const crypto = require('hypercore-crypto')
 const path = require('path')
 const filename = path.join(__dirname, '../../src/types.json')
 const types = JSON.parse(fs.readFileSync(filename).toString())
 
-const colors = require('colors/safe');
+const colors = require('colors/safe')
 const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
 function LOG (...msgs) {
   msgs = [`[${NAME}] `, ...msgs].map(msg => colors.blue(msg))
@@ -18,9 +18,8 @@ function LOG (...msgs) {
 module.exports = new Promise(datdotChain)
 
 async function datdotChain (resolve, reject) {
-
   // const API = await ApiPromise.create({ provider,types })
-  const API = await rerun(() => ApiPromise.create({ provider,types }))
+  const API = await rerun(() => ApiPromise.create({ provider, types }))
   const chainAPI = {
     publishData,
     registerHoster,
@@ -36,7 +35,7 @@ async function datdotChain (resolve, reject) {
   // PUBLISH DATA
   async function publishData (opts) {
     return new Promise(async (resolve, reject) => {
-      const {registerPayload, account, nonces} = opts
+      const { registerPayload, account, nonces } = opts
       const registerData = await API.tx.datVerify.registerData(registerPayload)
       const nonce = nonces[account.name]++
       await registerData.signAndSend(account, { nonce }, ({ events = [], status }) => {
@@ -49,7 +48,7 @@ async function datdotChain (resolve, reject) {
   // REGISTER HOSTER
   async function registerHoster (opts) {
     return new Promise((resolve, reject) => {
-      const {accounts, nonces} = opts
+      const { accounts, nonces } = opts
       accounts.forEach(async account => {
         const register = await API.tx.datVerify.registerSeeder()
         const nonce = nonces[account.name]++
@@ -64,7 +63,7 @@ async function datdotChain (resolve, reject) {
   // REGISTER ATTESTOR
   async function registerAttestor (opts) {
     return new Promise((resolve, reject) => {
-      const {accounts, nonces} = opts
+      const { accounts, nonces } = opts
       accounts.forEach(async account => {
         const register = await API.tx.datVerify.registerAttestor()
         const nonce = nonces[account.name]++
@@ -79,7 +78,7 @@ async function datdotChain (resolve, reject) {
   // REQUEST A CHALLENGE
   async function submitChallenge (opts) {
     return new Promise(async (resolve, reject) => {
-      const {account, userID, feedID, nonces} = opts // userID index, dat index
+      const { account, userID, feedID, nonces } = opts // userID index, dat index
       const challenge = await API.tx.datVerify.submitChallenge(userID, feedID)
       const nonce = nonces[account.name]++
       await challenge.signAndSend(account, { nonce }, ({ events = [], status }) => {
@@ -92,7 +91,7 @@ async function datdotChain (resolve, reject) {
   // ATTEST PHASE
   async function attest (opts) {
     return new Promise((resolve, reject) => {
-      const {challengeID, attestorIDs, keyring, nonces} = opts
+      const { challengeID, attestorIDs, keyring, nonces } = opts
       LOG('Attestor IDs', attestorIDs.toString('hex'))
       attestorIDs.forEach(async id => {
         const address = await API.query.datVerify.attestors(id)
@@ -111,7 +110,7 @@ async function datdotChain (resolve, reject) {
   // GET CHALLENGES
   async function getChallenges (opts) {
     LOG('Getting challenges')
-    const {user, accounts, respondToChallenges, nonces} = opts
+    const { user, accounts, respondToChallenges, nonces } = opts
     const responses = []
     // Get all challenges [key: challengeID, value: chalengedUserID ] => mapping
     const allChallenges = await API.query.datVerify.challengeMap.entries()
@@ -119,7 +118,7 @@ async function datdotChain (resolve, reject) {
     const selectedUser = await API.query.datVerify.selectedUserIndex(user)
     const selectedUserID = selectedUser[0]
     // go through allChallenges and get out all where sellected user ID === challenged user
-    for (var i = 0; i < allChallenges.length; i ++) {
+    for (var i = 0; i < allChallenges.length; i++) {
       const challengeID = allChallenges[i][0]
       const chalengedUserID = allChallenges[i][1]
       if (chalengedUserID.toString('hex') === selectedUserID.toString('hex')) {
@@ -155,7 +154,7 @@ async function datdotChain (resolve, reject) {
       async function step1 (err, offsetIndex, offset) {
         const index = offsetIndex
         if (err) {
-          LOG(`Failed to complete challenge for chunk: ${(index||'').toString()}/${feed.length}`)
+          LOG(`Failed to complete challenge for chunk: ${(index || '').toString()}/${feed.length}`)
           return LOG('Reason: ', err)
         }
         feed.get(index, async (err, chunk) => {
@@ -170,9 +169,11 @@ async function datdotChain (resolve, reject) {
         })
       }
       async function step2 ({ events = [], status }) {
-        if (status.isInBlock) events.forEach(({ phase, event: { data, method, section } }) => {
-          LOG('\t', phase.toString(), `: ${section}.${method}`, data.toString())
-        })
+        if (status.isInBlock) {
+          events.forEach(({ phase, event: { data, method, section } }) => {
+            LOG('\t', phase.toString(), `: ${section}.${method}`, data.toString())
+          })
+        }
       }
     }
   }
@@ -199,7 +200,7 @@ async function datdotChain (resolve, reject) {
   }
 
   function rerun (promiseFn, maxTries = 20, counter = 0, delay = 100) {
-    return new Promise ((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       getPromise()
       async function getPromise () {
         try {
@@ -214,5 +215,4 @@ async function datdotChain (resolve, reject) {
       }
     })
   }
-
 }

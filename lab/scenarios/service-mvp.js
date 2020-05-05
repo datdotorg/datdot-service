@@ -1,8 +1,8 @@
-const { Keyring } = require("@polkadot/api")
+const { Keyring } = require('@polkadot/api')
 const keyring = new Keyring({ type: 'sr25519' })
 const hypercoreArr_promise = require('../../src/temp_helpers/getHypercoreArr')
 const chainAPI_promise = require('../../src/temp_helpers/chainAPI-mvp') // to use substrate node
-const colors = require('colors/safe');
+const colors = require('colors/safe')
 const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
 function LOG (...msgs) {
   msgs = [`[${NAME}] `, ...msgs].map(msg => colors.green(msg))
@@ -32,7 +32,7 @@ async function setup () {
   const names = ['//Alice', '//Charlie', '//Ferdie', '//Eve', '//Dave']
   const accounts = []
   const nonces = {}
-  for (var i = 0; i < names.length; i++ ) {
+  for (var i = 0; i < names.length; i++) {
     const name = names[i]
     const account = makeAccount(name)
     accounts.push(account)
@@ -45,12 +45,11 @@ async function setup () {
 setup()
 
 // 2. `make ACCOUNT`
-function makeAccount(name) {
+function makeAccount (name) {
   return keyring.addFromUri(name)
 }
 
 async function start (chainAPI, serviceAPI, accounts, nonces) {
-
   /* --------------------------------------
             B. COMMIT FLOW
   ----------------------------------------- */
@@ -71,39 +70,39 @@ async function start (chainAPI, serviceAPI, accounts, nonces) {
         C. REGISTERING FLOW
   ----------------------------------------- */
   // 1. `register HOSTER`
-  async function registerHoster() {
-    const opts = {accounts, nonces}
+  async function registerHoster () {
+    const opts = { accounts, nonces }
     await chainAPI.registerHoster(opts)
   }
 
   // 2. `register ENCODER`
 
   // 3. `register ATTESTER`
-  async function registerAttestor() {
-    const opts = {accounts, nonces}
+  async function registerAttestor () {
+    const opts = { accounts, nonces }
     await chainAPI.registerAttestor(opts)
   }
   /* --------------------------------------
             D. CHALLENGES FLOW
   ----------------------------------------- */
   let signer = 0
-  async function submitChallenge (data) { //submitChallenge
+  async function submitChallenge (data) { // submitChallenge
     const userID = data[0]
     const feedID = data[1]
-    const opts = { account: accounts[signer], userID, feedID, nonces}
-    signer <= accounts.length - 1 ? signer ++ : signer = 0
+    const opts = { account: accounts[signer], userID, feedID, nonces }
+    signer <= accounts.length - 1 ? signer++ : signer = 0
     await chainAPI.submitChallenge(opts)
   }
 
   async function getChallenges (data) {
     const user = data[0]
-    const opts = {user, accounts, respondToChallenges,nonces}
+    const opts = { user, accounts, respondToChallenges, nonces }
     await chainAPI.getChallenges(opts)
   }
 
   async function respondToChallenges (responses) {
     const feeds = (await hypercoreArr_promise)[1]
-    const opts = {responses, feeds, keyring, nonces}
+    const opts = { responses, feeds, keyring, nonces }
     await chainAPI.sendProof(opts)
   }
 
@@ -111,8 +110,8 @@ async function start (chainAPI, serviceAPI, accounts, nonces) {
     LOG('EVENT', data.toString('hex'))
     const challengeID = data[0]
     const obj = JSON.parse(data[1])
-    const attestorIDs = obj['expected_attestors']
-    const opts = {challengeID, attestorIDs, keyring, nonces}
+    const attestorIDs = obj.expected_attestors
+    const opts = { challengeID, attestorIDs, keyring, nonces }
     await chainAPI.attest(opts)
   }
   /* --------------------------------------
@@ -120,7 +119,7 @@ async function start (chainAPI, serviceAPI, accounts, nonces) {
   ----------------------------------------- */
   async function handleEvent (event) {
     const address = event.data[0]
-    LOG(`New event:`, event.method, event.data.toString())
+    LOG('New event:', event.method, event.data.toString())
     if (event.method === 'SomethingStored') {
       await registerAttestor()
       await registerHoster()
@@ -130,5 +129,4 @@ async function start (chainAPI, serviceAPI, accounts, nonces) {
     if (event.method === 'ChallengeFailed') { }
     if (event.method === 'AttestPhase') attestPhase(event.data)
   }
-
 }
