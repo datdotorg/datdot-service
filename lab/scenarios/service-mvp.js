@@ -1,7 +1,7 @@
 const { Keyring } = require('@polkadot/api')
 const keyring = new Keyring({ type: 'sr25519' })
 const hypercoreArr_promise = require('../../src/temp_helpers/getHypercoreArr')
-const chainAPI_promise = require('../../src/temp_helpers/chainAPI-mvp') // to use substrate node
+const getChainAPI = require('../../src/temp_helpers/chainAPI-mvp') // to use substrate node
 const colors = require('colors/safe')
 const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
 function LOG (...msgs) {
@@ -27,7 +27,7 @@ Behavior:
 
 // 1. Get substrate chain API
 async function setup () {
-  const chainAPI = await chainAPI_promise
+  const chainAPI = await getChainAPI()
   const serviceAPI = {}
   const names = ['//Alice', '//Charlie', '//Ferdie', '//Eve', '//Dave']
   const accounts = []
@@ -97,7 +97,8 @@ async function start (chainAPI, serviceAPI, accounts, nonces) {
   async function getChallenges (data) {
     const user = data[0]
     const opts = { user, accounts, respondToChallenges, nonces }
-    await chainAPI.getChallenges(opts)
+    const responses = await chainAPI.getChallenges(opts)
+    await respondToChallenges(responses)
   }
 
   async function respondToChallenges (responses) {
