@@ -1,6 +1,5 @@
 const { ApiPromise, WsProvider, Keyring, ApiRx } = require("@polkadot/api")
 const provider = new WsProvider('ws://127.0.0.1:9944')
-const keyring = new Keyring({ type: 'sr25519' })
 const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
 const { hexToBn } = require('@polkadot/util');
 const fs = require('fs')
@@ -23,10 +22,9 @@ async function datdotChain (resolve, reject) {
   // const API = await ApiPromise.create({ provider,types })
   const API = await rerun(() => ApiPromise.create({ provider,types }))
   const chainAPI = {
-    makeAccount,
+    publishData,
     registerHoster,
     registerAttestor,
-    publishData,
     submitChallenge,
     getChallenges,
     sendProof,
@@ -35,26 +33,10 @@ async function datdotChain (resolve, reject) {
   }
   resolve(chainAPI)
 
-  const nonces = {}
-  // MAKE ACCOUNT
-  function makeAccount (opts) {
-    const {chainAPI, serviceAPI, cb} = opts
-    const accounts = []
-    const uriArr = ['Alice', 'Charlie', 'Ferdie', 'Eve', 'Dave']
-    uriArr.forEach(name => {
-      const account = keyring.addFromUri(`//${name}`)
-      LOG(name, account.address)
-      accounts.push(account)
-      account.name = name
-      nonces[account.name] = 0
-    })
-    cb(chainAPI, serviceAPI, accounts)
-  }
-
   // PUBLISH DATA
   async function publishData (opts) {
     return new Promise(async (resolve, reject) => {
-      const {registerPayload, account} = opts
+      const {registerPayload, account, nonces} = opts
       const registerData = await API.tx.datVerify.registerData(registerPayload)
       const nonce = nonces[account.name]++
       await registerData.signAndSend(account, { nonce }, ({ events = [], status }) => {
@@ -67,7 +49,7 @@ async function datdotChain (resolve, reject) {
   // REGISTER HOSTER
   async function registerHoster (opts) {
     return new Promise((resolve, reject) => {
-      const {accounts} = opts
+      const {accounts, nonces} = opts
       accounts.forEach(async account => {
         const register = await API.tx.datVerify.registerSeeder()
         const nonce = nonces[account.name]++
@@ -82,7 +64,7 @@ async function datdotChain (resolve, reject) {
   // REGISTER ATTESTOR
   async function registerAttestor (opts) {
     return new Promise((resolve, reject) => {
-      const {accounts} = opts
+      const {accounts, nonces} = opts
       accounts.forEach(async account => {
         const register = await API.tx.datVerify.registerAttestor()
         const nonce = nonces[account.name]++
@@ -97,7 +79,7 @@ async function datdotChain (resolve, reject) {
   // REQUEST A CHALLENGE
   async function submitChallenge (opts) {
     return new Promise(async (resolve, reject) => {
-      const {account, userID, feedID} = opts // userID index, dat index
+      const {account, userID, feedID, nonces} = opts // userID index, dat index
       const challenge = await API.tx.datVerify.submitChallenge(userID, feedID)
       const nonce = nonces[account.name]++
       await challenge.signAndSend(account, { nonce }, ({ events = [], status }) => {
@@ -110,7 +92,7 @@ async function datdotChain (resolve, reject) {
   // ATTEST PHASE
   async function attest (opts) {
     return new Promise((resolve, reject) => {
-      const {challengeID, attestorIDs} = opts
+      const {challengeID, attestorIDs, keyring, nonces} = opts
       LOG('Attestor IDs', attestorIDs.toString('hex'))
       attestorIDs.forEach(async id => {
         const address = await API.query.datVerify.attestors(id)
@@ -129,7 +111,7 @@ async function datdotChain (resolve, reject) {
   // GET CHALLENGES
   async function getChallenges (opts) {
     LOG('Getting challenges')
-    const {user, accounts, respondToChallenges} = opts
+    const {user, accounts, respondToChallenges, nonces} = opts
     const responses = []
     // Get all challenges [key: challengeID, value: chalengedUserID ] => mapping
     const allChallenges = await API.query.datVerify.challengeMap.entries()
@@ -162,7 +144,7 @@ async function datdotChain (resolve, reject) {
 
   // RESPOND TO CHALLENGE
   async function sendProof (opts) {
-    const { responses, feeds } = opts
+    const { responses, feeds, keyring, nonces } = opts
     for (var i = 0; i < responses.length; i++) {
       const challenge = responses[i]
       const pubkey = challenge.pubkey.slice(2)

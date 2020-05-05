@@ -1,3 +1,5 @@
+const { Keyring } = require("@polkadot/api")
+const keyring = new Keyring({ type: 'sr25519' })
 const hypercoreArr_promise = require('../../src/temp_helpers/getHypercoreArr')
 const chainAPI_promise = require('../../src/temp_helpers/chainAPI-mvp') // to use substrate node
 const colors = require('colors/safe');
@@ -27,17 +29,27 @@ Behavior:
 async function setup () {
   const chainAPI = await chainAPI_promise
   const serviceAPI = {}
-  makeAccount(chainAPI, serviceAPI)
+  const names = ['//Alice', '//Charlie', '//Ferdie', '//Eve', '//Dave']
+  const accounts = []
+  const nonces = {}
+  for (var i = 0; i < names.length; i++ ) {
+    const name = names[i]
+    const account = makeAccount(name)
+    accounts.push(account)
+    account.name = name.split('//')[1]
+    nonces[account.name] = 0 // initializing nonces for each new account
+    LOG(name, account.address)
+  }
+  if (names.length === accounts.length) start(chainAPI, serviceAPI, accounts, nonces)
 }
 setup()
 
 // 2. `make ACCOUNT`
-async function makeAccount(chainAPI, serviceAPI) {
-  const opts = {chainAPI, serviceAPI, cb: start}
-  chainAPI.makeAccount(opts)
+function makeAccount(name) {
+  return keyring.addFromUri(name)
 }
 
-async function start (chainAPI, serviceAPI, accounts) {
+async function start (chainAPI, serviceAPI, accounts, nonces) {
 
   /* --------------------------------------
             B. COMMIT FLOW
@@ -48,6 +60,7 @@ async function start (chainAPI, serviceAPI, accounts) {
     const opts = {
       registerPayload: hypercoreArr,
       account: accounts[0],
+      nonces
     }
     await chainAPI.publishData(opts)
   }
@@ -59,7 +72,7 @@ async function start (chainAPI, serviceAPI, accounts) {
   ----------------------------------------- */
   // 1. `register HOSTER`
   async function registerHoster() {
-    const opts = {accounts}
+    const opts = {accounts, nonces}
     await chainAPI.registerHoster(opts)
   }
 
@@ -67,7 +80,7 @@ async function start (chainAPI, serviceAPI, accounts) {
 
   // 3. `register ATTESTER`
   async function registerAttestor() {
-    const opts = {accounts}
+    const opts = {accounts, nonces}
     await chainAPI.registerAttestor(opts)
   }
   /* --------------------------------------
@@ -77,20 +90,20 @@ async function start (chainAPI, serviceAPI, accounts) {
   async function submitChallenge (data) { //submitChallenge
     const userID = data[0]
     const feedID = data[1]
-    const opts = { account: accounts[signer], userID, feedID}
+    const opts = { account: accounts[signer], userID, feedID, nonces}
     signer <= accounts.length - 1 ? signer ++ : signer = 0
     await chainAPI.submitChallenge(opts)
   }
 
   async function getChallenges (data) {
     const user = data[0]
-    const opts = {user, accounts, respondToChallenges}
+    const opts = {user, accounts, respondToChallenges,nonces}
     await chainAPI.getChallenges(opts)
   }
 
   async function respondToChallenges (responses) {
     const feeds = (await hypercoreArr_promise)[1]
-    const opts = {responses, feeds}
+    const opts = {responses, feeds, keyring, nonces}
     await chainAPI.sendProof(opts)
   }
 
@@ -99,7 +112,7 @@ async function start (chainAPI, serviceAPI, accounts) {
     const challengeID = data[0]
     const obj = JSON.parse(data[1])
     const attestorIDs = obj['expected_attestors']
-    const opts = {challengeID, attestorIDs}
+    const opts = {challengeID, attestorIDs, keyring, nonces}
     await chainAPI.attest(opts)
   }
   /* --------------------------------------
