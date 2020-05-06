@@ -35,34 +35,43 @@ async function datdotChain () {
 
   return chainAPI
 
+  function getNonce(account) {
+		const {name} = account
+		let nonce = (nonces[name] || 0)
+		nonce++
+		nonces[name] = nonce
+
+		return nonce - 1
+  }
+
   // PUBLISH DATA
   async function publishData ({ registerPayload, account }) {
     const registerData = await API.tx.datVerify.registerData(registerPayload)
-    const nonce = nonces[account.name]++
-    LOG(`Publishing data: ${account.name}`)
+    const nonce = await getNonce(account)
+    LOG(`Publishing data: ${account.name} ${nonce}`)
     await registerData.signAndSend(account, { nonce })
   }
 
   // REGISTER HOSTER
   async function registerHoster ({ account }) {
     const register = await API.tx.datVerify.registerSeeder()
-    const nonce = nonces[account.name]++
-    LOG(`Registering hoster: ${account.name}`)
+    const nonce = await getNonce(account)
+    LOG(`Registering hoster: ${account.name} ${nonce}`)
     await register.signAndSend(account, { nonce })
   }
 
   // REGISTER ATTESTOR
   async function registerAttestor ({ account }) {
     const register = await API.tx.datVerify.registerAttestor()
-    const nonce = nonces[account.name]++
-    LOG(`Registering attestor: ${account.name}`)
+    const nonce = await getNonce(account)
+    LOG(`Registering attestor: ${account.name} ${nonce}`)
     await register.signAndSend(account, { nonce })
   }
 
   // REQUEST A CHALLENGE
   async function submitChallenge ({ account, userID, feedID }) {
     const challenge = await API.tx.datVerify.submitChallenge(userID, feedID)
-    const nonce = nonces[account.name]++
+    const nonce = await getNonce(account)
     LOG(`Requesting a new challenge: ${userID.toString('hex')}, ${feedID.toString('hex')}`)
     await challenge.signAndSend(account, { nonce })
   }
@@ -76,7 +85,7 @@ async function datdotChain () {
       const account = keyring.getPair(address.toString('hex'))
       const attestation = await getAttestation()
       const submit = await API.tx.datVerify.submitAttestation(challengeID, attestation)
-      const nonce = nonces[account.name]++
+      const nonce = await getNonce(account)
       LOG(`Sending attestation: ${address.toString('hex')}`)
       await submit.signAndSend(account, { nonce })
     }))
@@ -117,8 +126,7 @@ async function datdotChain () {
   }
 
   // RESPOND TO CHALLENGE
-  async function sendProof (opts) {
-    const { responses, feeds, keyring, nonces } = opts
+  async function sendProof ({ responses, feeds, keyring }) {
     for (var i = 0; i < responses.length; i++) {
       const challenge = responses[i]
       const pubkey = challenge.pubkey.slice(2)
@@ -139,7 +147,7 @@ async function datdotChain () {
           }
           const proof = await API.tx.datVerify.submitProof(parsedChallengeID, [])
           const account = keyring.getPair(user.toString('hex'))
-          const nonce = nonces[account.name]++
+          const nonce = await getNonce(account)
           proof.signAndSend(account, { nonce }, step2)
         })
       }

@@ -49,7 +49,7 @@ function makeAccount (name) {
   return keyring.addFromUri(name)
 }
 
-async function start (chainAPI, serviceAPI, accounts, nonces) {
+async function start (chainAPI, serviceAPI, accounts) {
   /* --------------------------------------
             B. COMMIT FLOW
   ----------------------------------------- */
@@ -58,8 +58,7 @@ async function start (chainAPI, serviceAPI, accounts, nonces) {
     const hypercoreArr = (await hypercoreArr_promise)[0]
     const opts = {
       registerPayload: hypercoreArr,
-      account: accounts[0],
-      nonces
+      account: accounts[0]
     }
     await chainAPI.publishData(opts)
   }
@@ -71,16 +70,18 @@ async function start (chainAPI, serviceAPI, accounts, nonces) {
   ----------------------------------------- */
   // 1. `register HOSTER`
   async function registerHoster () {
-    const opts = { accounts, nonces }
-    await chainAPI.registerHoster(opts)
+    for(let account of accounts) {
+	    await chainAPI.registerHoster({account})
+    }
   }
 
   // 2. `register ENCODER`
 
   // 3. `register ATTESTER`
   async function registerAttestor () {
-    const opts = { accounts, nonces }
-    await chainAPI.registerAttestor(opts)
+    for (const account of accounts) {
+      await chainAPI.registerAttestor({ account })
+    }
   }
   /* --------------------------------------
             D. CHALLENGES FLOW
@@ -89,21 +90,21 @@ async function start (chainAPI, serviceAPI, accounts, nonces) {
   async function submitChallenge (data) { // submitChallenge
     const userID = data[0]
     const feedID = data[1]
-    const opts = { account: accounts[signer], userID, feedID, nonces }
+    const opts = { account: accounts[signer], userID, feedID }
     signer <= accounts.length - 1 ? signer++ : signer = 0
     await chainAPI.submitChallenge(opts)
   }
 
   async function getChallenges (data) {
     const user = data[0]
-    const opts = { user, accounts, respondToChallenges, nonces }
+    const opts = { user, accounts, respondToChallenges }
     const responses = await chainAPI.getChallenges(opts)
     await respondToChallenges(responses)
   }
 
   async function respondToChallenges (responses) {
     const feeds = (await hypercoreArr_promise)[1]
-    const opts = { responses, feeds, keyring, nonces }
+    const opts = { responses, feeds, keyring }
     await chainAPI.sendProof(opts)
   }
 
@@ -112,7 +113,7 @@ async function start (chainAPI, serviceAPI, accounts, nonces) {
     const challengeID = data[0]
     const obj = JSON.parse(data[1])
     const attestorIDs = obj.expected_attestors
-    const opts = { challengeID, attestorIDs, keyring, nonces }
+    const opts = { challengeID, attestorIDs, keyring }
     await chainAPI.attest(opts)
   }
   /* --------------------------------------
