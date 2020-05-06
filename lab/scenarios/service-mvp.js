@@ -31,16 +31,14 @@ async function setup () {
   const serviceAPI = {}
   const names = ['//Alice', '//Charlie', '//Ferdie', '//Eve', '//Dave']
   const accounts = []
-  const nonces = {}
   for (var i = 0; i < names.length; i++) {
     const name = names[i]
     const account = makeAccount(name)
     accounts.push(account)
     account.name = name.split('//')[1]
-    nonces[account.name] = 0 // initializing nonces for each new account
     LOG(name, account.address)
   }
-  if (names.length === accounts.length) start(chainAPI, serviceAPI, accounts, nonces)
+  if (names.length === accounts.length) start(chainAPI, serviceAPI, accounts)
 }
 setup()
 
