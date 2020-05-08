@@ -188,7 +188,7 @@ module.exports = class Hoster {
   async getProofOfStorage (key, index) {
     const storage = await this.getStorage(key)
 
-    return storage.getProofOfStorage
+    return storage.getProofOfStorage(index)
   }
 
   async hasKey (key) {
