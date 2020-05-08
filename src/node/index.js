@@ -141,6 +141,12 @@ module.exports = class Node {
     return this.nonce++
   }
 
+  async signAndSend(transaction) {
+		const nonce = await this.nextNonce()
+
+		return transaction.signAndSend(this.chainKeypair, {nonce})
+  }
+
   async close () {
     const toResolve = []
 
