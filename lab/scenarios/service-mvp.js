@@ -141,9 +141,16 @@ async function start (chainAPI, serviceAPI, accounts) {
     const activateEncoder = await encoder.encodeFor(hosterKey, archive_pubkey, plan)
     activateEncoder.then(() => {
       LOG('Encoding succesfull')
-      const opts = {account: encoderKey, hosterID, datID, start, end}
-      // start, end (if more ranges, send registerEncoding for each range)
-      chainAPI.registerEncoding(opts)
+      // registerEncoding for each range
+      plan.ranges.forEach(range => {
+        const opts = {
+          account: encoderKey,
+          hosterID,
+          datID,
+          start: range.start,
+          end: range.end}
+        chainAPI.registerEncoding(opts)
+      })
     })
 
     // end of Mauve's code
@@ -152,8 +159,7 @@ async function start (chainAPI, serviceAPI, accounts) {
 
   let signer = 0
   async function submitChallenge (data) { // submitChallenge
-    const userID = data[0]
-    const feedID = data[1]
+    const [userID, feedID ] = data
     const opts = { account: accounts[signer], userID, feedID }
     signer <= accounts.length - 1 ? signer++ : signer = 0
     await chainAPI.submitChallenge(opts)
