@@ -66,18 +66,18 @@ async function start (chainAPI, serviceAPI, accounts) {
             B. COMMIT FLOW
   ----------------------------------------- */
   // 1. `publish DATA`
-  async function publishData () {
+  async function registerData () {
     const data = await getData
     const opts = {
       merkleRoot: data,
       account: accounts[0]
     }
-    await chainAPI.publishData(opts)
+    await chainAPI.registerData(opts)
   }
   // registerEncoder()
   // registerAttestor()
   // registerHoster()
-  publishData()
+  registerData()
   chainAPI.listenToEvents(handleEvent)
 
   /* --------------------------------------
@@ -135,7 +135,7 @@ async function start (chainAPI, serviceAPI, accounts) {
     const activateHoster = hoster.addFeed(archive_pubkey, encoderKey, plan)
     activateHoster.then(() => {
       LOG('Hosting succesfull')
-      const opts = {account: hosterKey, archive: datID}
+      const opts = {account: hosterKey, archive: datID, index} // (HostedMap.encoded[index])
       chainAPI.confirmHosting(opts)
     })
     const activateEncoder = await encoder.encodeFor(hosterKey, archive_pubkey, plan)
@@ -185,9 +185,7 @@ async function start (chainAPI, serviceAPI, accounts) {
 
   async function attestPhase (data) {
     LOG('Attest phase event data', data.toString('hex'))
-    const challengeID = data[0]
-    const obj = JSON.parse(data[1])
-    const attestorIDs = obj.expected_attestors
+    const [challengeID, attestorIDs ] = data
     const opts = { challengeID, attestorIDs, keyring }
     await chainAPI.attest(opts)
   }

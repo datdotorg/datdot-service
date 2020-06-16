@@ -1,10 +1,10 @@
-const { /*ApiPromise,*/ WsProvider, Keyring } = require('@polkadot/api')
-// const provider = new WsProvider('ws://127.0.0.1:9944')
+const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api')
+const provider = new WsProvider('ws://127.0.0.1:9944')
 const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
 const { hexToBn } = require('@polkadot/util')
 
-const provider = {}
-const ApiPromise = require('./simulate-substrate')
+// const provider = {}
+// const ApiPromise = require('./simulate-substrate')
 
 const fs = require('fs')
 const path = require('path')
@@ -29,12 +29,12 @@ async function datdotChain () {
     registerHoster,
     registerEncoder,
     registerAttestor,
-    publishData,
+    registerData,
     registerEncoding,
     confirmHosting,
     submitChallenge,
     submitProof,
-    submitAttestation,
+    attest,
     listenToEvents,
     getArchive,
     getUser,
@@ -81,7 +81,7 @@ async function datdotChain () {
     await register.signAndSend(account, { nonce }, status)
   }
 
-  async function publishData (opts) {
+  async function registerData (opts) {
     const { merkleRoot, account } = opts
     const registerData = await API.tx.datVerify.registerData(merkleRoot)
     const nonce = await getNonce(account)
@@ -121,7 +121,11 @@ async function datdotChain () {
 
   async function submitProof ({ data, accounts }) {
     LOG('Getting the challenge and submitting the proof)')
-    const {hosterID, datID} = data
+    const {hosterKey, datKey} = data
+
+    const hosterID = await API.query.dat_verify.userIndices(hosterKey)
+    const datID = api.query.dat_verify.datIndex(datKey)
+
     const hostedArchive = api.query.dat_verify.hostedMap(hosterID, datID)
 
     const challengeMap = hostedArchive.state
@@ -129,14 +133,15 @@ async function datdotChain () {
     for (const challenge_index in challengeMap) {
       challenge = challengeMap.get(challenge_index)
       const proof = await API.tx.datVerify.submitProof(challenge_index, [])
+      // array of bytes (proof format) => fetch from Mauve's proof folder
       const account = keyring.getPair(user.toString('hex'))
       const nonce = await getNonce(account)
       proof.signAndSend(account, { nonce }, status)
     }
   }
 
-  async function submitAttestation () {
-    
+  async function attest (opts) {
+    const {} =  opts
   }
   // submit_attestation(origin, hoster_index: u64, dat_index: u64,chunk_index: u64, attestation: Attestation)
 
