@@ -7,7 +7,6 @@ const { PassThrough } = require('stream')
 
 const Encoder = require('./')
 const EncoderDecoder = require('../EncoderDecoder')
-const { ENCODING_RESULTS_STREAM } = require('../constants')
 
 run()
 
@@ -28,17 +27,49 @@ async function run () {
 
   const TEST_MESSAGE = Buffer.from('Hello World!')
 
-  plex.on('connection', async (peer) => {
-    console.log('Got connection from encoder', peer.publicKey, peer.publicKey.equals(encoder.publicKey))
+  console.log('initializing feed')
+  const feed = sdk2.Hypercore('Example Feed')
 
-    peer.on('stream', (stream, id) => console.log('Got stream from encoder', id))
+  await feed.append(TEST_MESSAGE)
+  await feed.append(TEST_MESSAGE)
+
+  const ranges = [[0, 1]]
+
+  console.log('Sending feed to be encoded', {
+    publicKey: plex.publicKey.toString('hex'),
+    feed: feed.key.toString('hex'),
+    ranges
+  })
+
+  await Promise.all([
+    encoder.encodeFor(plex.publicKey, feed.key, ranges),
+    handleIncomingEncoding(feed.key, encoder.publicKey)
+  ])
+
+  console.log('Done!')
+  console.log('Cleaning up')
+
+  await Promise.all([
+    encoder.close(),
+    sdk1.close(),
+    sdk2.close(),
+    plex.destroy()
+  ])
+
+  console.log('Cleaned up')
+
+  async function handleIncomingEncoding (feedKey, hosterKey) {
+    // TODO:  resolve stream
+    const topic = feedKey
+    const peer = await plex.findByTopicAndPublicKey(topic, hosterKey, { announce: true, lookup: false })
+    console.log('Got connection from encoder', peer.publicKey, peer.publicKey.equals(encoder.publicKey))
 
     const responseStream = ndjson.serialize()
     const rawEncodingStream = ndjson.parse()
     // This is needed to make the stream async iterable
     const encodingStream = new PassThrough({ objectMode: true })
 
-    pump(responseStream, peer.receiveStream(ENCODING_RESULTS_STREAM), rawEncodingStream, encodingStream)
+    pump(responseStream, peer.receiveStream(topic), rawEncodingStream, encodingStream)
     encodingStream.resume()
 
     for await (const { feed, index, encoded } of encodingStream) {
@@ -64,33 +95,5 @@ async function run () {
         ok: true
       })
     }
-  })
-
-  console.log('initializing feed')
-  const feed = sdk2.Hypercore('Example Feed')
-
-  await feed.append(TEST_MESSAGE)
-  await feed.append(TEST_MESSAGE)
-
-  const ranges = [[0, 1]]
-
-  console.log('Sending feed to be encoded', {
-    publicKey: plex.publicKey.toString('hex'),
-    feed: feed.key.toString('hex'),
-    ranges
-  })
-
-  await encoder.encodeFor(plex.publicKey, feed.key, ranges)
-
-  console.log('Done!')
-  console.log('Cleaning up')
-
-  await Promise.all([
-    encoder.close(),
-    sdk1.close(),
-    sdk2.close(),
-    plex.destroy()
-  ])
-
-  console.log('Cleaned up')
+  }
 }

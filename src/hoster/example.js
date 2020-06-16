@@ -8,7 +8,6 @@ const ndjson = require('ndjson')
 const pump = require('pump')
 
 const EncoderDecoder = require('../EncoderDecoder')
-const { ENCODING_RESULTS_STREAM } = require('../constants')
 
 const Hoster = require('./')
 
@@ -26,9 +25,10 @@ async function run () {
     var hoster = await Hoster.load({
       sdk: sdk1,
       EncoderDecoder,
-      db,
-      onNeedsEncoding
+      db
     })
+
+    console.log('Hoster ID', hoster.publicKey)
 
     console.log('Initializing feed')
     var sdk2 = await SDK({
@@ -41,8 +41,12 @@ async function run () {
 
     await feed.append('Hello World')
 
-    console.log('Adding feed to hoster')
-    await hoster.addFeed(feed.key)
+    console.log('Adding feed to hoster', feed.key)
+
+    await Promise.all([
+      hoster.addFeed(feed.key, communication2.publicKey),
+      sendEncodings(feed.key, 0)
+    ])
 
     console.log('Done!')
   } catch (e) {
@@ -56,7 +60,19 @@ async function run () {
     sdk2.close()
   }
 
-  async function onNeedsEncoding (key, index) {
+  async function sendEncodings (key, index) {
+    // TODO: Derive topic
+    const topic = key
+
+    console.log('Connecting to peer')
+
+    const peer = await communication2.findByTopicAndPublicKey(topic, hoster.publicKey, {
+      announce: false,
+      lookup: true
+    })
+
+    console.log('Connected to peer')
+
     // Notify encoder to encode data and send it to us
     console.log('Encoding data for', key, index)
 
@@ -68,16 +84,11 @@ async function run () {
 
     const { nodes, signature } = await feed.proof(index)
 
-    console.log('Connecting to peer')
-
-    const peer = await communication2.findByPublicKey(hoster.publicKey)
     const resultStream = ndjson.serialize()
     const confirmStream = ndjson.parse()
-    const encodingStream = peer.createStream(ENCODING_RESULTS_STREAM)
+    const encodingStream = peer.createStream(topic)
 
     pump(resultStream, encodingStream, confirmStream)
-
-    confirmStream.resume()
 
     console.log('Storing data for', key, index)
 
@@ -91,6 +102,8 @@ async function run () {
       signature
     })
 
+    confirmStream.resume()
+
     console.log('Waiting for result')
 
     const message = await once(confirmStream, 'data')
@@ -99,7 +112,6 @@ async function run () {
 
     console.log('Storage result:', message)
 
-    console.log('Disconnecting from peer')
-    await peer.disconnect()
+    resultStream.end()
   }
 }

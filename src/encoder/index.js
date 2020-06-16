@@ -6,7 +6,6 @@ const pump = require('pump')
 const ndjson = require('ndjson')
 const { seedKeygen } = require('noise-peer')
 
-const { ENCODING_RESULTS_STREAM } = require('../constants')
 const NAMESPACE = 'datdot-encoder'
 const IDENITY_NAME = 'signing'
 const NOISE_NAME = 'noise'
@@ -53,19 +52,23 @@ module.exports = class Encoder {
   }
 
   async encodeFor (hosterKey, feedKey, ranges) {
+    console.log('HOSTER KEY', hosterKey)
     if (!Array.isArray(ranges)) {
       const index = ranges
       ranges = [[index, index]]
     }
 
+    // TODO: Derive shared key
+    const topic = feedKey
+
     const feed = this.Hypercore(feedKey)
 
     // TODO: Add timeout for when we can't find the hoster
-    const peer = await this.communication.findByPublicKey(hosterKey)
+    const peer = await this.communication.findByTopicAndPublicKey(topic, hosterKey, { announce: false, lookup: true })
     const resultStream = ndjson.serialize()
     const confirmStream = ndjson.parse()
 
-    const encodingStream = peer.createStream(ENCODING_RESULTS_STREAM)
+    const encodingStream = peer.createStream(topic)
     pump(resultStream, encodingStream, confirmStream)
 
     // const ranges = [[2, 5], [7, 15], [17, 27]]
@@ -73,6 +76,8 @@ module.exports = class Encoder {
       for (let index = range[0], len = range[1] + 1; index < len; index++) {
         // TODO: Add timeout for when we can't get feed data
         const data = await feed.get(index)
+        console.log('DATA', dataclear
+      )
 
         const encoded = await this.EncoderDecoder.encode(data)
 
@@ -114,9 +119,6 @@ module.exports = class Encoder {
     }
 
     encodingStream.end()
-
-    // --------------------------------------------------------------
-    await peer.disconnect()
   }
 
   async close () {
