@@ -1,7 +1,7 @@
 const { Keyring } = require('@polkadot/api')
 const { cryptoWaitReady } = require('@polkadot/util-crypto')
 const keyring = new Keyring({ type: 'sr25519' })
-const getData = require('../../src/getHypercoreData')
+const getData = require('../../src/getFeed')
 const getChainAPI = require('../../src/chainAPI') // to use substrate node
 const SDK = require('dat-sdk')
 const storage = require('random-access-memory')
@@ -9,6 +9,8 @@ const storage = require('random-access-memory')
 const levelup = require('levelup')
 const memdown = require('memdown')
 
+const Account = require('../../src/account')
+const ACCOUNTS = require('./accounts.json')
 const colors = require('colors/safe')
 const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
 function LOG (...msgs) {
@@ -39,62 +41,71 @@ function LOG (...msgs) {
 ----------------------------------------- */
 
 // 1. Get substrate chain API
+setup()
+
 async function setup () {
   await cryptoWaitReady();
   const chainAPI = await getChainAPI()
   const serviceAPI = {}
-  const names = ['//Alice', '//Charlie', '//Ferdie', '//Eve', '//Dave']
-  const accounts = []
-  for (var i = 0; i < names.length; i++) {
-    const name = names[i]
-    const account = makeAccount(name)
-    accounts.push(account)
-    account.name = name.split('//')[1]
-    LOG(name, account.address)
-  }
-  if (names.length === accounts.length) start(chainAPI, serviceAPI, accounts)
+  start(chainAPI, serviceAPI)
 }
-setup()
 
 // 2. `make ACCOUNT`
-function makeAccount (name) {
-  return keyring.addFromUri(name)
-}
+// function makeAccount (name) {
+//   return keyring.addFromUri(name)
+// }
 
-async function start (chainAPI, serviceAPI, accounts) {
+
+async function start (chainAPI, serviceAPI) {
+
+  chainAPI.listenToEvents(handleEvent)
+  const accounts = {}
+  for(let name in ACCOUNTS) {
+    const account = await makeAccount(name)
+    accounts[account.chainKeypair.address] = account
+    LOG(name, account.sdkIdentity.publicKey.toString('hex'))
+
+    const nonce = await getNonce(account)
+    if (ACCOUNTS[name].publisher) { await registerData(account, nonce)}
+    if (ACCOUNTS[name].hoster) { await registerHoster(account, nonce) }
+    if (ACCOUNTS[name].encoder) { await registerEncoder(account, nonce) }
+    if (ACCOUNTS[name].attester) { await registerAttestor(account, nonce) }
+  }
+
+  async function makeAccount (name) {
+    return Account.load({
+      persist: false,
+      application: `datdot-account-${name}`
+    })
+  }
+
+  async function getNonce (account) {
+    return account.nonce++
+  }
   /* --------------------------------------
             B. COMMIT FLOW
   ----------------------------------------- */
   // 1. `publish DATA`
-  async function registerData () {
+  async function registerData (account, nonce) {
     const data = await getData
-    const opts = {
-      merkleRoot: data,
-      account: accounts[0]
-    }
-    await chainAPI.registerData(opts)
+    account = account.chainKeypair
+    await chainAPI.registerData({merkleRoot: data, account, nonce})
   }
-  // registerEncoder()
-  // registerAttestor()
-  // registerHoster()
-  registerData()
-  chainAPI.listenToEvents(handleEvent)
 
   /* --------------------------------------
         C. REGISTERING FLOW
   ----------------------------------------- */
-  async function registerHoster () {
-    const account = accounts[2]
-	  await chainAPI.registerHoster({account})
+  async function registerHoster (account, nonce) {
+    account.initHoster()
+	  await chainAPI.registerHoster({account: account.chainKeypair})
   }
 
-  async function registerEncoder () {
-    const account = accounts[3]
-    await chainAPI.registerEncoder({ account })
+  async function registerEncoder (account, nonce) {
+    account.initEncoder()
+    await chainAPI.registerEncoder({account: account.chainKeypair, nonce})
   }
-  async function registerAttestor () {
-    const account = accounts[1]
-    await chainAPI.registerAttestor({ account })
+  async function registerAttestor (account, nonce) {
+    await chainAPI.registerAttestor({ account: account.chainKeypair, nonce })
   }
   /* --------------------------------------
             D. SERVICE FLOW
@@ -196,9 +207,9 @@ async function start (chainAPI, serviceAPI, accounts) {
     const address = event.data[0]
     LOG('New event:', event.method, event.data.toString())
     if (event.method === 'SomethingStored') {
-      await registerAttestor()
-      await registerEncoder()
-      await registerHoster()
+      // await registerAttestor()
+      // await registerEncoder()
+      // await registerHoster()
     }
     if (event.method === 'NewPin') {
       await requestHosting(event.data)

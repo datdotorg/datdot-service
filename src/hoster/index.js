@@ -39,7 +39,7 @@ module.exports = class Hoster {
   }
 
   async addFeed (key, encoderKey, opts) {
-    console.log('addFeed - encoder key', encoderKey)
+    console.log('OPTS', opts)
     await this.setOpts(key, opts)
     await this.addKey(key, opts)
     await this.loadFeedData(key)
@@ -242,7 +242,7 @@ module.exports = class Hoster {
     const existing = await this.listKeys()
     const data = { key: stringKey, options }
     const final = existing.concat(data)
-
+    console.log('final',final )
     await this.saveKeys(final)
   }
 

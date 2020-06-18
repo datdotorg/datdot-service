@@ -66,7 +66,7 @@ module.exports = class Node {
   async initHoster ({ db, ...opts } = {}) {
     const { sdk, EncoderDecoder } = this
 
-    if (!opts.onNeedsEncoding) throw new TypeError('Must specify onNeedsEncoding function')
+    // if (!opts.onNeedsEncoding) throw new TypeError('Must specify onNeedsEncoding function')
 
     if (!db) {
       const storage = this.persist ? path.resolve(this.storageLocation, './hosterDB') : memdown()
@@ -74,7 +74,6 @@ module.exports = class Node {
     }
 
     this.hoster = await Hoster.load({ sdk, db, EncoderDecoder, ...opts })
-
     return this.hoster
   }
 
@@ -118,8 +117,8 @@ module.exports = class Node {
     return this.encoder.encodeFor(hosterIdentity, feedKey, ranges)
   }
 
-  async hostFeed (feedKey, plan) {
-    return this.hoster.addFeed(feedKey, plan)
+  async hostFeed (feedKey, encoderKey, plan) {
+    return this.hoster.addFeed(feedKey,encoderKey, plan)
   }
 
   async stopHostingFeed (feedKey) {

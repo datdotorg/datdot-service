@@ -10,13 +10,13 @@ module.exports = {
       system: { events: handler => handlers.push(handler) },
       datVerify: { dat, users }
     },
-    tx: { datVerify: { registerEncoder, registerAttestor, registerSeeder, registerData } }
+    tx: { datVerify: { registerEncoder, registerAttestor, registerHoster, registerData } }
   })
 }
 
 async function registerEncoder () { return { signAndSend: signAndSend.bind('registerEncoder') } }
 async function registerAttestor () { return { signAndSend: signAndSend.bind('registerAttestor') } }
-async function registerSeeder () { return { signAndSend: signAndSend.bind('registerSeeder') } }
+async function registerHoster () { return { signAndSend: signAndSend.bind('registerHoster') } }
 async function registerData (merkleRoot) {
   const [key, {hashType, children}, signature] = merkleRoot
   const feed = { publickey: key, meta: { signature, hashType, children }, status: 'unhosted' }
@@ -45,7 +45,7 @@ async function signAndSend (account, { nonce }, status) {
     const SomethingStored = { event: { data: [address], method: 'SomethingStored' } }
     handlers.forEach(handler => handler([SomethingStored]))
   }
-  else if (fn_name === 'registerSeeder') {
+  else if (fn_name === 'registerHoster') {
 
     ROLES.seeders.push(ACCOUNT)
     const id = ROLES.all.push(ACCOUNT) - 1

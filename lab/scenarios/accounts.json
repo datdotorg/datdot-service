@@ -1,0 +1,32 @@
+{
+	"Alice": {
+		"publisher": true,
+		"hoster": false,
+		"encoder": false,
+		"attestor": false
+	},
+	"Bob": {
+		"publisher": false,
+		"hoster": true,
+		"encoder": true,
+		"attestor": true
+	},
+	"Charlie": {
+		"publisher": false,
+		"hoster": true,
+		"encoder": false,
+		"attestor": true
+	},
+	"Dave": {
+		"publisher": false,
+		"hoster": true,
+		"encoder": true,
+		"attestor": false
+	},
+	"Eve": {
+		"publisher": false,
+		"hoster": false,
+		"encoder": true,
+		"attestor": true
+	}
+}

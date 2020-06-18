@@ -65,6 +65,7 @@ module.exports = class Encoder {
 
     // TODO: Add timeout for when we can't find the hoster
     const peer = await this.communication.findByTopicAndPublicKey(topic, hosterKey, { announce: false, lookup: true })
+    console.log('PEER is here')
     const resultStream = ndjson.serialize()
     const confirmStream = ndjson.parse()
 

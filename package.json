@@ -23,6 +23,7 @@
     "duplexify": "^4.1.1",
     "env-paths": "^2.2.0",
     "fetch": "^1.1.0",
+    "fs-extra": "^9.0.1",
     "hypercore-really-ready": "^1.0.0",
     "hyperswarm": "^2.4.0",
     "iltorb": "^2.4.4",
