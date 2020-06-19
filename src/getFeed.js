@@ -52,7 +52,7 @@ function makeHypercore (cb) {
     console.log('Appended 3 more blocks, %d in total (%d bytes)\n', feed.length, feed.byteLength)
     cb(null, feed)
     const swarm = hyperswarm()
-    swarm.join(feed.key, {
+    swarm.join(feed.discoveryKey, {
       lookup: true, // find & connect to peers
       announce: true // optional- announce self as a connection target
     })

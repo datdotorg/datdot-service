@@ -121,7 +121,7 @@ async function start (chainAPI, serviceAPI) {
     //   // const opts = {account: hosterKey, archive: datID, index}
     //   // chainAPI.confirmHosting(opts)
     // })
-    const activateEncoder = await encoder.encodeFor(hosterKey, archive_pubkey, ranges)
+    const activateEncoder = encoder.encodeFor(hosterKey, archive_pubkey, ranges)
     // activateEncoder.then(() => {
     //   LOG('Encoding succesfull')
     //   // registerEncoding for each range

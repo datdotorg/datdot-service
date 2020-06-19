@@ -69,7 +69,6 @@ module.exports = class Encoder {
     const topic = feedKey
 
     const feed = this.Hypercore(feedKey)
-    LOG('FEED', feed)
 
     // TODO: Add timeout for when we can't find the hoster
     const peer = await this.communication.findByTopicAndPublicKey(topic, hosterKey, { announce: false, lookup: true })
@@ -86,7 +85,7 @@ module.exports = class Encoder {
       LOG('get feed', ranges)
       for (let index = range[0], len = range[1] + 1; index < len; index++) {
         // TODO: Add timeout for when we can't get feed data
-        const data = await feed.get(index, opts)
+        const data = await feed.get(index)
         LOG('DATA', data)
 
         const encoded = await this.EncoderDecoder.encode(data)
