@@ -1,7 +1,6 @@
 const Hoster = require('../hoster')
 const Encoder = require('../encoder')
 const Attestor = require('../attestor')
-const Node = require('../node')
 const SDK = require('dat-sdk')
 const DefaultEncoderDecoder = require('../EncoderDecoder')
 const RAM = require('random-access-memory')
@@ -59,11 +58,113 @@ module.exports = class Account {
 
     const { application } = sdkOpts
 
-    const node = new Node({ sdk, ...opts, EncoderDecoder, application, persist })
+    const account = new Account({ sdk, ...opts, EncoderDecoder, application, persist })
 
-    await node.init()
+    await account.init()
 
-    return node
+    return account
   }
 
+  async initHoster ({ db, ...opts } = {}) {
+    const { sdk, EncoderDecoder } = this
+
+    // if (!opts.onNeedsEncoding) throw new TypeError('Must specify onNeedsEncoding function')
+
+    if (!db) {
+      const storage = this.persist ? path.resolve(this.storageLocation, './hosterDB') : memdown()
+      db = levelup(storage)
+    }
+
+    this.hoster = await Hoster.load({ sdk, db, EncoderDecoder, ...opts })
+
+    return this.hoster
+  }
+
+  async initEncoder (opts = {}) {
+    const { sdk, EncoderDecoder } = this
+
+    this.encoder = await Encoder.load({ sdk, EncoderDecoder, ...opts })
+
+    return this.encoder
+  }
+
+  async initAttestor (opts = {}) {
+    const { sdk } = this
+
+    this.attestor = await Attestor.load({ sdk, ...opts })
+
+    return this.attestor
+  }
+
+  get hosterIdentity () {
+    return this.hoster.publicKey
+  }
+
+  get encoderIdentity () {
+    return this.encoder.publicKey
+  }
+
+  get encoderSigningIdentity () {
+    return this.encoder.signingPublicKey
+  }
+
+  get replicationIdentity () {
+    return this.sdkIdentity.publicKey
+  }
+
+  get name () {
+		if(!this.application) return DEFAULT_SDK_APPLICATION
+		return this.application.replace('datdot-account-', '')
+  }
+
+  get address() {
+		return this.chainKeypair.address
+  }
+
+  async attest (feedKey, index) {
+    return this.attestor.attest(feedKey, index)
+  }
+
+  async encodeFor (hosterIdentity, feedKey, ranges) {
+    return this.encoder.encodeFor(hosterIdentity, feedKey, ranges)
+  }
+
+  async hostFeed (feedKey, encoderIdentity, plan) {
+    return this.hoster.addFeed(feedKey, encoderIdentity, plan)
+  }
+
+  async stopHostingFeed (feedKey) {
+    return this.hoster.removeFeed(feedKey)
+  }
+
+  async getHostingProof (feedKey, index) {
+    const { encoded, proof, merkleProof } = await this.hoster.getProofOfStorage(feedKey, index)
+
+    return { index, encoded, proof, feed: feedKey }
+  }
+
+  async listHostedKeys () {
+    return this.hoster.listKeys()
+  }
+
+  async nextNonce () {
+    // TODO: Persist somewhere?
+    return this.nonce++
+  }
+
+  async signAndSend (transaction) {
+    const nonce = await this.nextNonce()
+
+    return transaction.signAndSend(this.chainKeypair, { nonce })
+  }
+
+  async close () {
+    const toResolve = []
+
+    if (this.hoster) this.toResolve.push(this.hoster.close())
+    if (this.encoder) this.toResolve.push(this.encoder.close())
+    this.toResolve.push(this.sdk.close())
+
+    await Promise.all(toResolve)
+  }
 }

@@ -114,27 +114,27 @@ async function start (chainAPI, serviceAPI) {
     LOG('Pairing hoster and encoder', hosterKey, encoderKey)
 
     const activateHoster = hoster.hostFeed(archive_pubkey, encoderKey, plan)
-    activateHoster.then(() => {
-      LOG('Hosting succesfull')
-      // const index = await chainAPI.getEncodedIndex(encoderAddress)
-      // LOG('Index', index)
-      // const opts = {account: hosterKey, archive: datID, index}
-      // chainAPI.confirmHosting(opts)
-    })
+    // activateHoster.then(() => {
+    //   LOG('Hosting succesfull')
+    //   // const index = await chainAPI.getEncodedIndex(encoderAddress)
+    //   // LOG('Index', index)
+    //   // const opts = {account: hosterKey, archive: datID, index}
+    //   // chainAPI.confirmHosting(opts)
+    // })
     const activateEncoder = await encoder.encodeFor(hosterKey, archive_pubkey, ranges)
-    activateEncoder.then(() => {
-      LOG('Encoding succesfull')
-      // registerEncoding for each range
-      plan.ranges.forEach(range => {
-        const opts = {
-          account: encoderKey,
-          hosterID,
-          datID,
-          start: range.start,
-          end: range.end}
-        chainAPI.registerEncoding(opts)
-      })
-    })
+    // activateEncoder.then(() => {
+    //   LOG('Encoding succesfull')
+    //   // registerEncoding for each range
+    //   plan.ranges.forEach(range => {
+    //     const opts = {
+    //       account: encoderKey,
+    //       hosterID,
+    //       datID,
+    //       start: range.start,
+    //       end: range.end}
+    //     chainAPI.registerEncoding(opts)
+    //   })
+    // })
 
     // end of Mauve's code
   }
