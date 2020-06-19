@@ -9,6 +9,13 @@ const { seedKeygen } = require('noise-peer')
 
 const HosterStorage = require('../hoster-storage')
 
+const colors = require('colors/safe')
+const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
+function LOG (...msgs) {
+  msgs = [`[${NAME}] `, ...msgs].map(msg => colors.cyan(msg))
+  console.log(...msgs)
+}
+
 const NAMESPACE = 'datdot-hoster'
 const NOISE_NAME = 'noise'
 const ALL_KEYS_KEY = 'all_keys'
@@ -39,7 +46,7 @@ module.exports = class Hoster {
   }
 
   async addFeed (key, encoderKey, opts) {
-    console.log('OPTS', opts)
+    LOG('OPTS', opts)
     await this.setOpts(key, opts)
     await this.addKey(key, opts)
     await this.loadFeedData(key)
@@ -48,7 +55,7 @@ module.exports = class Hoster {
 
   async listenEncoder (encoderKey, key) {
     // TODO: Derive key by combining our public keys and feed key
-    console.log('listen encoder', encoderKey)
+    LOG('listen encoder', encoderKey)
     const feed = this.Hypercore(key, { sparse: true })
     const topic = key
     const peer = await this.communication.findByTopicAndPublicKey(topic, encoderKey, ANNOUNCE)
@@ -160,7 +167,7 @@ module.exports = class Hoster {
           start,
           end
         })
-        console.log('downloading', start, end)
+        LOG('downloading range:', start, end)
 
       }
 
@@ -189,7 +196,7 @@ module.exports = class Hoster {
 
   async storeEncoded (key, index, proof, encoded, nodes, signature) {
     const storage = await this.getStorage(key)
-    console.log('Storing encoded')
+    LOG('Storing encoded')
     return storage.storeEncoded(index, proof, encoded, nodes, signature)
   }
 
@@ -242,7 +249,6 @@ module.exports = class Hoster {
     const existing = await this.listKeys()
     const data = { key: stringKey, options }
     const final = existing.concat(data)
-    console.log('final',final )
     await this.saveKeys(final)
   }
 

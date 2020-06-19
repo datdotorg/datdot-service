@@ -37,6 +37,7 @@ async function datdotChain () {
     listenToEvents,
     getArchive,
     getUser,
+    getEncodedIndex,
   }
 
   return chainAPI
@@ -79,6 +80,11 @@ async function datdotChain () {
   }
 
   async function getUser (id) { return API.query.datVerify.users(id) }
+
+  async function getEncodedIndex (encoderAddress) {
+    const encoded = await HostedMap.encoded
+    encoded.forEach((item, i) => { if (item[0] === encoderAddress) return i })
+  }
 
   async function registerEncoding (opts) {
     const {account, nonce, hosterID, datID, start, range} = opts

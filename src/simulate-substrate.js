@@ -32,8 +32,8 @@ function dat (id) {
 }
 function users (id) {
   const account =  ROLES.all[id]
-  const { address, publicKey } = account
-  return { address, publicKey }
+  const { address } = account
+  return { address}
 }
 async function signAndSend (account, { nonce }, status) {
   const fn_name = `${this}`

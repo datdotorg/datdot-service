@@ -10,6 +10,13 @@ const NAMESPACE = 'datdot-encoder'
 const IDENITY_NAME = 'signing'
 const NOISE_NAME = 'noise'
 
+const colors = require('colors/safe')
+const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
+function LOG (...msgs) {
+  msgs = [`[${NAME}] `, ...msgs].map(msg => colors.magenta(msg))
+  console.log(...msgs)
+}
+
 module.exports = class Encoder {
   constructor ({
     sdk,
@@ -52,7 +59,7 @@ module.exports = class Encoder {
   }
 
   async encodeFor (hosterKey, feedKey, ranges) {
-    console.log('HOSTER KEY', hosterKey)
+    LOG('HOSTER KEY', hosterKey)
     if (!Array.isArray(ranges)) {
       const index = ranges
       ranges = [[index, index]]
@@ -62,10 +69,11 @@ module.exports = class Encoder {
     const topic = feedKey
 
     const feed = this.Hypercore(feedKey)
+    LOG('FEED', feed)
 
     // TODO: Add timeout for when we can't find the hoster
     const peer = await this.communication.findByTopicAndPublicKey(topic, hosterKey, { announce: false, lookup: true })
-    console.log('PEER is here')
+    LOG('PEER is here')
     const resultStream = ndjson.serialize()
     const confirmStream = ndjson.parse()
 
@@ -74,11 +82,12 @@ module.exports = class Encoder {
 
     // const ranges = [[2, 5], [7, 15], [17, 27]]
     for (const range of ranges) {
+      ranges = [[range.start, range.end]]
+      LOG('get feed', ranges)
       for (let index = range[0], len = range[1] + 1; index < len; index++) {
         // TODO: Add timeout for when we can't get feed data
-        const data = await feed.get(index)
-        console.log('DATA', dataclear
-      )
+        const data = await feed.get(index, opts)
+        LOG('DATA', data)
 
         const encoded = await this.EncoderDecoder.encode(data)
 
