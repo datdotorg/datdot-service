@@ -91,8 +91,7 @@ module.exports = class Hoster {
             nodes,
             Buffer.from(signature)
           )
-          LOG('Store encoded')
-          LOG('THIS', this.storages)
+
           confirmStream.write({
             type: 'encoded:stored',
             ok: true

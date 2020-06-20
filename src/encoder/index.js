@@ -79,13 +79,13 @@ module.exports = class Encoder {
     const encodingStream = peer.createStream(topic)
     pump(resultStream, encodingStream, confirmStream)
 
-    // const ranges = [[2, 5], [7, 15], [17, 27]]
+    ranges = ranges.map(range => [ range.start, range.end ] )
     for (const range of ranges) {
-      ranges = [[range.start, range.end]]
       LOG('get feed', range)
       for (let index = range.start, len = range.end + 1; index < len; index++) {
         // TODO: Add timeout for when we can't get feed data
         const data = await feed.get(index)
+        LOG('DATA for index:', index,  data)
 
         const encoded = await this.EncoderDecoder.encode(data)
 
@@ -125,7 +125,7 @@ module.exports = class Encoder {
         }
       }
     }
-
+    LOG('Ending the stream')
     encodingStream.end()
   }
 

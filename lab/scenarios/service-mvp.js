@@ -106,10 +106,13 @@ async function start (chainAPI, serviceAPI) {
     const encoder = accounts[encoderAddress]
     const encoderKey = encoder.encoder.publicKey
 
-    const ranges = [{ start: 1, end: 4 }]
+    const ranges = [{ start: 0, end: 1 }, { start: 2, end: 3 }]
+    // @TODO for some reason doesn't work with more ranges (for example 1, 2)
+    // Plus if we have more newPin events, it triggers this function many time and maybe messes things up
     const plan = { ranges }
     LOG('Publisher requested hosting for', archive_pubkey)
     LOG('Pairing hoster and encoder', hosterKey, encoderKey)
+
 
     const activateHoster = hoster.hostFeed(archive_pubkey, encoderKey, plan)
     // activateHoster.then(() => {
@@ -119,20 +122,20 @@ async function start (chainAPI, serviceAPI) {
     //   // const opts = {account: hosterKey, archive: datID, index}
     //   // chainAPI.confirmHosting(opts)
     // })
-    const activateEncoder = encoder.encodeFor(hosterKey, archive_pubkey, ranges)
-    // activateEncoder.then(() => {
-    //   LOG('Encoding succesfull')
-    //   // registerEncoding for each range
-    //   plan.ranges.forEach(range => {
-    //     const opts = {
-    //       account: encoderKey,
-    //       hosterID,
-    //       datID,
-    //       start: range.start,
-    //       end: range.end}
-    //     chainAPI.registerEncoding(opts)
-    //   })
-    // })
+    const activateEncoder = await encoder.encodeFor(hosterKey, archive_pubkey, ranges)
+    activateEncoder.then(() => {
+      LOG('Encoding succesfull')
+      // registerEncoding for each range
+      // plan.ranges.forEach(range => {
+      //   const opts = {
+      //     account: encoderKey,
+      //     hosterID,
+      //     datID,
+      //     start: range.start,
+      //     end: range.end}
+      //   chainAPI.registerEncoding(opts)
+      // })
+    })
 
     // end of Mauve's code
   }
@@ -173,6 +176,7 @@ async function start (chainAPI, serviceAPI) {
   /* --------------------------------------
             E. EVENTS
   ----------------------------------------- */
+  counter = 0
   async function handleEvent (event) {
     const address = event.data[0]
     LOG('New event:', event.method, event.data.toString())

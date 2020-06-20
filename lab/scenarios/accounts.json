@@ -7,7 +7,7 @@
 	},
 	"Bob": {
 		"publisher": false,
-		"hoster": true,
+		"hoster": false,
 		"encoder": true,
 		"attestor": true
 	},
@@ -19,14 +19,14 @@
 	},
 	"Dave": {
 		"publisher": false,
-		"hoster": true,
-		"encoder": true,
+		"hoster": false,
+		"encoder": false,
 		"attestor": false
 	},
 	"Eve": {
 		"publisher": false,
 		"hoster": false,
-		"encoder": true,
-		"attestor": true
+		"encoder": false,
+		"attestor": false
 	}
 }

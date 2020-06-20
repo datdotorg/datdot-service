@@ -20,13 +20,7 @@ function getData (account) {
     await feed.ready()
     await feed.append('Hello World!')
     await feed.append('Pozdravljen svet!')
-    await feed.append('Pozdravljen svet!')
-    await feed.append('Pozdravljen svet!')
-    await feed.append('Pozdravljen svet!')
-    await feed.append('Pozdravljen svet!')
-    await feed.append('Pozdravljen svet!')
-    await feed.append('Pozdravljen svet!')
-    await feed.append('Pozdravljen svet!')
+    await feed.append('Hola Mundo!')
     await feed.append('Hallo Welt!')
     const data = []
     const feed_pubkey = feed.key
