@@ -115,14 +115,14 @@ async function start (chainAPI, serviceAPI) {
 
 
     const activateHoster = hoster.hostFeed(archive_pubkey, encoderKey, plan)
-    // activateHoster.then(() => {
-    //   LOG('Hosting succesfull')
-    //   // const index = await chainAPI.getEncodedIndex(encoderAddress)
-    //   // LOG('Index', index)
-    //   // const opts = {account: hosterKey, archive: datID, index}
-    //   // chainAPI.confirmHosting(opts)
-    // })
-    const activateEncoder = await encoder.encodeFor(hosterKey, archive_pubkey, ranges)
+    activateHoster.then(() => {
+      LOG('Hosting succesfull')
+      // const index = await chainAPI.getEncodedIndex(encoderAddress)
+      // LOG('Index', index)
+      // const opts = {account: hosterKey, archive: datID, index}
+      // chainAPI.confirmHosting(opts)
+    })
+    const activateEncoder = encoder.encodeFor(hosterKey, archive_pubkey, ranges)
     activateEncoder.then(() => {
       LOG('Encoding succesfull')
       // registerEncoding for each range
