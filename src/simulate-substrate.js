@@ -27,8 +27,7 @@ async function registerData (merkleRoot) {
 }
 function dat (id) {
   const feed = feedlist[id]
-  const last = feed.meta.children.pop()
-  return { archive_pubkey: feed.publickey, archive_size: last.total_length }
+  return { archive_pubkey: feed.publickey }
 }
 function users (id) {
   const account =  ROLES.all[id]

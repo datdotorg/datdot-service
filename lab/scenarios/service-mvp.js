@@ -69,7 +69,7 @@ async function start (chainAPI, serviceAPI) {
   ----------------------------------------- */
   // 1. `publish DATA`
   async function registerData (account, nonce) {
-    const data = await getData
+    const data = await getData(account)
     account = account.chainKeypair
     await chainAPI.registerData({merkleRoot: data, account, nonce})
   }
@@ -96,9 +96,7 @@ async function start (chainAPI, serviceAPI) {
   async function requestHosting (data) {
     LOG('Request Hosting event data')
     const [encoderID, hosterID, datID] = data
-    // const { archive_pubkey, archive_size } = await chainAPI.getArchive(datID)
-    const { archive_pubkey, archive_size } = await chainAPI.getArchive(datID)
-    LOG('Archive size', archive_size )
+    const { archive_pubkey } = await chainAPI.getArchive(datID)
     var { address: hosterAddress } = await chainAPI.getUser(hosterID)
     var { address: encoderAddress } = await chainAPI.getUser(encoderID)
 
@@ -108,7 +106,7 @@ async function start (chainAPI, serviceAPI) {
     const encoder = accounts[encoderAddress]
     const encoderKey = encoder.encoder.publicKey
 
-    const ranges = [{ start: 0, end: 1 }]
+    const ranges = [{ start: 1, end: 4 }]
     const plan = { ranges }
     LOG('Publisher requested hosting for', archive_pubkey)
     LOG('Pairing hoster and encoder', hosterKey, encoderKey)

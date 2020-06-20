@@ -46,7 +46,6 @@ module.exports = class Hoster {
   }
 
   async addFeed (key, encoderKey, opts) {
-    LOG('OPTS', opts)
     await this.setOpts(key, opts)
     await this.addKey(key, opts)
     await this.loadFeedData(key)
@@ -55,7 +54,6 @@ module.exports = class Hoster {
 
   async listenEncoder (encoderKey, key) {
     // TODO: Derive key by combining our public keys and feed key
-    LOG('listen encoder', encoderKey)
     const feed = this.Hypercore(key, { sparse: true })
     const topic = key
     const peer = await this.communication.findByTopicAndPublicKey(topic, encoderKey, ANNOUNCE)
@@ -93,7 +91,8 @@ module.exports = class Hoster {
             nodes,
             Buffer.from(signature)
           )
-
+          LOG('Store encoded')
+          LOG('THIS', this.storages)
           confirmStream.write({
             type: 'encoded:stored',
             ok: true
@@ -167,7 +166,6 @@ module.exports = class Hoster {
           start,
           end
         })
-        LOG('downloading range:', start, end)
 
       }
 
@@ -196,7 +194,6 @@ module.exports = class Hoster {
 
   async storeEncoded (key, index, proof, encoded, nodes, signature) {
     const storage = await this.getStorage(key)
-    LOG('Storing encoded')
     return storage.storeEncoded(index, proof, encoded, nodes, signature)
   }
 

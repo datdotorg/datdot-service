@@ -82,11 +82,10 @@ module.exports = class Encoder {
     // const ranges = [[2, 5], [7, 15], [17, 27]]
     for (const range of ranges) {
       ranges = [[range.start, range.end]]
-      LOG('get feed', ranges)
-      for (let index = range[0], len = range[1] + 1; index < len; index++) {
+      LOG('get feed', range)
+      for (let index = range.start, len = range.end + 1; index < len; index++) {
         // TODO: Add timeout for when we can't get feed data
         const data = await feed.get(index)
-        LOG('DATA', data)
 
         const encoded = await this.EncoderDecoder.encode(data)
 
