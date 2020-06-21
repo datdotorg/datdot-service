@@ -67,6 +67,7 @@ module.exports = class Hoster {
     pump(confirmStream, encodingStream, rawResultStream, resultStream)
 
     for await (const message of resultStream) {
+      LOG('New message', message.type)
       const { type } = message
 
       if (type === 'encoded') {

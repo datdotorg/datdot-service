@@ -106,8 +106,7 @@ async function start (chainAPI, serviceAPI) {
     const encoder = accounts[encoderAddress]
     const encoderKey = encoder.encoder.publicKey
 
-    const ranges = [{ start: 1, end: 1 }]
-    // const ranges = [{ start: 0, end: 1 }, { start: 2, end: 3 }]
+    const ranges = [{ start: 0, end: 1 }, { start: 2, end: 3 }]
     // @TODO for some reason doesn't work with more ranges (for example 1, 2)
     // Plus if we have more newPin events, it triggers this function many time and maybe messes things up
     const plan = { ranges }

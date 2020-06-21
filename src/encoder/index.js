@@ -59,11 +59,13 @@ module.exports = class Encoder {
   }
 
   async encodeFor (hosterKey, feedKey, ranges) {
+
     LOG('HOSTER KEY', hosterKey)
     if (!Array.isArray(ranges)) {
       const index = ranges
       ranges = [[index, index]]
     }
+
 
     // TODO: Derive shared key
     const topic = feedKey
@@ -80,20 +82,22 @@ module.exports = class Encoder {
     pump(resultStream, encodingStream, confirmStream)
 
     ranges = ranges.map(range => [ range.start, range.end ] )
+    LOG('RANGES', ranges)
     for (const range of ranges) {
-      LOG('get feed', range)
+      LOG('Get feeds for ranges', range)
       for (let index = range[0], len = range[1] + 1; index < len; index++) {
+        LOG('INDEX', index)
         // TODO: Add timeout for when we can't get feed data
         const data = await feed.get(index)
         LOG('DATA for index:', index,  data)
 
         const encoded = await this.EncoderDecoder.encode(data)
+        LOG('Encoded for index:', index,  encoded)
 
         const { nodes, signature } = await feed.proof(index)
 
         // Allocate buffer for the proof
         const proof = Buffer.alloc(sodium.crypto_sign_BYTES)
-
         // Allocate buffer for the data that should be signed
         const toSign = Buffer.alloc(encoded.length + varint.encodingLength(index))
 
@@ -119,6 +123,7 @@ module.exports = class Encoder {
         // Wait for the hoster to tell us they've handled the data
         // TODO: Set up timeout for when peer doesn't respond to us
         const [response] = await once(confirmStream, 'data')
+        LOG('Response', response)
 
         if (response.error) {
           throw new Error(response.error)
