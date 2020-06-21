@@ -67,9 +67,8 @@ module.exports = class Hoster {
     pump(confirmStream, encodingStream, rawResultStream, resultStream)
 
     for await (const message of resultStream) {
-      LOG('New message', message.type)
       const { type } = message
-
+      LOG('Receiving message from encoder')
       if (type === 'encoded') {
         const { feed, index, encoded, proof, nodes, signature } = message
 
@@ -92,19 +91,21 @@ module.exports = class Hoster {
             nodes,
             Buffer.from(signature)
           )
+          LOG('Storing encoded data')
 
           confirmStream.write({
             type: 'encoded:stored',
             ok: true
           })
 
-          this.emit('encoded', key, index)
+          // this.emit('encoded', key, index)
         } catch (e) {
           // Uncomment for better stack traces
-          // console.error(e)
+          LOG(`ERROR_STORING: ${e.message}`)
           sendError(`ERROR_STORING: ${e.message}`, { e })
         }
       } else {
+        LOG('UNKNOWN_MESSAGE', { messageType: type })
         sendError('UNKNOWN_MESSAGE', { messageType: type })
       }
     }
@@ -158,15 +159,13 @@ module.exports = class Hoster {
       await feed.ready()
 
       const { length } = feed
-
-      for (const { start, end } of ranges) {
-        // const end = Math.min(wantedEnd, length) @TODO why do we need this (ranges doesn't have { start, wantedEnd}
-
+      LOG('Preparing to store feed')
+      for (const { start, wantedEnd } of ranges) {
+        const end = Math.min(wantedEnd, length)
         feed.download({
           start,
           end
         })
-
       }
 
       if (watch) this.watchFeed(feed)

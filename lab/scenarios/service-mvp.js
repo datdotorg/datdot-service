@@ -14,7 +14,7 @@ const ACCOUNTS = require('./accounts.json')
 const colors = require('colors/safe')
 const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
 function LOG (...msgs) {
-  msgs = [`[${NAME}] `, ...msgs].map(msg => colors.green(msg))
+  msgs = [`[${NAME}] `, ...msgs].map(msg => colors.magenta(msg))
   console.log(...msgs)
 }
 
@@ -94,7 +94,6 @@ async function start (chainAPI, serviceAPI) {
   ----------------------------------------- */
 
   async function requestHosting (data) {
-    LOG('Request Hosting event data')
     const [encoderID, hosterID, datID] = data
     const { archive_pubkey } = await chainAPI.getArchive(datID)
     var { address: hosterAddress } = await chainAPI.getUser(hosterID)
@@ -106,9 +105,7 @@ async function start (chainAPI, serviceAPI) {
     const encoder = accounts[encoderAddress]
     const encoderKey = encoder.encoder.publicKey
 
-    const ranges = [{ start: 0, end: 1 }, { start: 2, end: 3 }]
-    // @TODO for some reason doesn't work with more ranges (for example 1, 2)
-    // Plus if we have more newPin events, it triggers this function many time and maybe messes things up
+    const ranges = [{ start: 0, end: 2 }, { start: 4, end: 8 }]
     const plan = { ranges }
     LOG('Publisher requested hosting for', archive_pubkey)
     LOG('Pairing hoster and encoder', hosterKey, encoderKey)
@@ -126,7 +123,7 @@ async function start (chainAPI, serviceAPI) {
     activateEncoder.then(() => {
       LOG('Encoding succesfull')
       // registerEncoding for each range
-      // plan.ranges.forEach(range => {
+      // for (const range in ranges) {
       //   const opts = {
       //     account: encoderKey,
       //     hosterID,

@@ -71,7 +71,7 @@ async function datdotChain () {
   async function registerData (opts) {
     const { merkleRoot, account, nonce } = opts
     const registerData = await API.tx.datVerify.registerData(merkleRoot)
-    LOG(`Publishing data: ${account.address} ${nonce}`)
+    LOG(`Publishing data by user: ${account.address}`)
     await registerData.signAndSend(account, { nonce }, status)
   }
 

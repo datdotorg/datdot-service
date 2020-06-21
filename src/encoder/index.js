@@ -13,7 +13,7 @@ const NOISE_NAME = 'noise'
 const colors = require('colors/safe')
 const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
 function LOG (...msgs) {
-  msgs = [`[${NAME}] `, ...msgs].map(msg => colors.magenta(msg))
+  msgs = [`[${NAME}] `, ...msgs].map(msg => colors.green(msg))
   console.log(...msgs)
 }
 
@@ -74,7 +74,7 @@ module.exports = class Encoder {
 
     // TODO: Add timeout for when we can't find the hoster
     const peer = await this.communication.findByTopicAndPublicKey(topic, hosterKey, { announce: false, lookup: true })
-    LOG('PEER is here')
+    LOG('Connected to the hoster')
     const resultStream = ndjson.serialize()
     const confirmStream = ndjson.parse()
 
@@ -82,20 +82,17 @@ module.exports = class Encoder {
     pump(resultStream, encodingStream, confirmStream)
 
     ranges = ranges.map(range => [ range.start, range.end ] )
-    LOG('RANGES', ranges)
     for (const range of ranges) {
       LOG('Get feeds for ranges', range)
       for (let index = range[0], len = range[1] + 1; index < len; index++) {
-        LOG('INDEX', index)
+        LOG('Start encoding/hosting for index', index)
         // TODO: Add timeout for when we can't get feed data
         const data = await feed.get(index)
-        LOG('DATA for index:', index,  data)
 
         const encoded = await this.EncoderDecoder.encode(data)
-        LOG('Encoded for index:', index,  encoded)
+        LOG('Encoded data:', encoded)
 
         const { nodes, signature } = await feed.proof(index)
-
         // Allocate buffer for the proof
         const proof = Buffer.alloc(sodium.crypto_sign_BYTES)
         // Allocate buffer for the data that should be signed
@@ -109,6 +106,7 @@ module.exports = class Encoder {
         // Sign the data with our singning scret key and write it to the proof buffer
         sodium.crypto_sign_detached(proof, toSign, this.signingSecretKey)
         // Send the encoded stuff over to the hoster so they can store it
+        LOG('Sending data')
         resultStream.write({
           type: 'encoded',
           feed: feedKey,
@@ -123,7 +121,7 @@ module.exports = class Encoder {
         // Wait for the hoster to tell us they've handled the data
         // TODO: Set up timeout for when peer doesn't respond to us
         const [response] = await once(confirmStream, 'data')
-        LOG('Response', response)
+        LOG('Confirmation reponse:', response)
 
         if (response.error) {
           throw new Error(response.error)
