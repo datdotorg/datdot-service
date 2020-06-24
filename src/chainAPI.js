@@ -50,36 +50,36 @@ async function datdotChain () {
     }
   }
 
-  async function registerHoster ({ account, nonce }) {
+  async function registerHoster ({ signer, nonce }) {
     const register = await API.tx.datVerify.registerHoster()
-    LOG(`Registering hoster: ${account.address}`)
-    await register.signAndSend(account, { nonce: nonce }, status)
+    LOG(`Registering hoster: ${signer}`)
+    await register.signAndSend(signer, { nonce: nonce }, status)
   }
 
-  async function registerEncoder ({ account, nonce }) {
+  async function registerEncoder ({ signer, nonce }) {
     const register = await API.tx.datVerify.registerEncoder()
-    LOG(`Registering encoder: ${account.address}`)
-    await register.signAndSend(account, { nonce: nonce }, status)
+    LOG(`Registering encoder: ${signer}`)
+    await register.signAndSend(signer, { nonce: nonce }, status)
   }
 
-  async function registerAttestor ({ account, nonce }) {
+  async function registerAttestor ({ signer, nonce }) {
     const register = await API.tx.datVerify.registerAttestor()
-    LOG(`Registering attestor: ${account.address}`)
-    await register.signAndSend(account, { nonce: nonce }, status)
+    LOG(`Registering attestor: ${signer}`)
+    await register.signAndSend(signer, { nonce: nonce }, status)
   }
 
   async function registerData (opts) {
-    const { merkleRoot, account, nonce } = opts
+    const { merkleRoot, signer, nonce } = opts
     const registerData = await API.tx.datVerify.registerData(merkleRoot)
-    LOG(`Publishing data by user: ${account.address}`)
-    await registerData.signAndSend(account, { nonce }, status)
+    LOG(`Publishing data by user: ${signer}`)
+    await registerData.signAndSend(signer, { nonce }, status)
   }
 
   async function getArchive (archive_index) {
-    return await API.query.datVerify.dat(archive_index)
+    return await API.query.datVerify.archive(archive_index)
   }
 
-  async function getUser (id) { return API.query.datVerify.users(id) }
+  async function getUser (id) { return await API.query.datVerify.users(id) }
 
   async function getEncodedIndex (encoderAddress) {
     const encoded = await HostedMap.encoded

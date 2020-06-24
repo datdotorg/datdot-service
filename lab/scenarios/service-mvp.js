@@ -39,13 +39,13 @@ async function setup () {
 
 
 async function start (chainAPI, serviceAPI) {
-
   chainAPI.listenToEvents(handleEvent)
   const accounts = {}
   for(let name in ACCOUNTS) {
     const account = await makeAccount(name)
-    accounts[account.chainKeypair.address] = account
-    LOG(name, account.sdkIdentity.publicKey.toString('hex'))
+    const address = account.chainKeypair.address
+    accounts[address] = account
+    LOG(name, account.chainKeypair.address.toString('hex'), account.sdkIdentity.publicKey.toString('hex'))
 
     const nonce = await getNonce(account)
     if (ACCOUNTS[name].publisher) { await registerData(account, nonce)}
@@ -70,8 +70,8 @@ async function start (chainAPI, serviceAPI) {
   // 1. `publish DATA`
   async function registerData (account, nonce) {
     const data = await getData(account)
-    account = account.chainKeypair
-    await chainAPI.registerData({merkleRoot: data, account, nonce})
+    const signer = account.chainKeypair.address
+    await chainAPI.registerData({merkleRoot: data, signer, nonce})
   }
 
   /* --------------------------------------
@@ -79,15 +79,19 @@ async function start (chainAPI, serviceAPI) {
   ----------------------------------------- */
   async function registerHoster (account, nonce) {
     await account.initHoster()
-	  await chainAPI.registerHoster({account: account.chainKeypair})
+    LOG('HOSTER ACCOUNT', account.chainKeypair.address)
+    const signer = account.chainKeypair.address
+	  await chainAPI.registerHoster({signer})
   }
 
   async function registerEncoder (account, nonce) {
     await account.initEncoder()
-    await chainAPI.registerEncoder({account: account.chainKeypair, nonce})
+    const signer = account.chainKeypair.address
+    await chainAPI.registerEncoder({signer, nonce})
   }
   async function registerAttestor (account, nonce) {
-    await chainAPI.registerAttestor({ account: account.chainKeypair, nonce })
+    const signer = account.chainKeypair.address
+    await chainAPI.registerAttestor({ signer, nonce })
   }
   /* --------------------------------------
             D. SERVICE FLOW
@@ -96,14 +100,21 @@ async function start (chainAPI, serviceAPI) {
   async function requestHosting (data) {
     const [encoderID, hosterID, datID] = data
     const { archive_pubkey } = await chainAPI.getArchive(datID)
-    var { address: hosterAddress } = await chainAPI.getUser(hosterID)
-    var { address: encoderAddress } = await chainAPI.getUser(encoderID)
+    const feedKey = Buffer.from(archive_pubkey, 'hex')
+    LOG('feedKey', feedKey)
 
+    const hosterAddress  = await chainAPI.getUser(hosterID)
+    const encoderAddress = await chainAPI.getUser(encoderID)
+
+    LOG('hosterAddress', hosterAddress)
     const hoster = accounts[hosterAddress]
+    // LOG('HOSTER', hoster)
     const hosterKey = hoster.hoster.publicKey
 
     const encoder = accounts[encoderAddress]
+    // LOG('ENCODER', encoder)
     const encoderKey = encoder.encoder.publicKey
+
 
     const ranges = [{ start: 0, end: 2 }, { start: 4, end: 8 }]
     const plan = { ranges }
@@ -111,7 +122,7 @@ async function start (chainAPI, serviceAPI) {
     LOG('Pairing hoster and encoder', hosterKey, encoderKey)
 
 
-    const activateHoster = hoster.hostFeed(archive_pubkey, encoderKey, plan)
+    const activateHoster = hoster.hostFeed(feedKey, encoderKey, plan)
     activateHoster.then(() => {
       LOG('Hosting succesfull')
     //   // const index = await chainAPI.getEncodedIndex(encoderAddress)
@@ -119,7 +130,7 @@ async function start (chainAPI, serviceAPI) {
     //   // const opts = {account: hosterKey, archive: datID, index}
     //   // chainAPI.confirmHosting(opts)
     })
-    const activateEncoder =  encoder.encodeFor(hosterKey, archive_pubkey, ranges)
+    const activateEncoder =  encoder.encodeFor(hosterKey, feedKey, ranges)
     activateEncoder.then(() => {
       LOG('Encoding succesfull')
       // registerEncoding for each range
@@ -177,11 +188,7 @@ async function start (chainAPI, serviceAPI) {
   async function handleEvent (event) {
     const address = event.data[0]
     LOG('New event:', event.method, event.data.toString())
-    if (event.method === 'SomethingStored') {
-      // await registerAttestor()
-      // await registerEncoder()
-      // await registerHoster()
-    }
+    if (event.method === 'SomethingStored') {}
     if (event.method === 'NewPin') {
       await requestHosting(event.data)
     }
