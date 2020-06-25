@@ -25,6 +25,7 @@ async function datdotChain () {
   // const API = await ApiPromise.create({ provider,types })
   const API = await rerun(() => ApiPromise.create({ provider, types }))
   const chainAPI = {
+    registerUser,
     registerHoster,
     registerEncoder,
     registerAttestor,
@@ -50,27 +51,33 @@ async function datdotChain () {
     }
   }
 
+  async function registerUser ({ signer, nonce }) {
+    const register = await API.tx.datVerify.registerUser()
+    LOG(`Registering user: ${signer}`)
+    await register.signAndSend(signer, { nonce }, status)
+  }
+
   async function registerHoster ({ signer, nonce }) {
     const register = await API.tx.datVerify.registerHoster()
     LOG(`Registering hoster: ${signer}`)
-    await register.signAndSend(signer, { nonce: nonce }, status)
+    await register.signAndSend(signer, { nonce }, status)
   }
 
   async function registerEncoder ({ signer, nonce }) {
     const register = await API.tx.datVerify.registerEncoder()
     LOG(`Registering encoder: ${signer}`)
-    await register.signAndSend(signer, { nonce: nonce }, status)
+    await register.signAndSend(signer, { nonce }, status)
   }
 
   async function registerAttestor ({ signer, nonce }) {
     const register = await API.tx.datVerify.registerAttestor()
     LOG(`Registering attestor: ${signer}`)
-    await register.signAndSend(signer, { nonce: nonce }, status)
+    await register.signAndSend(signer, { nonce }, status)
   }
 
   async function registerData (opts) {
-    const { merkleRoot, signer, nonce } = opts
-    const registerData = await API.tx.datVerify.registerData(merkleRoot)
+    const { merkleRoot, plan, signer, nonce } = opts
+    const registerData = await API.tx.datVerify.registerData(merkleRoot, plan)
     LOG(`Publishing data by user: ${signer}`)
     await registerData.signAndSend(signer, { nonce }, status)
   }
@@ -91,20 +98,20 @@ async function datdotChain () {
     const args = [hosterID, datID, start, range]
     const register = await API.tx.datVerify.registerEncoding(args)
     LOG(`Register encoding: ${account.address}`)
-    await register.signAndSend(account, { nonce: nonce }, status)
+    await register.signAndSend(account, { nonce }, status)
   }
 
   async function confirmHosting (opts) {
     const {account, nonce, archive, index} = opts
     const confirm = await API.tx.datVerify.confirmHosting(archive, index)
     LOG(`Confriming hosting: ${account.address}`)
-    await register.signAndSend(account, { nonce: nonce }, status)
+    await register.signAndSend(account, { nonce }, status)
   }
 
   async function submitChallenge ({ account, userID, feedID, nonce }) {
     const challenge = await API.tx.datVerify.submitChallenge(userID, feedID)
     LOG(`Requesting a new challenge: ${userID.toString('hex')}, ${feedID.toString('hex')}`)
-    await challenge.signAndSend(account, { nonce: nonce }, status)
+    await challenge.signAndSend(account, { nonce }, status)
   }
 
   async function submitProof ({ data, accounts, account, nonce }) {
@@ -123,7 +130,7 @@ async function datdotChain () {
       const proof = await API.tx.datVerify.submitProof(challenge_index, [])
       // array of bytes (proof format) => fetch from Mauve's proof folder
       const account = keyring.getPair(user.toString('hex')) // @TODO pass account from service-mvp
-      proof.signAndSend(account, { nonce: nonce }, status)
+      proof.signAndSend(account, { nonce }, status)
     }
   }
 

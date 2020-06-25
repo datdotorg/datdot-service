@@ -2,6 +2,11 @@
   STATE
 ******************************************************************************/
 const users = []
+/*
+{
+  address: signer
+}
+*/
 const feeds = []
 /*
 {
@@ -13,6 +18,7 @@ const feeds = []
 const plans = []
 /*
 {
+  feed: feedID,
   publisher: 'userID',
   ranges: [[0, 5], [7, 55]] // default [{0, feed.length}]
 }
@@ -20,7 +26,7 @@ const plans = []
 const contracts = []
 /*
 {
-  feed: 'feedID',
+  plan: planID,
   ranges: [ [0, 3], [5, 10] ],
   encoder: 'encoderID',
   hoster: 'hosterID'
@@ -44,14 +50,16 @@ const attestations = []
 /******************************************************************************
   LOOKUP
 ******************************************************************************/
-const user = {}
-const feed = {}
+const user = {} // address
+const feed = {} //key
+const plan = {} //
+const contract = {} //
 /******************************************************************************
   STATUS
 ******************************************************************************/
-const hosters = []
-const encoders = []
-const attestors = []
+const hosters = [] // user ids
+const encoders = [] // user ids
+const attestors = [] // user ids
 
 const encoding = []
 const encoded = []

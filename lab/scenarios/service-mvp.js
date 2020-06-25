@@ -55,10 +55,14 @@ async function start (chainAPI, serviceAPI) {
   }
 
   async function makeAccount (name) {
-    return Account.load({
+    const account = await Account.load({
       persist: false,
       application: `datdot-account-${name}`
     })
+    const nonce = await getNonce(account)
+    const signer = account.chainKeypair.address
+    await chainAPI.registerUser({signer, nonce})
+    return account
   }
 
   async function getNonce (account) {
@@ -71,7 +75,8 @@ async function start (chainAPI, serviceAPI) {
   async function registerData (account, nonce) {
     const data = await getData(account)
     const signer = account.chainKeypair.address
-    await chainAPI.registerData({merkleRoot: data, signer, nonce})
+    const plan = { publisher: signer, ranges: [[0,8]] }
+    await chainAPI.registerData({merkleRoot: data, plan, signer, nonce})
   }
 
   /* --------------------------------------
@@ -81,7 +86,7 @@ async function start (chainAPI, serviceAPI) {
     await account.initHoster()
     LOG('HOSTER ACCOUNT', account.chainKeypair.address)
     const signer = account.chainKeypair.address
-	  await chainAPI.registerHoster({signer})
+	  await chainAPI.registerHoster({signer, nonce})
   }
 
   async function registerEncoder (account, nonce) {
