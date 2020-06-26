@@ -48,7 +48,7 @@ async function start (chainAPI, serviceAPI) {
     LOG(name, account.chainKeypair.address.toString('hex'), account.sdkIdentity.publicKey.toString('hex'))
 
     const nonce = await getNonce(account)
-    if (ACCOUNTS[name].publisher) { await registerData(account, nonce)}
+    if (ACCOUNTS[name].publisher) { await publishFeedAndPlan(account, nonce)}
     if (ACCOUNTS[name].hoster) { await registerHoster(account, nonce) }
     if (ACCOUNTS[name].encoder) { await registerEncoder(account, nonce) }
     if (ACCOUNTS[name].attester) { await registerAttestor(account, nonce) }
@@ -61,7 +61,7 @@ async function start (chainAPI, serviceAPI) {
     })
     const nonce = await getNonce(account)
     const signer = account.chainKeypair.address
-    await chainAPI.registerUser({signer, nonce})
+    await chainAPI.newUser({signer, nonce})
     return account
   }
 
@@ -72,11 +72,11 @@ async function start (chainAPI, serviceAPI) {
             B. COMMIT FLOW
   ----------------------------------------- */
   // 1. `publish DATA`
-  async function registerData (account, nonce) {
+  async function publishFeedAndPlan (account, nonce) {
     const data = await getData(account)
     const signer = account.chainKeypair.address
-    const plan = { publisher: signer, ranges: [[0,8]] }
-    await chainAPI.registerData({merkleRoot: data, plan, signer, nonce})
+    const plan = { ranges: [[0,8]] }
+    await chainAPI.publishFeedAndPlan({merkleRoot: data, plan, signer, nonce})
   }
 
   /* --------------------------------------
@@ -106,20 +106,14 @@ async function start (chainAPI, serviceAPI) {
     const [encoderID, hosterID, datID] = data
     const { archive_pubkey } = await chainAPI.getArchive(datID)
     const feedKey = Buffer.from(archive_pubkey, 'hex')
-    LOG('feedKey', feedKey)
 
-    const hosterAddress  = await chainAPI.getUser(hosterID)
-    const encoderAddress = await chainAPI.getUser(encoderID)
-
-    LOG('hosterAddress', hosterAddress)
+    const hosterAddress  = await chainAPI.getUserByID(hosterID)
     const hoster = accounts[hosterAddress]
-    // LOG('HOSTER', hoster)
     const hosterKey = hoster.hoster.publicKey
 
+    const encoderAddress = await chainAPI.getUserByID(encoderID)
     const encoder = accounts[encoderAddress]
-    // LOG('ENCODER', encoder)
     const encoderKey = encoder.encoder.publicKey
-
 
     const ranges = [{ start: 0, end: 2 }, { start: 4, end: 8 }]
     const plan = { ranges }
@@ -130,27 +124,13 @@ async function start (chainAPI, serviceAPI) {
     const activateHoster = hoster.hostFeed(feedKey, encoderKey, plan)
     activateHoster.then(() => {
       LOG('Hosting succesfull')
-    //   // const index = await chainAPI.getEncodedIndex(encoderAddress)
-    //   // LOG('Index', index)
-    //   // const opts = {account: hosterKey, archive: datID, index}
-    //   // chainAPI.confirmHosting(opts)
+      // chainAPI.confirmHosting()
     })
     const activateEncoder =  encoder.encodeFor(hosterKey, feedKey, ranges)
     activateEncoder.then(() => {
       LOG('Encoding succesfull')
-      // registerEncoding for each range
-      // for (const range in ranges) {
-      //   const opts = {
-      //     account: encoderKey,
-      //     hosterID,
-      //     datID,
-      //     start: range.start,
-      //     end: range.end}
-      //   chainAPI.registerEncoding(opts)
-      // })
+      // chainAPI.encodingDone()
     })
-
-    // end of Mauve's code
   }
 
 
@@ -193,8 +173,9 @@ async function start (chainAPI, serviceAPI) {
   async function handleEvent (event) {
     const address = event.data[0]
     LOG('New event:', event.method, event.data.toString())
-    if (event.method === 'SomethingStored') {}
-    if (event.method === 'NewPin') {
+    if (event.method === 'NewFeed') {}
+    if (event.method === 'NewPlan') {}
+    if (event.method === 'NewContract') {
       await requestHosting(event.data)
     }
     if (event.method === 'HostingStarted') {

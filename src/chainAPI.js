@@ -25,19 +25,19 @@ async function datdotChain () {
   // const API = await ApiPromise.create({ provider,types })
   const API = await rerun(() => ApiPromise.create({ provider, types }))
   const chainAPI = {
-    registerUser,
+    newUser,
     registerHoster,
     registerEncoder,
     registerAttestor,
-    registerData,
-    registerEncoding,
+    publishFeedAndPlan,
+    encodingDone,
     confirmHosting,
     submitChallenge,
     submitProof,
     attest,
     listenToEvents,
     getArchive,
-    getUser,
+    getUserByID,
     getEncodedIndex,
   }
 
@@ -51,8 +51,8 @@ async function datdotChain () {
     }
   }
 
-  async function registerUser ({ signer, nonce }) {
-    const register = await API.tx.datVerify.registerUser()
+  async function newUser ({ signer, nonce }) {
+    const register = await API.tx.datVerify.newUser()
     LOG(`Registering user: ${signer}`)
     await register.signAndSend(signer, { nonce }, status)
   }
@@ -75,28 +75,28 @@ async function datdotChain () {
     await register.signAndSend(signer, { nonce }, status)
   }
 
-  async function registerData (opts) {
+  async function publishFeedAndPlan (opts) {
     const { merkleRoot, plan, signer, nonce } = opts
-    const registerData = await API.tx.datVerify.registerData(merkleRoot, plan)
+    const publishFeedAndPlan = await API.tx.datVerify.publishFeedAndPlan(merkleRoot, plan)
     LOG(`Publishing data by user: ${signer}`)
-    await registerData.signAndSend(signer, { nonce }, status)
+    await publishFeedAndPlan.signAndSend(signer, { nonce }, status)
   }
 
   async function getArchive (archive_index) {
     return await API.query.datVerify.archive(archive_index)
   }
 
-  async function getUser (id) { return await API.query.datVerify.users(id) }
+  async function getUserByID (id) { return await API.query.datVerify.getUserByID(id) }
 
   async function getEncodedIndex (encoderAddress) {
     const encoded = await HostedMap.encoded
     encoded.forEach((item, i) => { if (item[0] === encoderAddress) return i })
   }
 
-  async function registerEncoding (opts) {
+  async function encodingDone (opts) {
     const {account, nonce, hosterID, datID, start, range} = opts
     const args = [hosterID, datID, start, range]
-    const register = await API.tx.datVerify.registerEncoding(args)
+    const register = await API.tx.datVerify.encodingDone(args)
     LOG(`Register encoding: ${account.address}`)
     await register.signAndSend(account, { nonce }, status)
   }

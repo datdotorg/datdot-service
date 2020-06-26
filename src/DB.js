@@ -20,7 +20,8 @@ const plans = []
 {
   feed: feedID,
   publisher: 'userID',
-  ranges: [[0, 5], [7, 55]] // default [{0, feed.length}]
+  ranges: [[0, 5], [7, 55]] // default [{0, feed.length}],
+  status: 'unhosted'
 }
 */
 const contracts = []
