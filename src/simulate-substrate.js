@@ -53,17 +53,18 @@ function signAndSend (signer, { nonce }, status) {
 /******************************************************************************
   API
 ******************************************************************************/
-function _newUser (signer, { nonce }, status) {
+function _newUser (address, { nonce }, status) {
   let user
-  if (DB.user[signer]) {
-    const pos = DB.user[signer] - 1
+  if (DB.userByAddress[address]) {
+    const pos = DB.userByAddress[address] - 1
     user = DB.users[pos]
   }
   else {
-    const userID = DB.users.push({ address: signer })
-    DB.user[signer] = userID
-    const pos = userID - 1
-    user = DB.users[pos]
+    user = { address: address }
+    const userID = DB.users.push(user)
+    user.id = userID
+    // push to userByAddress lookup array
+    DB.userByAddress[address] = userID
   }
   return user
 }
@@ -73,39 +74,43 @@ async function _publishFeedAndPlan (user, { nonce }, status, args) {
   const [key, {hashType, children}, signature] = merkleRoot
   const feed = { publickey: key.toString('hex'), meta: { signature, hashType, children } }
   const feedID = DB.feeds.push(feed)
-  DB.feed[key.toString('hex')] = feedID
+  feed.id = feedID
+  // push to feedByKey lookup array
+  DB.feedByKey[key.toString('hex')] = feedID
 
   const NewFeed = { event: { data: feedID, method: 'NewFeed' } }
   handlers.forEach(handler => handler([NewFeed]))
 
 // Publish plan
-  const userID = DB.user[user.address]
+  const userID = DB.userByAddress[user.address]
   plan.publisher = userID
   plan.feed = feedID
-  plan.status = 'unhosted'
   const planID = DB.plans.push(plan)
+  plan.id = planID
+  // Add planID to unhostedPlans
+  DB.unhostedPlans.push(planID)
 
   const NewPlan = { event: { data: planID, method: 'NewPlan' } }
   handlers.forEach(handler => handler([NewPlan]))
 }
 async function _registerHoster(user, { nonce }, status) {
-  const userID = DB.user[user.address]
+  const userID = DB.userByAddress[user.address]
   DB.hosters.push(userID)
   makeNewContract({ encoderID: null, hosterID: userID})
 }
 async function _registerEncoder (user, { nonce }, status) {
-  const userID = DB.user[user.address]
+  const userID = DB.userByAddress[user.address]
   DB.encoders.push(userID)
   makeNewContract({ encoderID: userID, hosterID: null})
 }
 async function _registerAttestor (user, { nonce }, status) {
-  const userID = DB.user[user.address]
+  const userID = DB.userByAddress[user.address]
   DB.attestors.push(userID)
 }
-async function _hostingStarts (signer, { nonce }, status, args) {
+async function _hostingStarts (user, { nonce }, status, args) {
   // const [{ account, nonce, archive, index }] = args
 }
-async function _encodingDone (signer, { nonce }, status, args) {
+async function _encodingDone (user, { nonce }, status, args) {
   // const [{account, nonce, hosterID, datID, start, range}] = args
 }
 
@@ -114,23 +119,40 @@ async function _encodingDone (signer, { nonce }, status, args) {
 ******************************************************************************/
 function getRandom (items) {
   if (!items.length) return
-  return items[Math.floor(Math.random() * items.length)]
+  const pos = Math.floor(Math.random() * items.length)
+  const item = items[pos]
+  return [item, pos]
 }
 
 function makeNewContract (opts) {
-  // Check if any unhosted plans
+  // Find an unhosted plan
   let { encoderID, hosterID } = opts
-  const unhosted = DB.plans.filter(plan => plan.status === 'unhosted')
-  const selectedPlan = getRandom(unhosted)
+  const unhosted = DB.unhostedPlans
+  const [planID, pos] = getRandom(unhosted)
+  const selectedPlan = DB.plans[planID - 1]
   if (!selectedPlan) return console.log('current lack of demand for hosting plans')
-  // Get missing pair (hoster or encoder)
-  if (hosterID) encoderID = getRandom(DB.encoders)
-  else if (encoderID) hosterID = getRandom(DB.hosters)
+
+  // Pair hoster and encoder
+  if (hosterID && DB.encoders.length) [encoderID] = getRandom(DB.encoders)
+  else if (encoderID && DB.hosters.length) [hosterID] = getRandom(DB.hosters)
   if (!encoderID) return console.log('missing encoder')
   if (!hosterID) return console.log('missing hoster')
+
   // Make a new contract
-  const feedID = selectedPlan.feed
-  const NewContract = { event: { data: [encoderID, hosterID, feedID], method: 'NewContract' } }
+  const contract = {
+    plan: planID,
+    ranges: [ [0, 3], [5, 10] ],
+    encoder: encoderID,
+    hoster: hosterID
+  }
+  const contractID = DB.contracts.push(contract)
+  contract.id = contractID
+
+  // remove planID from unhostedPlans
+  // when all contracts for certain plan are hosted => push planID to hostedPlans
+  DB.unhostedPlans.splice(planID, 1)
+  const data = [encoderID, hosterID, selectedPlan.feed]
+  const NewContract = { event: { data, method: 'NewContract' } }
   handlers.forEach(handler => handler([NewContract]))
-  selectedPlan.status = 'encoding' // unhosted, pairing, encoded, hosted
+
 }
