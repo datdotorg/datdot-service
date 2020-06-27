@@ -21,7 +21,6 @@ const plans = []
   feed: feedID,
   publisher: 'userID',
   ranges: [[0, 5], [7, 55]] // default [{0, feed.length}],
-  status: 'unhosted' // // unhosted, pairing, encoded, hosted
 }
 */
 const contracts = []
@@ -33,14 +32,14 @@ const contracts = []
   hoster: 'hosterID'
 }
 */
-const challenges = []
+const challenges = [] // Proof of storage
 /*
 {
   contract: 'contractID', // get hoster and feed from contract
   chunks: [1,4,6]
 }
 */
-const attestations = []
+const attesttations = [] // proof of retrievability
 /*
 {
   attestor: 'attestorID',
@@ -63,12 +62,13 @@ const encoders = [] // user ids
 const attestors = [] // user ids
 
 const unhostedPlans = [] // ids of unhosted plans
+const hostedPlans = [] //when all contracts for certain plan are hosted => push planID to hostedPlans
+
+const contractsEncoded = [] // IDs of contracts where encoding is confirmed
+const contractsHosted = [] // IDs of contracts where hosting is confirmed
 
 
-const encoding = []
-const encoded = []
-const hosted = []
-
+/////////////////////////////////////////////
 const challenging = []
 const challenge_reponses = []
 /*
@@ -91,17 +91,23 @@ const attestation_reponses = []
 */
 /*****************************************************************************/
 const DB = {
+  // state
   users,
   feeds,
   plans,
   contracts,
   challenges,
-  attestations,
+  attesttations,
+  // lookups
   userByAddress,
   feedByKey,
+  // status
   hosters,
   encoders,
   attestors,
-  unhostedPlans
+  unhostedPlans,
+  hostedPlans,
+  contractsEncoded,
+  contractsHosted,
 }
 module.exports = DB

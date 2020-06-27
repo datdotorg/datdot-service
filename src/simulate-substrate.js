@@ -5,9 +5,24 @@ module.exports = {
   create: () => ({
     query: {
       system: { events: handler => handlers.push(handler) },
-      datVerify: { archive, getUserByID }
+      datVerify: {
+        getFeedKeyByID,
+        getUserByID,
+        getContractByID,
+        getPublisherByPlanID
+      }
     },
-    tx: { datVerify: { newUser, registerEncoder, registerAttestor, registerHoster, publishFeedAndPlan } }
+    tx: { datVerify: {
+      newUser,
+      registerEncoder,
+      registerAttestor,
+      registerHoster,
+      publishFeedAndPlan,
+      encodingDone,
+      hostingStarts,
+      requestProofOfStorage,
+      }
+    }
   })
 }
 /******************************************************************************
@@ -20,17 +35,29 @@ async function registerHoster (...args) { return { signAndSend: signAndSend.bind
 async function publishFeedAndPlan (...args) { return { signAndSend: signAndSend.bind({ args, type: 'publishFeedAndPlan'}) } }
 async function encodingDone (...args) { return { signAndSend: signAndSend.bind({ args, type: 'encodingDone'}) } }
 async function hostingStarts (...args) { return { signAndSend: signAndSend.bind({ args, type: 'hostingStarts'}) } }
+async function requestProofOfStorage (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestProofOfStorage'}) } }
 /******************************************************************************
   QUERIES
 ******************************************************************************/
-function archive (id) {
-  const pos = id - 1
-  const feed = DB.feeds[pos]
-  return { archive_pubkey: feed.publickey }
+function getFeedKeyByID (id) {
+  const feed = DB.feeds[id - 1]
+  return { feedKey: feed.publickey }
 }
 function getUserByID (id) {
-  const pos = id - 1
-  return DB.users[pos].address
+  return DB.users[id - 1].address
+}
+function getContractByID (id) {
+  const contract = DB.contracts[id - 1]
+  const hosterID = contract.hoster
+  const planID = contract.plan
+  const plan = DB.plans[planID - 1]
+  const feedID = plan.feed
+  return { feedID, hosterID: contract.hoster, encoderID: contract.encoder, planID }
+}
+
+function getPublisherByPlanID (id) {
+  const plan = DB.plans[id - 1]
+  return plan.publisher
 }
 /******************************************************************************
   ROUTING (sign & send)
@@ -46,8 +73,9 @@ function signAndSend (signer, { nonce }, status) {
   else if (type === 'registerEncoder') _registerEncoder(user, { nonce }, status, args)
   else if (type === 'registerAttestor') _registerAttestor(user, { nonce }, status, args)
   else if (type === 'registerHoster') _registerHoster(user, { nonce }, status, args)
-  else if (type === 'hostingStarts') _hostingStarts(user, { nonce }, status, args)
   else if (type === 'encodingDone') _encodingDone(user, { nonce }, status, args)
+  else if (type === 'hostingStarts') _hostingStarts(user, { nonce }, status, args)
+  else if (type === 'requestProofOfStorage') _requestProofOfStorage(user, { nonce }, status, args)
   // else if ...
 }
 /******************************************************************************
@@ -69,7 +97,7 @@ function _newUser (address, { nonce }, status) {
   return user
 }
 async function _publishFeedAndPlan (user, { nonce }, status, args) {
-  // Publish feed
+  // Publish FEED
   const [ merkleRoot, plan ] = args
   const [key, {hashType, children}, signature] = merkleRoot
   const feed = { publickey: key.toString('hex'), meta: { signature, hashType, children } }
@@ -77,11 +105,11 @@ async function _publishFeedAndPlan (user, { nonce }, status, args) {
   feed.id = feedID
   // push to feedByKey lookup array
   DB.feedByKey[key.toString('hex')] = feedID
-
-  const NewFeed = { event: { data: feedID, method: 'NewFeed' } }
+  // Emit event
+  const NewFeed = { event: { data: [feedID], method: 'NewFeed' } }
   handlers.forEach(handler => handler([NewFeed]))
 
-// Publish plan
+// Publish PLAN
   const userID = DB.userByAddress[user.address]
   plan.publisher = userID
   plan.feed = feedID
@@ -89,8 +117,10 @@ async function _publishFeedAndPlan (user, { nonce }, status, args) {
   plan.id = planID
   // Add planID to unhostedPlans
   DB.unhostedPlans.push(planID)
-
-  const NewPlan = { event: { data: planID, method: 'NewPlan' } }
+  // Find hoster & encoder
+  makeNewContract({encoderID: null, hosterID: null})
+  // Emit event
+  const NewPlan = { event: { data: [planID], method: 'NewPlan' } }
   handlers.forEach(handler => handler([NewPlan]))
 }
 async function _registerHoster(user, { nonce }, status) {
@@ -107,11 +137,27 @@ async function _registerAttestor (user, { nonce }, status) {
   const userID = DB.userByAddress[user.address]
   DB.attestors.push(userID)
 }
-async function _hostingStarts (user, { nonce }, status, args) {
-  // const [{ account, nonce, archive, index }] = args
-}
 async function _encodingDone (user, { nonce }, status, args) {
-  // const [{account, nonce, hosterID, datID, start, range}] = args
+  const [ contractID ] = args
+  DB.contractsEncoded.push(contractID)
+}
+async function _hostingStarts (user, { nonce }, status, args) {
+  const [ contractID ] = args
+  DB.contractsHosted.push(contractID)
+  const HostingStarted = { event: { data: [contractID], method: 'HostingStarted' } }
+  handlers.forEach(handler => handler([HostingStarted]))
+}
+async function _requestProofOfStorage (user, { nonce }, status, args) {
+  const [ contractID ] = args
+  const ranges = DB.contracts[contractID - 1].ranges // [ [0, 3], [5, 7] ]
+  const chunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
+  console.log('CHUNKS', chunks)
+  const challenge = { contract: 'contractID', chunks }
+  const challengeID = DB.challenges.push(challenge)
+  challenge.id = challengeID
+  // emit events
+  const newChallenge = { event: { data: [challengeID], method: 'Proof-of-storage challenge' } }
+  handlers.forEach(handler => handler([newChallenge]))
 }
 
 /******************************************************************************
@@ -122,6 +168,12 @@ function getRandom (items) {
   const pos = Math.floor(Math.random() * items.length)
   const item = items[pos]
   return [item, pos]
+}
+
+function getRandomInt(min, max) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min)) + min; //The maximum is exclusive and the minimum is inclusive
 }
 
 function makeNewContract (opts) {
@@ -135,13 +187,17 @@ function makeNewContract (opts) {
   // Pair hoster and encoder
   if (hosterID && DB.encoders.length) [encoderID] = getRandom(DB.encoders)
   else if (encoderID && DB.hosters.length) [hosterID] = getRandom(DB.hosters)
+  else if (!hosterID && !encoderID && DB.encoders.length && DB.hosters.length) {
+    [encoderID] = getRandom(DB.encoders)
+    [hosterID] = getRandom(DB.hosters)
+  }
   if (!encoderID) return console.log('missing encoder')
   if (!hosterID) return console.log('missing hoster')
 
   // Make a new contract
   const contract = {
     plan: planID,
-    ranges: [ [0, 3], [5, 10] ],
+    ranges: [ [0, 3], [5, 7] ],
     encoder: encoderID,
     hoster: hosterID
   }
@@ -151,7 +207,7 @@ function makeNewContract (opts) {
   // remove planID from unhostedPlans
   // when all contracts for certain plan are hosted => push planID to hostedPlans
   DB.unhostedPlans.splice(planID, 1)
-  const data = [encoderID, hosterID, selectedPlan.feed]
+  const data = [encoderID, hosterID, selectedPlan.feed, contractID, contract.ranges]
   const NewContract = { event: { data, method: 'NewContract' } }
   handlers.forEach(handler => handler([NewContract]))
 

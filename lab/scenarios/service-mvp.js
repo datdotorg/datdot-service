@@ -32,12 +32,6 @@ async function setup () {
   start(chainAPI, serviceAPI)
 }
 
-// 2. `make ACCOUNT`
-// function makeAccount (name) {
-//   return keyring.addFromUri(name)
-// }
-
-
 async function start (chainAPI, serviceAPI) {
   chainAPI.listenToEvents(handleEvent)
   const accounts = {}
@@ -69,24 +63,13 @@ async function start (chainAPI, serviceAPI) {
     return account.nonce++
   }
   /* --------------------------------------
-            B. COMMIT FLOW
-  ----------------------------------------- */
-  // 1. `publish DATA`
-  async function publishFeedAndPlan (account, nonce) {
-    const data = await getData(account)
-    const signer = account.chainKeypair.address
-    const plan = { ranges: [[0,8]] }
-    await chainAPI.publishFeedAndPlan({merkleRoot: data, plan, signer, nonce})
-  }
-
-  /* --------------------------------------
-        C. REGISTERING FLOW
+  B. REGISTERING FLOW
   ----------------------------------------- */
   async function registerHoster (account, nonce) {
     await account.initHoster()
     LOG('HOSTER ACCOUNT', account.chainKeypair.address)
     const signer = account.chainKeypair.address
-	  await chainAPI.registerHoster({signer, nonce})
+    await chainAPI.registerHoster({signer, nonce})
   }
 
   async function registerEncoder (account, nonce) {
@@ -99,13 +82,24 @@ async function start (chainAPI, serviceAPI) {
     await chainAPI.registerAttestor({ signer, nonce })
   }
   /* --------------------------------------
+            C. COMMIT FLOW
+  ----------------------------------------- */
+  // 1. `publish DATA`
+  async function publishFeedAndPlan (account, nonce) {
+    const data = await getData(account)
+    const signer = account.chainKeypair.address
+    const plan = { ranges: [[0,8]] }
+    await chainAPI.publishFeedAndPlan({merkleRoot: data, plan, signer, nonce})
+  }
+
+  /* --------------------------------------
             D. SERVICE FLOW
   ----------------------------------------- */
 
   async function requestHosting (data) {
-    const [encoderID, hosterID, datID] = data
-    const { archive_pubkey } = await chainAPI.getArchive(datID)
-    const feedKey = Buffer.from(archive_pubkey, 'hex')
+    const [encoderID, hosterID, feedID, contractID, ranges] = data
+    const { feedKey } = await chainAPI.getFeedKeyByID(feedID)
+    const feedKeyBuffer = Buffer.from(feedKey, 'hex')
 
     const hosterAddress  = await chainAPI.getUserByID(hosterID)
     const hoster = accounts[hosterAddress]
@@ -115,31 +109,38 @@ async function start (chainAPI, serviceAPI) {
     const encoder = accounts[encoderAddress]
     const encoderKey = encoder.encoder.publicKey
 
-    const ranges = [{ start: 0, end: 2 }, { start: 4, end: 8 }]
-    const plan = { ranges }
-    LOG('Publisher requested hosting for', archive_pubkey)
+    const objArr = ranges.map( range => ({start: range[0], end: range[1]}) )
+    const plan = { ranges: objArr }
+    LOG('Publisher requested hosting for', feedKey)
     LOG('Pairing hoster and encoder', hosterKey, encoderKey)
 
-
-    const activateHoster = hoster.hostFeed(feedKey, encoderKey, plan)
-    activateHoster.then(() => {
+    const activateHoster = hoster.hostFeed(feedKeyBuffer, encoderKey, plan)
+    activateHoster.then(async () => {
       LOG('Hosting succesfull')
-      // chainAPI.confirmHosting()
+      const account = accounts[hosterAddress]
+      const nonce = getNonce(account)
+      await chainAPI.hostingStarts({contractID, signer: hosterAddress, nonce})
     })
-    const activateEncoder =  encoder.encodeFor(hosterKey, feedKey, ranges)
-    activateEncoder.then(() => {
-      LOG('Encoding succesfull')
-      // chainAPI.encodingDone()
+    const activateEncoder =  encoder.encodeFor(hosterKey, feedKeyBuffer, ranges)
+    activateEncoder.then(async () => {
+      const account = accounts[encoderAddress]
+      const nonce = getNonce(account)
+      await chainAPI.encodingDone({contractID, signer: encoderAddress, nonce})
     })
   }
 
+  /* --------------------------------------
+            E. QUALITY ASSURANCE FLOW
+  ----------------------------------------- */
 
-  let signer = 0
-  async function submitChallenge (data) { // submitChallenge
-    const [userID, feedID ] = data
-    const opts = { account: accounts[signer], userID, feedID }
-    signer <= accounts.length - 1 ? signer++ : signer = 0
-    await chainAPI.submitChallenge(opts)
+  async function requestProofOfStorage (data) { // requestProofOfStorage
+    const [ contractID] = data
+    const { feedID, hosterID, encoderID, planID } = await chainAPI.getContractByID(contractID)
+    const publisherID = await chainAPI.getPublisherByPlanID(planID)
+    const publisherAddress = await chainAPI.getUserByID(publisherID)
+    const account = accounts[publisherAddress]
+    const nonce = getNonce(account)
+    await chainAPI.requestProofOfStorage({contractID, signer: publisherAddress, nonce})
   }
 
   // async function getChallenges (data) {
@@ -153,11 +154,12 @@ async function start (chainAPI, serviceAPI) {
   // async function respondToChallenges (responses) {
   //   const feeds = (await getData)[1]
   //   const opts = { responses, feeds, keyring }
-  //   await chainAPI.submitProof(opts)
+  //   await chainAPI.submitProofOfStorage(opts)
   // }
 
-  async function submitProof (data) {
-    await chainAPI.submitProof({ data, accounts })
+  async function submitProofOfStorage (data) {
+    LOG('Let us submit a proof of storage here')
+    // await chainAPI.submitProofOfStorage({ data, accounts })
   }
 
   async function attestPhase (data) {
@@ -169,20 +171,15 @@ async function start (chainAPI, serviceAPI) {
   /* --------------------------------------
             E. EVENTS
   ----------------------------------------- */
-  counter = 0
   async function handleEvent (event) {
-    const address = event.data[0]
+    // const address = event.data[0]
     LOG('New event:', event.method, event.data.toString())
     if (event.method === 'NewFeed') {}
     if (event.method === 'NewPlan') {}
-    if (event.method === 'NewContract') {
-      await requestHosting(event.data)
-    }
-    if (event.method === 'HostingStarted') {
-      await submitChallenge(event.data)
-    }
-    if (event.method === 'Challenge') submitProof(event.data)
-    if (event.method === 'ChallengeFailed') { }
-    if (event.method === 'AttestPhase') attestPhase(event.data)
+    if (event.method === 'NewContract') await requestHosting(event.data)
+    if (event.method === 'HostingStarted') await requestProofOfStorage(event.data)
+    if (event.method === 'Proof-of-storage challenge') await submitProofOfStorage(event.data)
+    // if (event.method === 'ChallengeFailed') { }
+    // if (event.method === 'AttestPhase') await attestPhase(event.data)
   }
 }

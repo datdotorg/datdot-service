@@ -31,14 +31,17 @@ async function datdotChain () {
     registerAttestor,
     publishFeedAndPlan,
     encodingDone,
-    confirmHosting,
-    submitChallenge,
-    submitProof,
+    hostingStarts,
+    requestProofOfStorage,
+    submitProofOfStorage,
     attest,
     listenToEvents,
-    getArchive,
+    getFeedKeyByID,
     getUserByID,
     getEncodedIndex,
+    getContractByID,
+    getPublisherByPlanID
+
   }
 
   return chainAPI
@@ -82,11 +85,18 @@ async function datdotChain () {
     await publishFeedAndPlan.signAndSend(signer, { nonce }, status)
   }
 
-  async function getArchive (archive_index) {
-    return await API.query.datVerify.archive(archive_index)
+  async function getFeedKeyByID (feedID) {
+    return await API.query.datVerify.getFeedKeyByID(feedID)
   }
 
   async function getUserByID (id) { return await API.query.datVerify.getUserByID(id) }
+
+  async function getContractByID (contractID) {
+    return await API.query.datVerify.getContractByID(contractID)
+  }
+  async function getPublisherByPlanID (planID) {
+    return await API.query.datVerify.getPublisherByPlanID(planID)
+  }
 
   async function getEncodedIndex (encoderAddress) {
     const encoded = await HostedMap.encoded
@@ -94,27 +104,27 @@ async function datdotChain () {
   }
 
   async function encodingDone (opts) {
-    const {account, nonce, hosterID, datID, start, range} = opts
-    const args = [hosterID, datID, start, range]
-    const register = await API.tx.datVerify.encodingDone(args)
-    LOG(`Register encoding: ${account.address}`)
-    await register.signAndSend(account, { nonce }, status)
+    const {contractID, signer, nonce} = opts
+    const register = await API.tx.datVerify.encodingDone(contractID)
+    LOG(`Encoding for contractID: ${contractID} is done`)
+    await register.signAndSend(signer, { nonce }, status)
   }
 
-  async function confirmHosting (opts) {
-    const {account, nonce, archive, index} = opts
-    const confirm = await API.tx.datVerify.confirmHosting(archive, index)
-    LOG(`Confriming hosting: ${account.address}`)
-    await register.signAndSend(account, { nonce }, status)
+  async function hostingStarts (opts) {
+    const {contractID, signer, nonce} = opts
+    const register = await API.tx.datVerify.hostingStarts(contractID)
+    LOG(`Hosting for contractID: ${contractID} started`)
+    await register.signAndSend(signer, { nonce }, status)
   }
 
-  async function submitChallenge ({ account, userID, feedID, nonce }) {
-    const challenge = await API.tx.datVerify.submitChallenge(userID, feedID)
-    LOG(`Requesting a new challenge: ${userID.toString('hex')}, ${feedID.toString('hex')}`)
-    await challenge.signAndSend(account, { nonce }, status)
+  async function requestProofOfStorage (opts) {
+    const {contractID, signer, nonce} = opts
+    const request = await API.tx.datVerify.requestProofOfStorage(contractID)
+    LOG(`Requesting a Proof of storage for hosting from ContractID:${contractID}`)
+    await request.signAndSend(signer, { nonce }, status)
   }
 
-  async function submitProof ({ data, accounts, account, nonce }) {
+  async function submitProofOfStorage ({ data, accounts, account, nonce }) {
     LOG('Getting the challenge and submitting the proof)')
     const {hosterKey, datKey} = data
 
@@ -127,7 +137,7 @@ async function datdotChain () {
 
     for (const challenge_index in challengeMap) {
       challenge = challengeMap.get(challenge_index)
-      const proof = await API.tx.datVerify.submitProof(challenge_index, [])
+      const proof = await API.tx.datVerify.submitProofOfStorage(challenge_index, [])
       // array of bytes (proof format) => fetch from Mauve's proof folder
       const account = keyring.getPair(user.toString('hex')) // @TODO pass account from service-mvp
       proof.signAndSend(account, { nonce }, status)

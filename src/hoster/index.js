@@ -151,7 +151,6 @@ module.exports = class Hoster {
 
     try {
       const { ranges, watch } = await this.getOpts(key)
-
       const storage = await this.getStorage(key)
 
       const { feed } = storage

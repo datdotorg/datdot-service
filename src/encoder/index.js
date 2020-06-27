@@ -81,7 +81,6 @@ module.exports = class Encoder {
     const encodingStream = peer.createStream(topic)
     pump(resultStream, encodingStream, confirmStream)
 
-    ranges = ranges.map(range => [ range.start, range.end ] )
     for (const range of ranges) {
       LOG('Get feeds for ranges', range)
       for (let index = range[0], len = range[1] + 1; index < len; index++) {
