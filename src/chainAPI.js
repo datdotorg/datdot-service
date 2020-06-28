@@ -34,9 +34,10 @@ async function datdotChain () {
     hostingStarts,
     requestProofOfStorage,
     submitProofOfStorage,
-    attest,
+    attestDataServing,
     listenToEvents,
     getFeedKeyByID,
+    getRandomChunksForFeed,
     getUserByID,
     getEncodedIndex,
     getContractByID,
@@ -54,44 +55,39 @@ async function datdotChain () {
       })
     }
   }
-
   async function newUser ({ signer, nonce }) {
     const register = await API.tx.datVerify.newUser()
     LOG(`Registering user: ${signer}`)
     await register.signAndSend(signer, { nonce }, status)
   }
-
   async function registerHoster ({ signer, nonce }) {
     const register = await API.tx.datVerify.registerHoster()
     LOG(`Registering hoster: ${signer}`)
     await register.signAndSend(signer, { nonce }, status)
   }
-
   async function registerEncoder ({ signer, nonce }) {
     const register = await API.tx.datVerify.registerEncoder()
     LOG(`Registering encoder: ${signer}`)
     await register.signAndSend(signer, { nonce }, status)
   }
-
   async function registerAttestor ({ signer, nonce }) {
     const register = await API.tx.datVerify.registerAttestor()
     LOG(`Registering attestor: ${signer}`)
     await register.signAndSend(signer, { nonce }, status)
   }
-
   async function publishFeedAndPlan (opts) {
     const { merkleRoot, plan, signer, nonce } = opts
     const publishFeedAndPlan = await API.tx.datVerify.publishFeedAndPlan(merkleRoot, plan)
     LOG(`Publishing data by user: ${signer}`)
     await publishFeedAndPlan.signAndSend(signer, { nonce }, status)
   }
-
   async function getFeedKeyByID (feedID) {
     return await API.query.datVerify.getFeedKeyByID(feedID)
   }
-
+  async function getRandomChunksForFeed (contractID) {
+    return await API.query.datVerify.getRandomChunksForFeed(contractID)
+  }
   async function getUserByID (id) { return await API.query.datVerify.getUserByID(id) }
-
   async function getContractByID (contractID) {
     return await API.query.datVerify.getContractByID(contractID)
   }
@@ -113,32 +109,29 @@ async function datdotChain () {
     LOG(`Encoding for contractID: ${contractID} is done`)
     await register.signAndSend(signer, { nonce }, status)
   }
-
   async function hostingStarts (opts) {
     const {contractID, signer, nonce} = opts
     const register = await API.tx.datVerify.hostingStarts(contractID)
     LOG(`Hosting for contractID: ${contractID} started`)
     await register.signAndSend(signer, { nonce }, status)
   }
-
   async function requestProofOfStorage (opts) {
     const {contractID, signer, nonce} = opts
     const request = await API.tx.datVerify.requestProofOfStorage(contractID)
     LOG(`Requesting a Proof of storage for hosting from ContractID:${contractID}`)
     await request.signAndSend(signer, { nonce }, status)
   }
-
   async function submitProofOfStorage (opts) {
     const {challengeID, proof, signer, nonce} = opts
-    const submitProof = await API.tx.datVerify.submitProofOfStorage(challengeID, proof)
-    submitProof.signAndSend(signer, { nonce }, status)
+    const submit = await API.tx.datVerify.submitProofOfStorage(challengeID, proof)
+    submit.signAndSend(signer, { nonce }, status)
   }
-
-  async function attest (opts) {
-    const {challengeID, attestorIDs, keyring, nonce} =  opts
+  async function attestDataServing (opts) {
+    const {challengeID, attestation, signer, nonce} =  opts
+    LOG('Sending attestation to the chain', attestation)
+    const submit = await API.tx.datVerify.attestDataServing(challengeID, attestation)
+    submit.signAndSend(signer, { nonce }, status)
   }
-  // submit_attestation(origin, hoster_index: u64, dat_index: u64,chunk_index: u64, attestation: Attestation)
-
   // LISTEN TO EVENTS
   async function listenToEvents (handleEvent) {
     return API.query.system.events((events) => {
@@ -148,7 +141,6 @@ async function datdotChain () {
       })
     })
   }
-
   function rerun (promiseFn, maxTries = 20, delay = 100) {
     let counter = 0
     while (true) {

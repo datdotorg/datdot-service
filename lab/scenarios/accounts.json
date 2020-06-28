@@ -8,13 +8,13 @@
 	"Bob": {
 		"publisher": false,
 		"hoster": false,
-		"encoder": true,
+		"encoder": false,
 		"attestor": true
 	},
 	"Charlie": {
 		"publisher": false,
 		"hoster": true,
-		"encoder": false,
+		"encoder": true,
 		"attestor": true
 	},
 	"Dave": {

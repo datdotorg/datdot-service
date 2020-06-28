@@ -20,9 +20,8 @@ module.exports = class Attestor {
 
   async attest (key, index) {
     this.debug(`Attesting: ${key}@${index}`)
-    const feed = this.Hypercore(key, {persist:false})
+    const feed = this.Hypercore(key, { persist: false })
     try {
-
       const start = Date.now()
 
       await Promise.race([
@@ -45,7 +44,7 @@ module.exports = class Attestor {
       this.debug(`Error: ${key}@${index} ${e.message}`)
       return [DEFAULT_LOCATION, null]
     } finally {
-			await feed.close()
+      await feed.close()
     }
   }
 }

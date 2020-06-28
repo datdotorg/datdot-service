@@ -45,7 +45,7 @@ async function start (chainAPI, serviceAPI) {
     if (ACCOUNTS[name].publisher) { await publishFeedAndPlan(account, nonce)}
     if (ACCOUNTS[name].hoster) { await registerHoster(account, nonce) }
     if (ACCOUNTS[name].encoder) { await registerEncoder(account, nonce) }
-    if (ACCOUNTS[name].attester) { await registerAttestor(account, nonce) }
+    if (ACCOUNTS[name].attestor) { await registerAttestor(account, nonce) }
   }
 
   async function makeAccount (name) {
@@ -67,7 +67,6 @@ async function start (chainAPI, serviceAPI) {
   ----------------------------------------- */
   async function registerHoster (account, nonce) {
     await account.initHoster()
-    LOG('HOSTER ACCOUNT', account.chainKeypair.address)
     const signer = account.chainKeypair.address
     await chainAPI.registerHoster({signer, nonce})
   }
@@ -78,6 +77,7 @@ async function start (chainAPI, serviceAPI) {
     await chainAPI.registerEncoder({signer, nonce})
   }
   async function registerAttestor (account, nonce) {
+    await account.initAttestor()
     const signer = account.chainKeypair.address
     await chainAPI.registerAttestor({ signer, nonce })
   }
@@ -111,7 +111,8 @@ async function start (chainAPI, serviceAPI) {
 
     const objArr = ranges.map( range => ({start: range[0], end: range[1]}) )
     const plan = { ranges: objArr }
-    LOG('Publisher requested hosting for', feedKey)
+    LOG('Publisher requested hosting for feed:', feedKey)
+    LOG('Ranges:', ranges)
     LOG('Pairing hoster and encoder', hosterKey, encoderKey)
 
     const activateHoster = hoster.hostFeed(feedKeyBuffer, encoderKey, plan)
@@ -142,28 +143,36 @@ async function start (chainAPI, serviceAPI) {
     const nonce = getNonce(account)
     await chainAPI.requestProofOfStorage({contractID, signer: publisherAddress, nonce})
   }
-
   async function submitProofOfStorage (data) {
     const [challengeID] = data
     const { hosterID, feedID, chunks } = await chainAPI.getChalengeByID(challengeID)
     const feedKey = await chainAPI.getFeedKeyByID(feedID)
     const feedKeyBuffer = Buffer.from(feedKey, 'hex')
     const hosterAddress  = await chainAPI.getUserByID(hosterID)
-    const hoster = accounts[hosterAddress]
+    const user = accounts[hosterAddress]
     const proof = await Promise.all(chunks.map(async (chunk) => {
-      return await hoster.hoster.getProofOfStorage(feedKeyBuffer, chunk)
+      return await user.hoster.getProofOfStorage(feedKeyBuffer, chunk)
     }))
-    LOG('Submitting proof to the chain', proof)
+    LOG('Submitting proof of storage to the chain', proof)
     const signer = hosterAddress
-    const nonce = getNonce(hoster)
+    const nonce = getNonce(user)
     await chainAPI.submitProofOfStorage({challengeID, proof, signer, nonce})
   }
-
-  async function attestPhase (data) {
-    LOG('Attest phase event data', data.toString('hex'))
-    const [challengeID, attestorIDs ] = data
-    const opts = { challengeID, attestorIDs, keyring }
-    await chainAPI.attest(opts)
+  async function attestDataServing (data) {
+    const [attestorID, challengeID] = data
+    const { feedID } = await chainAPI.getChalengeByID(challengeID)
+    const feedKey = await chainAPI.getFeedKeyByID(feedID)
+    const feedKeyBuffer = Buffer.from(feedKey, 'hex')
+    const attestorAddress = await chainAPI.getUserByID(attestorID)
+    const user = accounts[attestorAddress]
+    const randomChunks = await chainAPI.getRandomChunksForFeed(challengeID)
+    const attestation = await Promise.all(randomChunks.map(async (chunk) => {
+      return await user.attestor.attest(feedKeyBuffer, chunk)
+    }))
+    LOG('Attesting retrievability to the chain for chunks', randomChunks)
+    const signer = attestorAddress
+    const nonce = getNonce(user)
+    await chainAPI.attestDataServing({challengeID, attestation, signer, nonce})
   }
   /* --------------------------------------
             E. EVENTS
@@ -176,6 +185,6 @@ async function start (chainAPI, serviceAPI) {
     if (event.method === 'NewContract') await requestHosting(event.data)
     if (event.method === 'HostingStarted') await requestProofOfStorage(event.data)
     if (event.method === 'Proof-of-storage challenge') await submitProofOfStorage(event.data)
-    if (event.method === 'Valid proof') proofOfRetrievabilityPhase(event.data)
+    if (event.method === 'Storing confirmed') attestDataServing(event.data)
   }
 }

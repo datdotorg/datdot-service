@@ -10,7 +10,8 @@ module.exports = {
         getUserByID,
         getContractByID,
         getChalengeByID,
-        getPublisherByPlanID
+        getPublisherByPlanID,
+        getRandomChunksForFeed
       }
     },
     tx: { datVerify: {
@@ -23,6 +24,7 @@ module.exports = {
       hostingStarts,
       requestProofOfStorage,
       submitProofOfStorage,
+      attestDataServing
       }
     }
   })
@@ -39,6 +41,7 @@ async function encodingDone (...args) { return { signAndSend: signAndSend.bind({
 async function hostingStarts (...args) { return { signAndSend: signAndSend.bind({ args, type: 'hostingStarts'}) } }
 async function requestProofOfStorage (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestProofOfStorage'}) } }
 async function submitProofOfStorage (...args) { return { signAndSend: signAndSend.bind({ args, type: 'submitProofOfStorage'}) } }
+async function attestDataServing (...args) { return { signAndSend: signAndSend.bind({ args, type: 'attestDataServing'}) } }
 /******************************************************************************
   QUERIES
 ******************************************************************************/
@@ -65,10 +68,13 @@ function getChalengeByID (id) {
   const plan = DB.plans[planID - 1]
   return { hosterID: contract.hoster, feedID: plan.feed, chunks: challenge.chunks }
 }
-
 function getPublisherByPlanID (id) {
   const plan = DB.plans[id - 1]
   return plan.publisher
+}
+function getRandomChunksForFeed (contractID) {
+  const ranges = DB.contracts[contractID - 1].ranges // [ [0, 3], [5, 7] ]
+  return ranges.map(range => getRandomInt(range[0], range[1] + 1))
 }
 /******************************************************************************
   ROUTING (sign & send)
@@ -88,6 +94,7 @@ function signAndSend (signer, { nonce }, status) {
   else if (type === 'hostingStarts') _hostingStarts(user, { nonce }, status, args)
   else if (type === 'requestProofOfStorage') _requestProofOfStorage(user, { nonce }, status, args)
   else if (type === 'submitProofOfStorage') _submitProofOfStorage(user, { nonce }, status, args)
+  else if (type === 'attestDataServing') _attestDataServing(user, { nonce }, status, args)
   // else if ...
 }
 /******************************************************************************
@@ -171,15 +178,23 @@ async function _requestProofOfStorage (user, { nonce }, status, args) {
   handlers.forEach(handler => handler([newChallenge]))
 }
 async function _submitProofOfStorage (user, { nonce }, status, args) {
-  console.log('Validating the proof')
   const [ challengeID, proof ] = args
   const challenge = DB.challenges[challengeID - 1]
+  const [ attestorID ] = getRandom(DB.attestors)
   const isValid = validateProof(proof, challenge)
   let proofValidation
-  if (isValid) proofValidation = { event: { data: [challengeID], method: 'Valid proof' } }
-  else proofValidation = { event: { data: [challengeID], method: 'Invalid proof' } }
+  if (isValid) proofValidation = { event: { data: [attestorID, challengeID], method: 'Storing confirmed' } }
+  else proofValidation = { event: { data: [challengeID], method: 'Not storing' } }
   // emit events
   handlers.forEach(handler => handler([proofValidation]))
+}
+async function _attestDataServing (user, { nonce }, status, args) {
+  const [ challengeID, attestation ] = args
+  console.log('Got the attestation for challenge:', challengeID)
+  // emit events
+  if (attestation) dataServing = { event: { data: [challengeID], method: 'Data serving confirmed' } }
+  else dataServing = { event: { data: [challengeID], method: 'Not serving data' } }
+  handlers.forEach(handler => handler([dataServing]))
 }
 
 /******************************************************************************
@@ -198,9 +213,8 @@ function getRandomInt(min, max) {
 }
 function validateProof (proof, challenge) {
   const chunks = challenge.chunks
-  console.log(chunks)
+  console.log('Validating the proof of storage for chunks:', chunks)
   const proofChunks = proof.map(chunkProof => chunkProof.index)
-  console.log(proofChunks)
   if (`${chunks}` === `${proofChunks}`) return true
   else return false
 }

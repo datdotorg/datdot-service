@@ -39,7 +39,7 @@ const challenges = [] // Proof of storage
   chunks: [1,4,6]
 }
 */
-const attesttations = [] // proof of retrievability
+const attestations = [] // proof of retrievability
 /*
 {
   attestor: 'attestorID',
@@ -97,7 +97,7 @@ const DB = {
   plans,
   contracts,
   challenges,
-  attesttations,
+  attestations,
   // lookups
   userByAddress,
   feedByKey,
