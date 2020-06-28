@@ -40,7 +40,8 @@ async function datdotChain () {
     getUserByID,
     getEncodedIndex,
     getContractByID,
-    getPublisherByPlanID
+    getPublisherByPlanID,
+    getChalengeByID
 
   }
 
@@ -94,6 +95,9 @@ async function datdotChain () {
   async function getContractByID (contractID) {
     return await API.query.datVerify.getContractByID(contractID)
   }
+  async function getChalengeByID (challengeID) {
+    return await API.query.datVerify.getChalengeByID(challengeID)
+  }
   async function getPublisherByPlanID (planID) {
     return await API.query.datVerify.getPublisherByPlanID(planID)
   }
@@ -124,24 +128,10 @@ async function datdotChain () {
     await request.signAndSend(signer, { nonce }, status)
   }
 
-  async function submitProofOfStorage ({ data, accounts, account, nonce }) {
-    LOG('Getting the challenge and submitting the proof)')
-    const {hosterKey, datKey} = data
-
-    const hosterID = await API.query.dat_verify.userIndices(hosterKey)
-    const datID = api.query.dat_verify.datIndex(datKey)
-
-    const hostedArchive = api.query.dat_verify.hostedMap(hosterID, datID)
-
-    const challengeMap = hostedArchive.state
-
-    for (const challenge_index in challengeMap) {
-      challenge = challengeMap.get(challenge_index)
-      const proof = await API.tx.datVerify.submitProofOfStorage(challenge_index, [])
-      // array of bytes (proof format) => fetch from Mauve's proof folder
-      const account = keyring.getPair(user.toString('hex')) // @TODO pass account from service-mvp
-      proof.signAndSend(account, { nonce }, status)
-    }
+  async function submitProofOfStorage (opts) {
+    const {challengeID, proof, signer, nonce} = opts
+    const submitProof = await API.tx.datVerify.submitProofOfStorage(challengeID, proof)
+    submitProof.signAndSend(signer, { nonce }, status)
   }
 
   async function attest (opts) {

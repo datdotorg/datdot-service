@@ -98,7 +98,7 @@ async function start (chainAPI, serviceAPI) {
 
   async function requestHosting (data) {
     const [encoderID, hosterID, feedID, contractID, ranges] = data
-    const { feedKey } = await chainAPI.getFeedKeyByID(feedID)
+    const feedKey = await chainAPI.getFeedKeyByID(feedID)
     const feedKeyBuffer = Buffer.from(feedKey, 'hex')
 
     const hosterAddress  = await chainAPI.getUserByID(hosterID)
@@ -143,23 +143,20 @@ async function start (chainAPI, serviceAPI) {
     await chainAPI.requestProofOfStorage({contractID, signer: publisherAddress, nonce})
   }
 
-  // async function getChallenges (data) {
-  //   // data should be now (selected_user_key, dat_pubkey)
-  //   const user = data[0]
-  //   const opts = { user, accounts, respondToChallenges }
-  //   const responses = await chainAPI.getChallenges(opts)
-  //   await respondToChallenges(responses)
-  // }
-  //
-  // async function respondToChallenges (responses) {
-  //   const feeds = (await getData)[1]
-  //   const opts = { responses, feeds, keyring }
-  //   await chainAPI.submitProofOfStorage(opts)
-  // }
-
   async function submitProofOfStorage (data) {
-    LOG('Let us submit a proof of storage here')
-    // await chainAPI.submitProofOfStorage({ data, accounts })
+    const [challengeID] = data
+    const { hosterID, feedID, chunks } = await chainAPI.getChalengeByID(challengeID)
+    const feedKey = await chainAPI.getFeedKeyByID(feedID)
+    const feedKeyBuffer = Buffer.from(feedKey, 'hex')
+    const hosterAddress  = await chainAPI.getUserByID(hosterID)
+    const hoster = accounts[hosterAddress]
+    const proof = await Promise.all(chunks.map(async (chunk) => {
+      return await hoster.hoster.getProofOfStorage(feedKeyBuffer, chunk)
+    }))
+    LOG('Submitting proof to the chain', proof)
+    const signer = hosterAddress
+    const nonce = getNonce(hoster)
+    await chainAPI.submitProofOfStorage({challengeID, proof, signer, nonce})
   }
 
   async function attestPhase (data) {
@@ -179,7 +176,6 @@ async function start (chainAPI, serviceAPI) {
     if (event.method === 'NewContract') await requestHosting(event.data)
     if (event.method === 'HostingStarted') await requestProofOfStorage(event.data)
     if (event.method === 'Proof-of-storage challenge') await submitProofOfStorage(event.data)
-    // if (event.method === 'ChallengeFailed') { }
-    // if (event.method === 'AttestPhase') await attestPhase(event.data)
+    if (event.method === 'Valid proof') proofOfRetrievabilityPhase(event.data)
   }
 }

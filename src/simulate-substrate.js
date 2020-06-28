@@ -9,6 +9,7 @@ module.exports = {
         getFeedKeyByID,
         getUserByID,
         getContractByID,
+        getChalengeByID,
         getPublisherByPlanID
       }
     },
@@ -21,6 +22,7 @@ module.exports = {
       encodingDone,
       hostingStarts,
       requestProofOfStorage,
+      submitProofOfStorage,
       }
     }
   })
@@ -36,12 +38,13 @@ async function publishFeedAndPlan (...args) { return { signAndSend: signAndSend.
 async function encodingDone (...args) { return { signAndSend: signAndSend.bind({ args, type: 'encodingDone'}) } }
 async function hostingStarts (...args) { return { signAndSend: signAndSend.bind({ args, type: 'hostingStarts'}) } }
 async function requestProofOfStorage (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestProofOfStorage'}) } }
+async function submitProofOfStorage (...args) { return { signAndSend: signAndSend.bind({ args, type: 'submitProofOfStorage'}) } }
 /******************************************************************************
   QUERIES
 ******************************************************************************/
 function getFeedKeyByID (id) {
   const feed = DB.feeds[id - 1]
-  return { feedKey: feed.publickey }
+  return feed.publickey
 }
 function getUserByID (id) {
   return DB.users[id - 1].address
@@ -53,6 +56,14 @@ function getContractByID (id) {
   const plan = DB.plans[planID - 1]
   const feedID = plan.feed
   return { feedID, hosterID: contract.hoster, encoderID: contract.encoder, planID }
+}
+function getChalengeByID (id) {
+  const challenge = DB.challenges[id - 1]
+  const contractID = challenge.contract
+  const contract = DB.contracts[contractID - 1]
+  const planID = contract.plan
+  const plan = DB.plans[planID - 1]
+  return { hosterID: contract.hoster, feedID: plan.feed, chunks: challenge.chunks }
 }
 
 function getPublisherByPlanID (id) {
@@ -76,6 +87,7 @@ function signAndSend (signer, { nonce }, status) {
   else if (type === 'encodingDone') _encodingDone(user, { nonce }, status, args)
   else if (type === 'hostingStarts') _hostingStarts(user, { nonce }, status, args)
   else if (type === 'requestProofOfStorage') _requestProofOfStorage(user, { nonce }, status, args)
+  else if (type === 'submitProofOfStorage') _submitProofOfStorage(user, { nonce }, status, args)
   // else if ...
 }
 /******************************************************************************
@@ -151,13 +163,23 @@ async function _requestProofOfStorage (user, { nonce }, status, args) {
   const [ contractID ] = args
   const ranges = DB.contracts[contractID - 1].ranges // [ [0, 3], [5, 7] ]
   const chunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
-  console.log('CHUNKS', chunks)
-  const challenge = { contract: 'contractID', chunks }
+  const challenge = { contract: contractID, chunks }
   const challengeID = DB.challenges.push(challenge)
   challenge.id = challengeID
   // emit events
   const newChallenge = { event: { data: [challengeID], method: 'Proof-of-storage challenge' } }
   handlers.forEach(handler => handler([newChallenge]))
+}
+async function _submitProofOfStorage (user, { nonce }, status, args) {
+  console.log('Validating the proof')
+  const [ challengeID, proof ] = args
+  const challenge = DB.challenges[challengeID - 1]
+  const isValid = validateProof(proof, challenge)
+  let proofValidation
+  if (isValid) proofValidation = { event: { data: [challengeID], method: 'Valid proof' } }
+  else proofValidation = { event: { data: [challengeID], method: 'Invalid proof' } }
+  // emit events
+  handlers.forEach(handler => handler([proofValidation]))
 }
 
 /******************************************************************************
@@ -169,13 +191,19 @@ function getRandom (items) {
   const item = items[pos]
   return [item, pos]
 }
-
 function getRandomInt(min, max) {
   min = Math.ceil(min);
   max = Math.floor(max);
   return Math.floor(Math.random() * (max - min)) + min; //The maximum is exclusive and the minimum is inclusive
 }
-
+function validateProof (proof, challenge) {
+  const chunks = challenge.chunks
+  console.log(chunks)
+  const proofChunks = proof.map(chunkProof => chunkProof.index)
+  console.log(proofChunks)
+  if (`${chunks}` === `${proofChunks}`) return true
+  else return false
+}
 function makeNewContract (opts) {
   // Find an unhosted plan
   let { encoderID, hosterID } = opts
