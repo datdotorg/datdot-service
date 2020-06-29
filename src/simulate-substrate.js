@@ -6,12 +6,12 @@ module.exports = {
     query: {
       system: { events: handler => handlers.push(handler) },
       datVerify: {
-        getFeedKeyByID,
         getUserByID,
+        getFeedByID,
+        getPlanByID,
         getContractByID,
-        getChalengeByID,
-        getPublisherByPlanID,
-        getRandomChunksForFeed
+        getChallengeByID,
+        getAttesttionByID,
       }
     },
     tx: { datVerify: {
@@ -45,37 +45,13 @@ async function attestDataServing (...args) { return { signAndSend: signAndSend.b
 /******************************************************************************
   QUERIES
 ******************************************************************************/
-function getFeedKeyByID (id) {
-  const feed = DB.feeds[id - 1]
-  return feed.publickey
-}
-function getUserByID (id) {
-  return DB.users[id - 1].address
-}
-function getContractByID (id) {
-  const contract = DB.contracts[id - 1]
-  const hosterID = contract.hoster
-  const planID = contract.plan
-  const plan = DB.plans[planID - 1]
-  const feedID = plan.feed
-  return { feedID, hosterID: contract.hoster, encoderID: contract.encoder, planID }
-}
-function getChalengeByID (id) {
-  const challenge = DB.challenges[id - 1]
-  const contractID = challenge.contract
-  const contract = DB.contracts[contractID - 1]
-  const planID = contract.plan
-  const plan = DB.plans[planID - 1]
-  return { hosterID: contract.hoster, feedID: plan.feed, chunks: challenge.chunks }
-}
-function getPublisherByPlanID (id) {
-  const plan = DB.plans[id - 1]
-  return plan.publisher
-}
-function getRandomChunksForFeed (contractID) {
-  const ranges = DB.contracts[contractID - 1].ranges // [ [0, 3], [5, 7] ]
-  return ranges.map(range => getRandomInt(range[0], range[1] + 1))
-}
+function getFeedByID (id) { return DB.feeds[id - 1] }
+function getUserByID (id) { return DB.users[id - 1] }
+function getPlanByID (id) { return DB.plans[id - 1] }
+function getContractByID (id) { return DB.contracts[id - 1] }
+function getChallengeByID (id) { return DB.challenges[id - 1] }
+function getAttesttionByID (id) { return DB.attestations[id - 1] }
+
 /******************************************************************************
   ROUTING (sign & send)
 ******************************************************************************/
@@ -180,20 +156,28 @@ async function _requestProofOfStorage (user, { nonce }, status, args) {
 async function _submitProofOfStorage (user, { nonce }, status, args) {
   const [ challengeID, proof ] = args
   const challenge = DB.challenges[challengeID - 1]
-  const [ attestorID ] = getRandom(DB.attestors)
   const isValid = validateProof(proof, challenge)
   let proofValidation
-  if (isValid) proofValidation = { event: { data: [attestorID, challengeID], method: 'Storing confirmed' } }
+  const [attestorID, attestationID] = _newAttestationRequest(challenge.contract)
+  const data = [attestorID, attestationID, challengeID]
+  if (isValid) proofValidation = { event: { data, method: 'Storing confirmed' } }
   else proofValidation = { event: { data: [challengeID], method: 'Not storing' } }
   // emit events
   handlers.forEach(handler => handler([proofValidation]))
 }
+function _newAttestationRequest (contractID) {
+    const [ attestorID ] = getRandom(DB.attestors)
+    const attestation = { contract: contractID , attestor: attestorID }
+    const attestationID = DB.attestations.push(attestation)
+    attestation.id = attestationID
+    return [attestorID, attestationID]
+}
 async function _attestDataServing (user, { nonce }, status, args) {
-  const [ challengeID, attestation ] = args
-  console.log('Got the attestation for challenge:', challengeID)
+  const [ attestationID, attestation ] = args
+  console.log('Got the attestation for attestation:', attestationID)
   // emit events
-  if (attestation) dataServing = { event: { data: [challengeID], method: 'Data serving confirmed' } }
-  else dataServing = { event: { data: [challengeID], method: 'Not serving data' } }
+  if (attestation) dataServing = { event: { data: [attestationID], method: 'Data serving confirmed' } }
+  else dataServing = { event: { data: [attestationID], method: 'Not serving data' } }
   handlers.forEach(handler => handler([dataServing]))
 }
 

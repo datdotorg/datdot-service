@@ -98,14 +98,14 @@ async function start (chainAPI, serviceAPI) {
 
   async function requestHosting (data) {
     const [encoderID, hosterID, feedID, contractID, ranges] = data
-    const feedKey = await chainAPI.getFeedKeyByID(feedID)
+    const feedKey = await chainAPI.getFeedKey(feedID)
     const feedKeyBuffer = Buffer.from(feedKey, 'hex')
 
-    const hosterAddress  = await chainAPI.getUserByID(hosterID)
+    const hosterAddress  = await chainAPI.getUserAddress(hosterID)
     const hoster = accounts[hosterAddress]
     const hosterKey = hoster.hoster.publicKey
 
-    const encoderAddress = await chainAPI.getUserByID(encoderID)
+    const encoderAddress = await chainAPI.getUserAddress(encoderID)
     const encoder = accounts[encoderAddress]
     const encoderKey = encoder.encoder.publicKey
 
@@ -136,21 +136,25 @@ async function start (chainAPI, serviceAPI) {
 
   async function requestProofOfStorage (data) { // requestProofOfStorage
     const [ contractID] = data
-    const { feedID, hosterID, encoderID, planID } = await chainAPI.getContractByID(contractID)
-    const publisherID = await chainAPI.getPublisherByPlanID(planID)
-    const publisherAddress = await chainAPI.getUserByID(publisherID)
+    const { hoster: hosterID, encoder: encoderID, plan: planID } = await chainAPI.getContractByID(contractID)
+    const { feed: feedID } =  await chainAPI.getPlanByID(planID)
+    const plan = await chainAPI.getPlanByID(planID)
+    const publisherID = plan.publisher
+    const publisherAddress = await chainAPI.getUserAddress(publisherID)
     const account = accounts[publisherAddress]
     const nonce = getNonce(account)
     await chainAPI.requestProofOfStorage({contractID, signer: publisherAddress, nonce})
   }
   async function submitProofOfStorage (data) {
     const [challengeID] = data
-    const { hosterID, feedID, chunks } = await chainAPI.getChalengeByID(challengeID)
-    const feedKey = await chainAPI.getFeedKeyByID(feedID)
+    const challenge = await chainAPI.getChallengeByID(challengeID)
+    const contract = await chainAPI.getContractByID(challenge.contract)
+    const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
+    const feedKey = await chainAPI.getFeedKey(feedID)
     const feedKeyBuffer = Buffer.from(feedKey, 'hex')
-    const hosterAddress  = await chainAPI.getUserByID(hosterID)
+    const hosterAddress  = await chainAPI.getUserAddress(contract.hoster)
     const user = accounts[hosterAddress]
-    const proof = await Promise.all(chunks.map(async (chunk) => {
+    const proof = await Promise.all(challenge.chunks.map(async (chunk) => {
       return await user.hoster.getProofOfStorage(feedKeyBuffer, chunk)
     }))
     LOG('Submitting proof of storage to the chain', proof)
@@ -159,23 +163,34 @@ async function start (chainAPI, serviceAPI) {
     await chainAPI.submitProofOfStorage({challengeID, proof, signer, nonce})
   }
   async function attestDataServing (data) {
-    const [attestorID, challengeID] = data
-    const { feedID } = await chainAPI.getChalengeByID(challengeID)
-    const feedKey = await chainAPI.getFeedKeyByID(feedID)
+    const [attestorID, attestationID, challengeID] = data
+    const challenge = await chainAPI.getChallengeByID(challengeID)
+    const contract = await chainAPI.getContractByID(challenge.contract)
+    const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
+    const feedKey = await chainAPI.getFeedKey(feedID)
     const feedKeyBuffer = Buffer.from(feedKey, 'hex')
-    const attestorAddress = await chainAPI.getUserByID(attestorID)
+    const attestorAddress = await chainAPI.getUserAddress(attestorID)
     const user = accounts[attestorAddress]
-    const randomChunks = await chainAPI.getRandomChunksForFeed(challengeID)
+    const { ranges } = await chainAPI.getPlanByID(contract.plan)
+    const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
     const attestation = await Promise.all(randomChunks.map(async (chunk) => {
       return await user.attestor.attest(feedKeyBuffer, chunk)
     }))
     LOG('Attesting retrievability to the chain for chunks', randomChunks)
     const signer = attestorAddress
     const nonce = getNonce(user)
-    await chainAPI.attestDataServing({challengeID, attestation, signer, nonce})
+    await chainAPI.attestDataServing({attestationID, attestation, signer, nonce})
   }
   /* --------------------------------------
-            E. EVENTS
+            E. HELPERS
+  ----------------------------------------- */
+  function getRandomInt(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min)) + min; //The maximum is exclusive and the minimum is inclusive
+  }
+  /* --------------------------------------
+            F. EVENTS
   ----------------------------------------- */
   async function handleEvent (event) {
     // const address = event.data[0]

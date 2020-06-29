@@ -36,14 +36,14 @@ async function datdotChain () {
     submitProofOfStorage,
     attestDataServing,
     listenToEvents,
-    getFeedKeyByID,
-    getRandomChunksForFeed,
-    getUserByID,
-    getEncodedIndex,
+    getFeedByID,
+    getPlanByID,
     getContractByID,
-    getPublisherByPlanID,
-    getChalengeByID
-
+    getChallengeByID,
+    getAttesttionByID,
+    getFeedKey,
+    getUserAddress,
+    getEncodedIndex,
   }
 
   return chainAPI
@@ -81,21 +81,28 @@ async function datdotChain () {
     LOG(`Publishing data by user: ${signer}`)
     await publishFeedAndPlan.signAndSend(signer, { nonce }, status)
   }
-  async function getFeedKeyByID (feedID) {
-    return await API.query.datVerify.getFeedKeyByID(feedID)
+  async function getFeedKey (feedID) {
+    const feed = await API.query.datVerify.getFeedByID(feedID)
+    return feed.publickey
   }
-  async function getRandomChunksForFeed (contractID) {
-    return await API.query.datVerify.getRandomChunksForFeed(contractID)
+  async function getUserAddress (id) {
+    const user = await API.query.datVerify.getUserByID(id)
+    return user.address
   }
-  async function getUserByID (id) { return await API.query.datVerify.getUserByID(id) }
-  async function getContractByID (contractID) {
-    return await API.query.datVerify.getContractByID(contractID)
+  async function getContractByID (id) {
+    return await API.query.datVerify.getContractByID(id)
   }
-  async function getChalengeByID (challengeID) {
-    return await API.query.datVerify.getChalengeByID(challengeID)
+  async function getPlanByID (id) {
+    return await API.query.datVerify.getPlanByID(id)
   }
-  async function getPublisherByPlanID (planID) {
-    return await API.query.datVerify.getPublisherByPlanID(planID)
+  async function getFeedByID (id) {
+    return await API.query.datVerify.getFeedByID(id)
+  }
+  async function getChallengeByID (id) {
+    return await API.query.datVerify.getChallengeByID(id)
+  }
+  async function getAttesttionByID (id) {
+    return await API.query.datVerify.getAttesttionByID(id)
   }
 
   async function getEncodedIndex (encoderAddress) {
@@ -127,9 +134,9 @@ async function datdotChain () {
     submit.signAndSend(signer, { nonce }, status)
   }
   async function attestDataServing (opts) {
-    const {challengeID, attestation, signer, nonce} =  opts
+    const {attestationID, attestation, signer, nonce} =  opts
     LOG('Sending attestation to the chain', attestation)
-    const submit = await API.tx.datVerify.attestDataServing(challengeID, attestation)
+    const submit = await API.tx.datVerify.attestDataServing(attestationID, attestation)
     submit.signAndSend(signer, { nonce }, status)
   }
   // LISTEN TO EVENTS

@@ -43,8 +43,7 @@ const attestations = [] // proof of retrievability
 /*
 {
   attestor: 'attestorID',
-  contract: 'contractID',
-  chunks: [1,4,6]
+  contract: 'contractID'
 }
 */
 /******************************************************************************
