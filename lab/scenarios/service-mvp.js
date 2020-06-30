@@ -134,7 +134,7 @@ async function start (chainAPI, serviceAPI) {
             E. QUALITY ASSURANCE FLOW
   ----------------------------------------- */
 
-  async function requestProofOfStorage (data) { // requestProofOfStorage
+  async function ProofOfStorageChallenge (data) { // ProofOfStorageChallenge
     const [ contractID] = data
     const { hoster: hosterID, encoder: encoderID, plan: planID } = await chainAPI.getContractByID(contractID)
     const { feed: feedID } =  await chainAPI.getPlanByID(planID)
@@ -143,7 +143,7 @@ async function start (chainAPI, serviceAPI) {
     const publisherAddress = await chainAPI.getUserAddress(publisherID)
     const account = accounts[publisherAddress]
     const nonce = getNonce(account)
-    await chainAPI.requestProofOfStorage({contractID, signer: publisherAddress, nonce})
+    await chainAPI.ProofOfStorageChallenge({contractID, signer: publisherAddress, nonce})
   }
   async function submitProofOfStorage (data) {
     const [challengeID] = data
@@ -157,12 +157,12 @@ async function start (chainAPI, serviceAPI) {
     const proof = await Promise.all(challenge.chunks.map(async (chunk) => {
       return await user.hoster.getProofOfStorage(feedKeyBuffer, chunk)
     }))
-    LOG('Submitting proof of storage to the chain', proof)
+    LOG('Proof for Challenge', challengeID)
     const signer = hosterAddress
     const nonce = getNonce(user)
     await chainAPI.submitProofOfStorage({challengeID, proof, signer, nonce})
   }
-  async function requestProofOfRetrievability (data) { // requestProofOfRetrievability
+  async function ProofOfRetrievabilityAttestation (data) { // ProofOfRetrievabilityAttestation
     const [ contractID] = data
     const { hoster: hosterID, encoder: encoderID, plan: planID } = await chainAPI.getContractByID(contractID)
     const { feed: feedID } =  await chainAPI.getPlanByID(planID)
@@ -171,7 +171,7 @@ async function start (chainAPI, serviceAPI) {
     const publisherAddress = await chainAPI.getUserAddress(publisherID)
     const account = accounts[publisherAddress]
     const nonce = getNonce(account)
-    await chainAPI.requestProofOfRetrievability({contractID, signer: publisherAddress, nonce})
+    await chainAPI.ProofOfRetrievabilityAttestation({contractID, signer: publisherAddress, nonce})
   }
   async function submitProofOfRetrievability (data) {
     const [attestationID] = data
@@ -189,7 +189,7 @@ async function start (chainAPI, serviceAPI) {
     const proof = await Promise.all(randomChunks.map(async (chunk) => {
       return await user.attestor.attest(feedKeyBuffer, chunk)
     }))
-    LOG('Attesting PoR to the chain for chunks', randomChunks)
+    LOG('Attestation for chunks', randomChunks)
     const signer = attestorAddress
     const nonce = getNonce(user)
     await chainAPI.submitProofOfRetrievability({attestationID, proof, signer, nonce})
@@ -211,9 +211,10 @@ async function start (chainAPI, serviceAPI) {
     if (event.method === 'NewFeed') {}
     if (event.method === 'NewPlan') {}
     if (event.method === 'NewContract') await requestHosting(event.data)
-    if (event.method === 'HostingStarted') await requestProofOfStorage(event.data)
-    if (event.method === 'Proof-of-storage challenge') await submitProofOfStorage(event.data)
-    if (event.method === 'Storing confirmed') requestProofOfRetrievability(event.data)
-    if (event.method === 'ProofOfRetrievabilityRequest') submitProofOfRetrievability(event.data)
+    if (event.method === 'HostingStarted') await ProofOfStorageChallenge(event.data)
+    if (event.method === 'ProofOfStorageChallenge') await submitProofOfStorage(event.data)
+    if (event.method === 'ProofOfStorageConfirmed') ProofOfRetrievabilityAttestation(event.data)
+    if (event.method === 'ProofOfRetrievabilityAttestation') submitProofOfRetrievability(event.data)
+    if (event.method === 'ProofOfRetrievabilityConfirmed') {}
   }
 }

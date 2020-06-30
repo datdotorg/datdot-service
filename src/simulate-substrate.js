@@ -22,8 +22,8 @@ module.exports = {
       publishFeedAndPlan,
       encodingDone,
       hostingStarts,
-      requestProofOfStorage,
-      requestProofOfRetrievability,
+      ProofOfStorageChallenge,
+      ProofOfRetrievabilityAttestation,
       submitProofOfStorage,
       submitProofOfRetrievability
       }
@@ -40,8 +40,8 @@ async function registerHoster (...args) { return { signAndSend: signAndSend.bind
 async function publishFeedAndPlan (...args) { return { signAndSend: signAndSend.bind({ args, type: 'publishFeedAndPlan'}) } }
 async function encodingDone (...args) { return { signAndSend: signAndSend.bind({ args, type: 'encodingDone'}) } }
 async function hostingStarts (...args) { return { signAndSend: signAndSend.bind({ args, type: 'hostingStarts'}) } }
-async function requestProofOfStorage (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestProofOfStorage'}) } }
-async function requestProofOfRetrievability (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestProofOfRetrievability'}) } }
+async function ProofOfStorageChallenge (...args) { return { signAndSend: signAndSend.bind({ args, type: 'ProofOfStorageChallenge'}) } }
+async function ProofOfRetrievabilityAttestation (...args) { return { signAndSend: signAndSend.bind({ args, type: 'ProofOfRetrievabilityAttestation'}) } }
 async function submitProofOfStorage (...args) { return { signAndSend: signAndSend.bind({ args, type: 'submitProofOfStorage'}) } }
 async function submitProofOfRetrievability (...args) { return { signAndSend: signAndSend.bind({ args, type: 'submitProofOfRetrievability'}) } }
 /******************************************************************************
@@ -70,8 +70,8 @@ function signAndSend (signer, { nonce }, status) {
   else if (type === 'registerHoster') _registerHoster(user, { nonce }, status, args)
   else if (type === 'encodingDone') _encodingDone(user, { nonce }, status, args)
   else if (type === 'hostingStarts') _hostingStarts(user, { nonce }, status, args)
-  else if (type === 'requestProofOfStorage') _requestProofOfStorage(user, { nonce }, status, args)
-  else if (type === 'requestProofOfRetrievability') _requestProofOfRetrievability(user, { nonce }, status, args)
+  else if (type === 'ProofOfStorageChallenge') _ProofOfStorageChallenge(user, { nonce }, status, args)
+  else if (type === 'ProofOfRetrievabilityAttestation') _ProofOfRetrievabilityAttestation(user, { nonce }, status, args)
   else if (type === 'submitProofOfStorage') _submitProofOfStorage(user, { nonce }, status, args)
   else if (type === 'submitProofOfRetrievability') _submitProofOfRetrievability(user, { nonce }, status, args)
   // else if ...
@@ -145,7 +145,7 @@ async function _hostingStarts (user, { nonce }, status, args) {
   const HostingStarted = { event: { data: [contractID], method: 'HostingStarted' } }
   handlers.forEach(handler => handler([HostingStarted]))
 }
-async function _requestProofOfStorage (user, { nonce }, status, args) {
+async function _ProofOfStorageChallenge (user, { nonce }, status, args) {
   const [ contractID ] = args
   const ranges = DB.contracts[contractID - 1].ranges // [ [0, 3], [5, 7] ]
   const chunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
@@ -153,7 +153,7 @@ async function _requestProofOfStorage (user, { nonce }, status, args) {
   const challengeID = DB.challenges.push(challenge)
   challenge.id = challengeID
   // emit events
-  const newChallenge = { event: { data: [challengeID], method: 'Proof-of-storage challenge' } }
+  const newChallenge = { event: { data: [challengeID], method: 'ProofOfStorageChallenge' } }
   handlers.forEach(handler => handler([newChallenge]))
 }
 async function _submitProofOfStorage (user, { nonce }, status, args) {
@@ -162,27 +162,27 @@ async function _submitProofOfStorage (user, { nonce }, status, args) {
   const isValid = validateProof(proof, challenge)
   let proofValidation
   const data = [challengeID]
-  if (isValid) proofValidation = { event: { data, method: 'Storing confirmed' } }
-  else proofValidation = { event: { data: [challengeID], method: 'Not storing' } }
+  console.log('Submitting Proof Of Storage Challenge with ID:', challengeID)
+  if (isValid) proofValidation = { event: { data, method: 'ProofOfStorageConfirmed' } }
+  else proofValidation = { event: { data: [challengeID], method: 'ProofOfStorageFailed' } }
   // emit events
   handlers.forEach(handler => handler([proofValidation]))
 }
-async function _requestProofOfRetrievability (user, { nonce }, status, args) {
+async function _ProofOfRetrievabilityAttestation (user, { nonce }, status, args) {
   const [ contractID ] = args
   const [ attestorID ] = getRandom(DB.attestors)
   const attestation = { contract: contractID , attestor: attestorID }
-  console.log('ATTESTATION', attestation)
   const attestationID = DB.attestations.push(attestation)
   attestation.id = attestationID
-  const PoRChallenge = { event: { data: [attestationID], method: 'ProofOfRetrievabilityRequest' } }
+  const PoRChallenge = { event: { data: [attestationID], method: 'ProofOfRetrievabilityAttestation' } }
   handlers.forEach(handler => handler([PoRChallenge]))
 }
 async function _submitProofOfRetrievability (user, { nonce }, status, args) {
   const [ attestationID, proof ] = args
-  console.log('Got the attestation for proof of retrievability:', attestationID)
+  console.log('Submitting Proof Of Retrievability Attestation with ID:', attestationID)
   // emit events
-  if (proof) PoR = { event: { data: [attestationID], method: 'RetrievabilityConfirmed' } }
-  else PoR = { event: { data: [attestationID], method: 'RetrievabilityFailed' } }
+  if (proof) PoR = { event: { data: [attestationID], method: 'ProofOfRetrievabilityConfirmed' } }
+  else PoR = { event: { data: [attestationID], method: 'ProofOfRetrievabilityFailed' } }
   handlers.forEach(handler => handler([PoR]))
 }
 
