@@ -34,13 +34,14 @@ async function datdotChain () {
     hostingStarts,
     requestProofOfStorage,
     submitProofOfStorage,
-    attestDataServing,
+    requestProofOfRetrievability,
+    submitProofOfRetrievability,
     listenToEvents,
     getFeedByID,
     getPlanByID,
     getContractByID,
     getChallengeByID,
-    getAttesttionByID,
+    getAttestationByID,
     getFeedKey,
     getUserAddress,
     getEncodedIndex,
@@ -101,8 +102,8 @@ async function datdotChain () {
   async function getChallengeByID (id) {
     return await API.query.datVerify.getChallengeByID(id)
   }
-  async function getAttesttionByID (id) {
-    return await API.query.datVerify.getAttesttionByID(id)
+  async function getAttestationByID (id) {
+    return await API.query.datVerify.getAttestationByID(id)
   }
 
   async function getEncodedIndex (encoderAddress) {
@@ -133,10 +134,16 @@ async function datdotChain () {
     const submit = await API.tx.datVerify.submitProofOfStorage(challengeID, proof)
     submit.signAndSend(signer, { nonce }, status)
   }
-  async function attestDataServing (opts) {
-    const {attestationID, attestation, signer, nonce} =  opts
-    LOG('Sending attestation to the chain', attestation)
-    const submit = await API.tx.datVerify.attestDataServing(attestationID, attestation)
+  async function requestProofOfRetrievability (opts) {
+    const {contractID, signer, nonce} = opts
+    const request = await API.tx.datVerify.requestProofOfRetrievability(contractID)
+    LOG(`Requesting a Proof of retrievability for hosting from ContractID:${contractID}`)
+    await request.signAndSend(signer, { nonce }, status)
+  }
+  async function submitProofOfRetrievability (opts) {
+    const {attestationID, proof, signer, nonce} =  opts
+    LOG('Sending attestation to the chain', proof)
+    const submit = await API.tx.datVerify.submitProofOfRetrievability(attestationID, proof)
     submit.signAndSend(signer, { nonce }, status)
   }
   // LISTEN TO EVENTS

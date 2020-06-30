@@ -11,7 +11,7 @@ module.exports = {
         getPlanByID,
         getContractByID,
         getChallengeByID,
-        getAttesttionByID,
+        getAttestationByID,
       }
     },
     tx: { datVerify: {
@@ -23,8 +23,9 @@ module.exports = {
       encodingDone,
       hostingStarts,
       requestProofOfStorage,
+      requestProofOfRetrievability,
       submitProofOfStorage,
-      attestDataServing
+      submitProofOfRetrievability
       }
     }
   })
@@ -40,8 +41,9 @@ async function publishFeedAndPlan (...args) { return { signAndSend: signAndSend.
 async function encodingDone (...args) { return { signAndSend: signAndSend.bind({ args, type: 'encodingDone'}) } }
 async function hostingStarts (...args) { return { signAndSend: signAndSend.bind({ args, type: 'hostingStarts'}) } }
 async function requestProofOfStorage (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestProofOfStorage'}) } }
+async function requestProofOfRetrievability (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestProofOfRetrievability'}) } }
 async function submitProofOfStorage (...args) { return { signAndSend: signAndSend.bind({ args, type: 'submitProofOfStorage'}) } }
-async function attestDataServing (...args) { return { signAndSend: signAndSend.bind({ args, type: 'attestDataServing'}) } }
+async function submitProofOfRetrievability (...args) { return { signAndSend: signAndSend.bind({ args, type: 'submitProofOfRetrievability'}) } }
 /******************************************************************************
   QUERIES
 ******************************************************************************/
@@ -50,7 +52,7 @@ function getUserByID (id) { return DB.users[id - 1] }
 function getPlanByID (id) { return DB.plans[id - 1] }
 function getContractByID (id) { return DB.contracts[id - 1] }
 function getChallengeByID (id) { return DB.challenges[id - 1] }
-function getAttesttionByID (id) { return DB.attestations[id - 1] }
+function getAttestationByID (id) { return DB.attestations[id - 1] }
 
 /******************************************************************************
   ROUTING (sign & send)
@@ -69,8 +71,9 @@ function signAndSend (signer, { nonce }, status) {
   else if (type === 'encodingDone') _encodingDone(user, { nonce }, status, args)
   else if (type === 'hostingStarts') _hostingStarts(user, { nonce }, status, args)
   else if (type === 'requestProofOfStorage') _requestProofOfStorage(user, { nonce }, status, args)
+  else if (type === 'requestProofOfRetrievability') _requestProofOfRetrievability(user, { nonce }, status, args)
   else if (type === 'submitProofOfStorage') _submitProofOfStorage(user, { nonce }, status, args)
-  else if (type === 'attestDataServing') _attestDataServing(user, { nonce }, status, args)
+  else if (type === 'submitProofOfRetrievability') _submitProofOfRetrievability(user, { nonce }, status, args)
   // else if ...
 }
 /******************************************************************************
@@ -158,27 +161,29 @@ async function _submitProofOfStorage (user, { nonce }, status, args) {
   const challenge = DB.challenges[challengeID - 1]
   const isValid = validateProof(proof, challenge)
   let proofValidation
-  const [attestorID, attestationID] = _newAttestationRequest(challenge.contract)
-  const data = [attestorID, attestationID, challengeID]
+  const data = [challengeID]
   if (isValid) proofValidation = { event: { data, method: 'Storing confirmed' } }
   else proofValidation = { event: { data: [challengeID], method: 'Not storing' } }
   // emit events
   handlers.forEach(handler => handler([proofValidation]))
 }
-function _newAttestationRequest (contractID) {
-    const [ attestorID ] = getRandom(DB.attestors)
-    const attestation = { contract: contractID , attestor: attestorID }
-    const attestationID = DB.attestations.push(attestation)
-    attestation.id = attestationID
-    return [attestorID, attestationID]
+async function _requestProofOfRetrievability (user, { nonce }, status, args) {
+  const [ contractID ] = args
+  const [ attestorID ] = getRandom(DB.attestors)
+  const attestation = { contract: contractID , attestor: attestorID }
+  console.log('ATTESTATION', attestation)
+  const attestationID = DB.attestations.push(attestation)
+  attestation.id = attestationID
+  const PoRChallenge = { event: { data: [attestationID], method: 'ProofOfRetrievabilityRequest' } }
+  handlers.forEach(handler => handler([PoRChallenge]))
 }
-async function _attestDataServing (user, { nonce }, status, args) {
-  const [ attestationID, attestation ] = args
-  console.log('Got the attestation for attestation:', attestationID)
+async function _submitProofOfRetrievability (user, { nonce }, status, args) {
+  const [ attestationID, proof ] = args
+  console.log('Got the attestation for proof of retrievability:', attestationID)
   // emit events
-  if (attestation) dataServing = { event: { data: [attestationID], method: 'Data serving confirmed' } }
-  else dataServing = { event: { data: [attestationID], method: 'Not serving data' } }
-  handlers.forEach(handler => handler([dataServing]))
+  if (proof) PoR = { event: { data: [attestationID], method: 'RetrievabilityConfirmed' } }
+  else PoR = { event: { data: [attestationID], method: 'RetrievabilityFailed' } }
+  handlers.forEach(handler => handler([PoR]))
 }
 
 /******************************************************************************

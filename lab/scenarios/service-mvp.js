@@ -162,24 +162,37 @@ async function start (chainAPI, serviceAPI) {
     const nonce = getNonce(user)
     await chainAPI.submitProofOfStorage({challengeID, proof, signer, nonce})
   }
-  async function attestDataServing (data) {
-    const [attestorID, attestationID, challengeID] = data
-    const challenge = await chainAPI.getChallengeByID(challengeID)
-    const contract = await chainAPI.getContractByID(challenge.contract)
+  async function requestProofOfRetrievability (data) { // requestProofOfRetrievability
+    const [ contractID] = data
+    const { hoster: hosterID, encoder: encoderID, plan: planID } = await chainAPI.getContractByID(contractID)
+    const { feed: feedID } =  await chainAPI.getPlanByID(planID)
+    const plan = await chainAPI.getPlanByID(planID)
+    const publisherID = plan.publisher
+    const publisherAddress = await chainAPI.getUserAddress(publisherID)
+    const account = accounts[publisherAddress]
+    const nonce = getNonce(account)
+    await chainAPI.requestProofOfRetrievability({contractID, signer: publisherAddress, nonce})
+  }
+  async function submitProofOfRetrievability (data) {
+    const [attestationID] = data
+    const attestation = await chainAPI.getAttestationByID(attestationID)
+    const contractID = attestation.contract
+    const contract = await chainAPI.getContractByID(contractID)
     const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
     const feedKey = await chainAPI.getFeedKey(feedID)
     const feedKeyBuffer = Buffer.from(feedKey, 'hex')
+    const attestorID = attestation.attestor
     const attestorAddress = await chainAPI.getUserAddress(attestorID)
     const user = accounts[attestorAddress]
     const { ranges } = await chainAPI.getPlanByID(contract.plan)
     const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
-    const attestation = await Promise.all(randomChunks.map(async (chunk) => {
+    const proof = await Promise.all(randomChunks.map(async (chunk) => {
       return await user.attestor.attest(feedKeyBuffer, chunk)
     }))
-    LOG('Attesting retrievability to the chain for chunks', randomChunks)
+    LOG('Attesting PoR to the chain for chunks', randomChunks)
     const signer = attestorAddress
     const nonce = getNonce(user)
-    await chainAPI.attestDataServing({attestationID, attestation, signer, nonce})
+    await chainAPI.submitProofOfRetrievability({attestationID, proof, signer, nonce})
   }
   /* --------------------------------------
             E. HELPERS
@@ -200,6 +213,7 @@ async function start (chainAPI, serviceAPI) {
     if (event.method === 'NewContract') await requestHosting(event.data)
     if (event.method === 'HostingStarted') await requestProofOfStorage(event.data)
     if (event.method === 'Proof-of-storage challenge') await submitProofOfStorage(event.data)
-    if (event.method === 'Storing confirmed') attestDataServing(event.data)
+    if (event.method === 'Storing confirmed') requestProofOfRetrievability(event.data)
+    if (event.method === 'ProofOfRetrievabilityRequest') submitProofOfRetrievability(event.data)
   }
 }
