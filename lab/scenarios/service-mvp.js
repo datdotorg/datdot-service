@@ -134,7 +134,7 @@ async function start (chainAPI, serviceAPI) {
             E. QUALITY ASSURANCE FLOW
   ----------------------------------------- */
 
-  async function ProofOfStorageChallenge (data) { // ProofOfStorageChallenge
+  async function requestProofOfStorageChallenge (data) { // requestProofOfStorageChallenge
     const [ contractID] = data
     const { hoster: hosterID, encoder: encoderID, plan: planID } = await chainAPI.getContractByID(contractID)
     const { feed: feedID } =  await chainAPI.getPlanByID(planID)
@@ -143,7 +143,7 @@ async function start (chainAPI, serviceAPI) {
     const publisherAddress = await chainAPI.getUserAddress(publisherID)
     const account = accounts[publisherAddress]
     const nonce = getNonce(account)
-    await chainAPI.ProofOfStorageChallenge({contractID, signer: publisherAddress, nonce})
+    await chainAPI.requestProofOfStorageChallenge({contractID, signer: publisherAddress, nonce})
   }
   async function submitProofOfStorage (data) {
     const [challengeID] = data
@@ -162,7 +162,7 @@ async function start (chainAPI, serviceAPI) {
     const nonce = getNonce(user)
     await chainAPI.submitProofOfStorage({challengeID, proof, signer, nonce})
   }
-  async function ProofOfRetrievabilityAttestation (data) { // ProofOfRetrievabilityAttestation
+  async function requestAttestation (data) { // requestAttestation
     const [ contractID] = data
     const { hoster: hosterID, encoder: encoderID, plan: planID } = await chainAPI.getContractByID(contractID)
     const { feed: feedID } =  await chainAPI.getPlanByID(planID)
@@ -171,9 +171,9 @@ async function start (chainAPI, serviceAPI) {
     const publisherAddress = await chainAPI.getUserAddress(publisherID)
     const account = accounts[publisherAddress]
     const nonce = getNonce(account)
-    await chainAPI.ProofOfRetrievabilityAttestation({contractID, signer: publisherAddress, nonce})
+    await chainAPI.requestAttestation({contractID, signer: publisherAddress, nonce})
   }
-  async function submitProofOfRetrievability (data) {
+  async function submitAttestationReport (data) {
     const [attestationID] = data
     const attestation = await chainAPI.getAttestationByID(attestationID)
     const contractID = attestation.contract
@@ -186,13 +186,13 @@ async function start (chainAPI, serviceAPI) {
     const user = accounts[attestorAddress]
     const { ranges } = await chainAPI.getPlanByID(contract.plan)
     const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
-    const proof = await Promise.all(randomChunks.map(async (chunk) => {
+    const report = await Promise.all(randomChunks.map(async (chunk) => {
       return await user.attestor.attest(feedKeyBuffer, chunk)
     }))
     LOG('Attestation for chunks', randomChunks)
     const signer = attestorAddress
     const nonce = getNonce(user)
-    await chainAPI.submitProofOfRetrievability({attestationID, proof, signer, nonce})
+    await chainAPI.submitAttestationReport({attestationID, report, signer, nonce})
   }
   /* --------------------------------------
             E. HELPERS
@@ -211,10 +211,10 @@ async function start (chainAPI, serviceAPI) {
     if (event.method === 'NewFeed') {}
     if (event.method === 'NewPlan') {}
     if (event.method === 'NewContract') await requestHosting(event.data)
-    if (event.method === 'HostingStarted') await ProofOfStorageChallenge(event.data)
-    if (event.method === 'ProofOfStorageChallenge') await submitProofOfStorage(event.data)
-    if (event.method === 'ProofOfStorageConfirmed') ProofOfRetrievabilityAttestation(event.data)
-    if (event.method === 'ProofOfRetrievabilityAttestation') submitProofOfRetrievability(event.data)
-    if (event.method === 'ProofOfRetrievabilityConfirmed') {}
+    if (event.method === 'HostingStarted') await requestProofOfStorageChallenge(event.data)
+    if (event.method === 'NewProofOfStorageChallenge') await submitProofOfStorage(event.data)
+    if (event.method === 'ProofOfStorageConfirmed') requestAttestation(event.data)
+    if (event.method === 'newAttestation') submitAttestationReport(event.data)
+    if (event.method === 'AttestationReportConfirmed') {}
   }
 }

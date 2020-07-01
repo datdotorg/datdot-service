@@ -32,10 +32,10 @@ async function datdotChain () {
     publishFeedAndPlan,
     encodingDone,
     hostingStarts,
-    ProofOfStorageChallenge,
+    requestProofOfStorageChallenge,
     submitProofOfStorage,
-    ProofOfRetrievabilityAttestation,
-    submitProofOfRetrievability,
+    requestAttestation,
+    submitAttestationReport,
     listenToEvents,
     getFeedByID,
     getPlanByID,
@@ -123,9 +123,9 @@ async function datdotChain () {
     LOG(`Hosting for contractID: ${contractID} started`)
     await register.signAndSend(signer, { nonce }, status)
   }
-  async function ProofOfStorageChallenge (opts) {
+  async function requestProofOfStorageChallenge (opts) {
     const {contractID, signer, nonce} = opts
-    const request = await API.tx.datVerify.ProofOfStorageChallenge(contractID)
+    const request = await API.tx.datVerify.requestProofOfStorageChallenge(contractID)
     await request.signAndSend(signer, { nonce }, status)
   }
   async function submitProofOfStorage (opts) {
@@ -134,15 +134,15 @@ async function datdotChain () {
     const submit = await API.tx.datVerify.submitProofOfStorage(challengeID, proof)
     submit.signAndSend(signer, { nonce }, status)
   }
-  async function ProofOfRetrievabilityAttestation (opts) {
+  async function requestAttestation (opts) {
     const {contractID, signer, nonce} = opts
-    const request = await API.tx.datVerify.ProofOfRetrievabilityAttestation(contractID)
+    const request = await API.tx.datVerify.requestAttestation(contractID)
     await request.signAndSend(signer, { nonce }, status)
   }
-  async function submitProofOfRetrievability (opts) {
-    const {attestationID, proof, signer, nonce} =  opts
-    LOG('Sending attestation to the chain', proof)
-    const submit = await API.tx.datVerify.submitProofOfRetrievability(attestationID, proof)
+  async function submitAttestationReport (opts) {
+    const {attestationID, report, signer, nonce} =  opts
+    LOG('Sending attestation to the chain', report)
+    const submit = await API.tx.datVerify.submitAttestationReport(attestationID, report)
     submit.signAndSend(signer, { nonce }, status)
   }
   // LISTEN TO EVENTS
