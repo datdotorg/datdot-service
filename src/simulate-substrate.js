@@ -122,18 +122,25 @@ async function _publishFeedAndPlan (user, { nonce }, status, args) {
   const NewPlan = { event: { data: [planID], method: 'NewPlan' } }
   handlers.forEach(handler => handler([NewPlan]))
 }
-async function _registerHoster(user, { nonce }, status) {
+async function _registerHoster(user, { nonce }, status, args) {
+  const [hosterKey] = args
   const userID = DB.userByAddress[user.address]
+  DB.users[userID - 1].hosterKey = hosterKey
+  console.log('hoster', DB.users[userID - 1])
   DB.hosters.push(userID)
   makeNewContract({ encoderID: null, hosterID: userID, planID: null})
 }
-async function _registerEncoder (user, { nonce }, status) {
+async function _registerEncoder (user, { nonce }, status, args) {
+  const [encoderKey] = args
   const userID = DB.userByAddress[user.address]
+  DB.users[userID - 1].encoderKey = encoderKey
+  console.log('encoder', DB.users[userID - 1])
   DB.encoders.push(userID)
   makeNewContract({ encoderID: userID, hosterID: null, planID: null})
 }
 async function _registerAttestor (user, { nonce }, status) {
   const userID = DB.userByAddress[user.address]
+  console.log('attestor', DB.users[userID - 1])
   DB.attestors.push(userID)
 }
 async function _encodingDone (user, { nonce }, status, args) {
@@ -212,7 +219,7 @@ function makeNewContract (opts) {
   // Find an unhosted plan
   let { encoderID, hosterID, planID } = opts
   const unhosted = DB.unhostedPlans
-  if (!planID) [planID] = getRandom(unhosted)
+  if (!planID && unhosted.length) [planID] = getRandom(unhosted)
   const selectedPlan = DB.plans[planID - 1]
   if (!selectedPlan) return console.log('current lack of demand for hosting plans')
 
@@ -239,8 +246,7 @@ function makeNewContract (opts) {
   // remove planID from unhostedPlans
   // when all contracts for certain plan are hosted => push planID to hostedPlans
   DB.unhostedPlans.splice(planID, 1)
-  const data = [encoderID, hosterID, selectedPlan.feed, contractID, contract.ranges]
-  const NewContract = { event: { data, method: 'NewContract' } }
+  const NewContract = { event: { data: [contractID], method: 'NewContract' } }
   handlers.forEach(handler => handler([NewContract]))
 
 }

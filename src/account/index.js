@@ -37,7 +37,9 @@ module.exports = class Account {
     this.sdkIdentity = null
     this.chainKeypair = null
   }
-
+  async getNonce () {
+    return this.nonce++
+  }
   async init () {
     if (this.persist) await fs.ensureDir(this.storageLocation)
 

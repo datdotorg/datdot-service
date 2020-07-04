@@ -60,7 +60,6 @@ module.exports = class Encoder {
 
   async encodeFor (hosterKey, feedKey, ranges) {
 
-    LOG('HOSTER KEY', hosterKey)
     if (!Array.isArray(ranges)) {
       const index = ranges
       ranges = [[index, index]]
@@ -74,7 +73,6 @@ module.exports = class Encoder {
 
     // TODO: Add timeout for when we can't find the hoster
     const peer = await this.communication.findByTopicAndPublicKey(topic, hosterKey, { announce: false, lookup: true })
-    LOG('Connected to the hoster')
     const resultStream = ndjson.serialize()
     const confirmStream = ndjson.parse()
 
@@ -84,7 +82,6 @@ module.exports = class Encoder {
     for (const range of ranges) {
       LOG('Get feeds for ranges', range)
       for (let index = range[0], len = range[1] + 1; index < len; index++) {
-        LOG('Start encoding/hosting for index', index)
         // TODO: Add timeout for when we can't get feed data
         const data = await feed.get(index)
 
@@ -105,7 +102,6 @@ module.exports = class Encoder {
         // Sign the data with our singning scret key and write it to the proof buffer
         sodium.crypto_sign_detached(proof, toSign, this.signingSecretKey)
         // Send the encoded stuff over to the hoster so they can store it
-        LOG('Sending data')
         resultStream.write({
           type: 'encoded',
           feed: feedKey,
@@ -120,14 +116,12 @@ module.exports = class Encoder {
         // Wait for the hoster to tell us they've handled the data
         // TODO: Set up timeout for when peer doesn't respond to us
         const [response] = await once(confirmStream, 'data')
-        LOG('Confirmation reponse:', response)
 
         if (response.error) {
           throw new Error(response.error)
         }
       }
     }
-    LOG('Ending the stream')
     encodingStream.end()
   }
 

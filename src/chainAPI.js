@@ -1,4 +1,5 @@
 const { /*ApiPromise,*/ WsProvider, Keyring } = require('@polkadot/api')
+
 // const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api')
 // const provider = new WsProvider('ws://127.0.0.1:9944')
 const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
@@ -44,6 +45,8 @@ async function datdotChain () {
     getAttestationByID,
     getFeedKey,
     getUserAddress,
+    getHosterKey,
+    getEncoderKey,
     getEncodedIndex,
   }
 
@@ -61,13 +64,13 @@ async function datdotChain () {
     LOG(`Registering user: ${signer}`)
     await register.signAndSend(signer, { nonce }, status)
   }
-  async function registerHoster ({ signer, nonce }) {
-    const register = await API.tx.datVerify.registerHoster()
+  async function registerHoster ({ hosterKey, signer, nonce }) {
+    const register = await API.tx.datVerify.registerHoster(hosterKey)
     LOG(`Registering hoster: ${signer}`)
     await register.signAndSend(signer, { nonce }, status)
   }
-  async function registerEncoder ({ signer, nonce }) {
-    const register = await API.tx.datVerify.registerEncoder()
+  async function registerEncoder ({ encoderKey, signer, nonce }) {
+    const register = await API.tx.datVerify.registerEncoder(encoderKey)
     LOG(`Registering encoder: ${signer}`)
     await register.signAndSend(signer, { nonce }, status)
   }
@@ -89,6 +92,14 @@ async function datdotChain () {
   async function getUserAddress (id) {
     const user = await API.query.datVerify.getUserByID(id)
     return user.address
+  }
+  async function getHosterKey (id) {
+    const user = await API.query.datVerify.getUserByID(id)
+    return user.hosterKey
+  }
+  async function getEncoderKey (id) {
+    const user = await API.query.datVerify.getUserByID(id)
+    return user.encoderKey
   }
   async function getContractByID (id) {
     return await API.query.datVerify.getContractByID(id)

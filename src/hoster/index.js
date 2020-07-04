@@ -68,7 +68,6 @@ module.exports = class Hoster {
 
     for await (const message of resultStream) {
       const { type } = message
-      LOG('Receiving message from encoder')
       if (type === 'encoded') {
         const { feed, index, encoded, proof, nodes, signature } = message
 
@@ -158,7 +157,6 @@ module.exports = class Hoster {
       await feed.ready()
 
       const { length } = feed
-      LOG('Preparing to store feed')
       for (const { start, wantedEnd } of ranges) {
         const end = Math.min(wantedEnd, length)
         feed.download({
