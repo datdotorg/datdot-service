@@ -19,14 +19,11 @@ function datdotService () {
 
   function host (data) {
     const {hoster, feedKeyBuffer , encoderKey, plan} = data
-    LOG('Pairing hoster with encoder', encoderKey)
     return hoster.hostFeed(feedKeyBuffer, encoderKey, plan)
   }
 
   function encode (data) {
     const { encoder, hosterKey, feedKeyBuffer, ranges } = data
-    LOG('Pairing encoder with hoster', hosterKey)
-    LOG('Encoding ranges:', ranges)
     return encoder.encodeFor(hosterKey, feedKeyBuffer, ranges)
   }
 

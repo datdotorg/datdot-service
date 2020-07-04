@@ -6,16 +6,7 @@ const { PassThrough } = require('stream')
 const pump = require('pump')
 const p2plex = require('p2plex')
 const { seedKeygen } = require('noise-peer')
-
 const HosterStorage = require('../hoster-storage')
-
-const colors = require('colors/safe')
-const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
-function LOG (...msgs) {
-  msgs = [`[${NAME}] `, ...msgs].map(msg => colors.cyan(msg))
-  console.log(...msgs)
-}
-
 const NAMESPACE = 'datdot-hoster'
 const NOISE_NAME = 'noise'
 const ALL_KEYS_KEY = 'all_keys'
@@ -90,7 +81,6 @@ module.exports = class Hoster {
             nodes,
             Buffer.from(signature)
           )
-          LOG('Storing encoded data')
 
           confirmStream.write({
             type: 'encoded:stored',
@@ -100,11 +90,11 @@ module.exports = class Hoster {
           // this.emit('encoded', key, index)
         } catch (e) {
           // Uncomment for better stack traces
-          LOG(`ERROR_STORING: ${e.message}`)
+          console.log(`ERROR_STORING: ${e.message}`)
           sendError(`ERROR_STORING: ${e.message}`, { e })
         }
       } else {
-        LOG('UNKNOWN_MESSAGE', { messageType: type })
+        console.log('UNKNOWN_MESSAGE', { messageType: type })
         sendError('UNKNOWN_MESSAGE', { messageType: type })
       }
     }

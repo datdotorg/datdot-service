@@ -35,7 +35,6 @@ function getData (account) {
       feed.signature((err, { signature }) => {
         if (err) LOG(err) && reject(err)
         data.push(feed_pubkey)
-        LOG('New data feed created', feed_pubkey )
         data.push({ hashType: 2, children }) // push TreeHashPayload
         data.push(signature)
         resolve(data)

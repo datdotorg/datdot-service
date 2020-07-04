@@ -18,6 +18,7 @@ async function role ({ name, account }) {
 
   //create or use existing data
   const data = await getData(account)
+  log('Publishing data', data[0].toString('hex'))
   const myAddress = account.chainKeypair.address
   const nonce = account.getNonce()
   const plan = { ranges: [[0,8]] }
@@ -33,7 +34,7 @@ async function role ({ name, account }) {
       const { publisher: publisherID} = await chainAPI.getPlanByID(planID)
       const publisherAddress = await chainAPI.getUserAddress(publisherID)
       if (publisherAddress === myAddress) {
-        log('Message received:', event.method, event.data.toString())
+        log('Event received:', event.method, event.data.toString())
         const { feed: feedID } =  await chainAPI.getPlanByID(planID)
         const nonce = account.getNonce()
         await chainAPI.requestProofOfStorageChallenge({contractID, signer: myAddress, nonce})
@@ -46,7 +47,7 @@ async function role ({ name, account }) {
       const { publisher: publisherID} = await chainAPI.getPlanByID(planID)
       const publisherAddress = await chainAPI.getUserAddress(publisherID)
       if (publisherAddress === myAddress) {
-        log('Message received:', event.method, event.data.toString())
+        log('Event received:', event.method, event.data.toString())
         const { feed: feedID } =  await chainAPI.getPlanByID(planID)
         const nonce = account.getNonce()
         await chainAPI.requestAttestation({contractID, signer: myAddress, nonce})
@@ -59,7 +60,7 @@ async function role ({ name, account }) {
       const { publisher: publisherID} = await chainAPI.getPlanByID(planID)
       const publisherAddress = await chainAPI.getUserAddress(publisherID)
       if (publisherAddress === myAddress) {
-        log('Message received:', event.method, event.data.toString())
+        log('Event received:', event.method, event.data.toString())
       }
     }
 

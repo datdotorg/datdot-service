@@ -1,24 +1,14 @@
 const { /*ApiPromise,*/ WsProvider, Keyring } = require('@polkadot/api')
-
 // const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api')
 // const provider = new WsProvider('ws://127.0.0.1:9944')
 const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
 const { hexToBn } = require('@polkadot/util')
-
 const provider = {}
 const ApiPromise = require('./simulate-substrate')
-
 const fs = require('fs')
 const path = require('path')
 const filename = path.join(__dirname, './types.json')
 const types = JSON.parse(fs.readFileSync(filename).toString())
-
-const colors = require('colors/safe')
-const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
-function LOG (...msgs) {
-  msgs = [`[${NAME}] `, ...msgs].map(msg => colors.blue(msg))
-  console.log(...msgs)
-}
 
 module.exports = datdotChain
 
@@ -61,28 +51,23 @@ async function datdotChain () {
   }
   async function newUser ({ signer, nonce }) {
     const register = await API.tx.datVerify.newUser()
-    LOG(`Registering user: ${signer}`)
     await register.signAndSend(signer, { nonce }, status)
   }
   async function registerHoster ({ hosterKey, signer, nonce }) {
     const register = await API.tx.datVerify.registerHoster(hosterKey)
-    LOG(`Registering hoster: ${signer}`)
     await register.signAndSend(signer, { nonce }, status)
   }
   async function registerEncoder ({ encoderKey, signer, nonce }) {
     const register = await API.tx.datVerify.registerEncoder(encoderKey)
-    LOG(`Registering encoder: ${signer}`)
     await register.signAndSend(signer, { nonce }, status)
   }
   async function registerAttestor ({ signer, nonce }) {
     const register = await API.tx.datVerify.registerAttestor()
-    LOG(`Registering attestor: ${signer}`)
     await register.signAndSend(signer, { nonce }, status)
   }
   async function publishFeedAndPlan (opts) {
     const { merkleRoot, plan, signer, nonce } = opts
     const publishFeedAndPlan = await API.tx.datVerify.publishFeedAndPlan(merkleRoot, plan)
-    LOG(`Publishing data by user: ${signer}`)
     await publishFeedAndPlan.signAndSend(signer, { nonce }, status)
   }
   async function getFeedKey (feedID) {
@@ -125,13 +110,11 @@ async function datdotChain () {
   async function encodingDone (opts) {
     const {contractID, signer, nonce} = opts
     const register = await API.tx.datVerify.encodingDone(contractID)
-    LOG(`Encoding for contractID: ${contractID} is done`)
     await register.signAndSend(signer, { nonce }, status)
   }
   async function hostingStarts (opts) {
     const {contractID, signer, nonce} = opts
     const register = await API.tx.datVerify.hostingStarts(contractID)
-    LOG(`Hosting for contractID: ${contractID} started`)
     await register.signAndSend(signer, { nonce }, status)
   }
   async function requestProofOfStorageChallenge (opts) {
@@ -141,7 +124,6 @@ async function datdotChain () {
   }
   async function submitProofOfStorage (opts) {
     const {challengeID, proof, signer, nonce} = opts
-    LOG('Sending proof of storage to the chain', proof)
     const submit = await API.tx.datVerify.submitProofOfStorage(challengeID, proof)
     submit.signAndSend(signer, { nonce }, status)
   }
@@ -152,7 +134,6 @@ async function datdotChain () {
   }
   async function submitAttestationReport (opts) {
     const {attestationID, report, signer, nonce} =  opts
-    LOG('Sending attestation to the chain', report)
     const submit = await API.tx.datVerify.submitAttestationReport(attestationID, report)
     submit.signAndSend(signer, { nonce }, status)
   }

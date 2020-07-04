@@ -15,7 +15,7 @@ async function role ({ name, account }) {
 
   const serviceAPI = getServiceAPI()
   const chainAPI = await getChainAPI()
-
+  log('Register as encoder')
   await account.initEncoder()
   const encoderKey = account.encoder.publicKey
   const myAddress = account.chainKeypair.address
@@ -31,7 +31,7 @@ async function role ({ name, account }) {
       const encoderID = contract.encoder
       const encoderAddress = await chainAPI.getUserAddress(encoderID)
       if (encoderAddress === account.chainKeypair.address) {
-        log('Message received:', event.method, event.data.toString())
+        log('Event received:', event.method, event.data.toString())
         const {hosterKey, feedKeyBuffer, ranges} = await getHostingData(contract)
         const encode = serviceAPI.encode({encoder: account, hosterKey, feedKeyBuffer, ranges})
         encode.then(async () => {

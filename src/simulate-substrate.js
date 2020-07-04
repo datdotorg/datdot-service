@@ -126,7 +126,6 @@ async function _registerHoster(user, { nonce }, status, args) {
   const [hosterKey] = args
   const userID = DB.userByAddress[user.address]
   DB.users[userID - 1].hosterKey = hosterKey
-  console.log('hoster', DB.users[userID - 1])
   DB.hosters.push(userID)
   makeNewContract({ encoderID: null, hosterID: userID, planID: null})
 }
@@ -134,13 +133,11 @@ async function _registerEncoder (user, { nonce }, status, args) {
   const [encoderKey] = args
   const userID = DB.userByAddress[user.address]
   DB.users[userID - 1].encoderKey = encoderKey
-  console.log('encoder', DB.users[userID - 1])
   DB.encoders.push(userID)
   makeNewContract({ encoderID: userID, hosterID: null, planID: null})
 }
 async function _registerAttestor (user, { nonce }, status) {
   const userID = DB.userByAddress[user.address]
-  console.log('attestor', DB.users[userID - 1])
   DB.attestors.push(userID)
 }
 async function _encodingDone (user, { nonce }, status, args) {

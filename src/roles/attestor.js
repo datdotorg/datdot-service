@@ -31,7 +31,7 @@ async function role ({ name, account }) {
       const attestorID = attestation.attestor
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress === myAddress) {
-        log('Message received:', event.method, event.data.toString())
+        log('Event received:', event.method, event.data.toString())
         const contractID = attestation.contract
         const contract = await chainAPI.getContractByID(contractID)
         const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)

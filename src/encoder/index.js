@@ -5,17 +5,9 @@ const p2plex = require('p2plex')
 const pump = require('pump')
 const ndjson = require('ndjson')
 const { seedKeygen } = require('noise-peer')
-
 const NAMESPACE = 'datdot-encoder'
 const IDENITY_NAME = 'signing'
 const NOISE_NAME = 'noise'
-
-const colors = require('colors/safe')
-const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
-function LOG (...msgs) {
-  msgs = [`[${NAME}] `, ...msgs].map(msg => colors.green(msg))
-  console.log(...msgs)
-}
 
 module.exports = class Encoder {
   constructor ({
@@ -80,13 +72,11 @@ module.exports = class Encoder {
     pump(resultStream, encodingStream, confirmStream)
 
     for (const range of ranges) {
-      LOG('Get feeds for ranges', range)
       for (let index = range[0], len = range[1] + 1; index < len; index++) {
         // TODO: Add timeout for when we can't get feed data
         const data = await feed.get(index)
 
         const encoded = await this.EncoderDecoder.encode(data)
-        LOG('Encoded data:', encoded)
 
         const { nodes, signature } = await feed.proof(index)
         // Allocate buffer for the proof

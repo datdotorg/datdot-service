@@ -11,7 +11,7 @@ module.exports = role
 
 async function role ({ name, account }) {
   const log = debug(`[${name.toLowerCase()}:${NAME}]`)
-
+  log('Register as hoster')
   const serviceAPI = getServiceAPI()
   const chainAPI = await getChainAPI()
 
@@ -30,11 +30,10 @@ async function role ({ name, account }) {
       const contract = await chainAPI.getContractByID(contractID)
       const hosterAddress = await chainAPI.getUserAddress(contract.hoster)
       if (hosterAddress === myAddress) {
-        log('Message received:', event.method, event.data.toString())
+        log('Event received:', event.method, event.data.toString())
         const { feedKeyBuffer, encoderKey, plan } = await getHostingData(contract)
         const host = serviceAPI.host({hoster: account, feedKeyBuffer , encoderKey, plan})
         host.then(async () => {
-          log('Hosting succesfull')
           const nonce = account.getNonce()
           await chainAPI.hostingStarts({contractID, signer: myAddress, nonce})
         })
@@ -47,7 +46,7 @@ async function role ({ name, account }) {
       const contract = await chainAPI.getContractByID(challenge.contract)
       const hosterAddress = await chainAPI.getUserAddress(contract.hoster)
       if (hosterAddress === myAddress) {
-        log('Message received:', event.method, event.data.toString())
+        log('Event received:', event.method, event.data.toString())
         const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
         const feedKey = await chainAPI.getFeedKey(feedID)
         const feedKeyBuffer = Buffer.from(feedKey, 'hex')
