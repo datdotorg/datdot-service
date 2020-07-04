@@ -20,10 +20,9 @@ install dependencies
 
 Currently you can only run the scenarios, stored in /lab folder.
 
-To run other scenarios, run `node lab/scenarios/*`, for example `node lab/scenarios/service-mvp.js`
-and so on.
+To run a scenario, run `node lab/scenarios/<some-scenario>`, for example `DEBUG=*,-hypercore-protocol node lab/scenarios/mvp-1.js `.
 
-We are using scenarios to debug the flow. Current scenarios are working only with the chain simulation.
+We are using scenarios to debug the flow. Current scenarios are working only with the chain simulation (simulate-chain.js).
 
 
 ## License
