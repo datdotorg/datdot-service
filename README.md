@@ -5,40 +5,42 @@ join our [telegram](https://t.me/joinchat/CgTftxXJvp6iYayqDjP7lQ) or [gitter](ht
 
 ![](https://i.imgur.com/oGPIbZQ.jpg)
 
-### Building
+## Building
 
-clone
-`git clone https://github.com/playproject-io/datdot-service.git`
+Clone
+##### `git clone https://github.com/playproject-io/datdot-service.git`
 
-change directory
-`cd service`
+Install dependencies
+##### `npm install`
 
-install dependencies
-`npm install`
 
 To run the service, you will also need to run the [datdot-substrate](https://github.com/playproject-io/datdot-substrate) chain
 
-clone
-`git clone `git clone https://github.com/playproject-io/datdot-substrate.git`
 
-build
-`cargo build -p datdot-node --release`
+Clone
 
-purge storage
-`./target/release/datdot-node purge-chain --dev`
+##### `git clone https://github.com/playproject-io/datdot-substrate.git`
 
-### Running
+Build
 
-We are using scenarios to debug the flow. This scenario is part of our first milestone (Phase 1).
+##### `cargo build -p datdot-node --release`
 
-1. To run the chain and the service process at once use the command `node cli.js` (recommended)
+## Running
+This scenario is part of our first milestone (Phase 1). To run it together with the chain, use:
 
-2. To run the chain and the service process individually, use:
+##### `node cli.js`
 
-$`DEBUG=*,-hypercore-protocol node lab/scenarios/mvp-1.js` (for [datdot-service](https://github.com/playproject-io/datdot-service))
-$`.target/release/datdot-node --dev` ([datdot-substrate](https://github.com/playproject-io/datdot-substrate))
+To re-run the scenario, you will need to each time purge the chain storage using `./target/release/datdot-node purge-chain --dev`.
 
-3. To re-run the scenario, you will need to purge the chain storage (for `./target/release/datdot-node purge-chain --dev`)
+If you want, you can also run the chain and the service as independent processes:
+
+Service
+
+##### `DEBUG=*,-hypercore-protocol node lab/scenarios/mvp-1.js`
+
+Chain
+
+##### `.target/release/datdot-node --dev`
 
 
 ## License
