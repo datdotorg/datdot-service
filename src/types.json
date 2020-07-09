@@ -12,7 +12,7 @@
   "AttestationId": "u32",
   "NoiseKey": "Public",
   "FeedKey": "Public",
-  "Proof": "Vec<u8>",
+  "Proof": "Public",
   "Ranges": "Vec<(ChunkIndex, ChunkIndex)>",
   "Nonce": "u64",
   "Role": {
