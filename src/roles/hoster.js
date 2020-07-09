@@ -1,6 +1,7 @@
 const debug = require('debug')
 const getChainAPI = require('../chainAPI')
 const getServiceAPI = require('../serviceAPI')
+const { bnToU8a } = require('@polkadot/util')
 
 /******************************************************************************
   ROLE: Hoster
@@ -18,9 +19,10 @@ async function role ({ name, account }) {
   await account.initHoster()
   const hosterKey = account.hoster.publicKey
   const myAddress = account.chainKeypair.address
+  const signer = account.chainKeypair
   chainAPI.listenToEvents(handleEvent)
   const nonce = account.getNonce()
-  await chainAPI.registerHoster({hosterKey, signer: myAddress, nonce})
+  await chainAPI.registerHoster({hosterKey, signer, nonce})
 
 // EVENTS
   async function handleEvent (event) {
@@ -31,11 +33,11 @@ async function role ({ name, account }) {
       const hosterAddress = await chainAPI.getUserAddress(contract.hoster)
       if (hosterAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
-        const { feedKeyBuffer, encoderKey, plan } = await getHostingData(contract)
-        const host = serviceAPI.host({hoster: account, feedKeyBuffer , encoderKey, plan})
+        const { feedKey, encoderKey, plan } = await getHostingData(contract)
+        const host = serviceAPI.host({hoster: account, feedKey, encoderKey, plan})
         host.then(async () => {
           const nonce = account.getNonce()
-          await chainAPI.hostingStarts({contractID, signer: myAddress, nonce})
+          await chainAPI.hostingStarts({contractID, signer, nonce})
         })
       }
     }
@@ -49,11 +51,12 @@ async function role ({ name, account }) {
         log('Event received:', event.method, event.data.toString())
         const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
         const feedKey = await chainAPI.getFeedKey(feedID)
-        const feedKeyBuffer = Buffer.from(feedKey, 'hex')
-        const data = { account, challenge, feedKeyBuffer }
-        const proof = await serviceAPI.getProofOfStorage(data)
+        const data = { account, challenge, feedKey }
+        const response = await serviceAPI.getProofOfStorage(data)
         const nonce = account.getNonce()
-        await chainAPI.submitProofOfStorage({challengeID, proof, signer: myAddress, nonce})
+        const proofs = response.map(res => res.proof)
+        const opts = {challengeID, proofs, signer, nonce}
+        await chainAPI.submitProofOfStorage(opts)
       }
     }
   }
@@ -67,10 +70,9 @@ async function role ({ name, account }) {
     const planID = contract.plan
     const { feed: feedID } = await chainAPI.getPlanByID(planID)
     const feedKey = await chainAPI.getFeedKey(feedID)
-    const feedKeyBuffer = Buffer.from(feedKey, 'hex')
     const objArr = ranges.map( range => ({start: range[0], end: range[1]}) )
     const plan = { ranges: objArr }
-    return { feedKeyBuffer, encoderKey, plan }
+    return { feedKey, encoderKey, plan }
   }
 
 

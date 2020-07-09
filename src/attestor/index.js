@@ -19,7 +19,6 @@ module.exports = class Attestor {
   }
 
   async attest (key, index) {
-    this.debug(`Attesting: ${key}@${index}`)
     const feed = this.Hypercore(key, { persist: false })
     try {
       const start = Date.now()
@@ -36,9 +35,7 @@ module.exports = class Attestor {
 
       // TODO: Figure out how locations should work?
       const location = DEFAULT_LOCATION
-
-      this.debug(`Attested ${key}@${index}: ${latency}`)
-
+      
       return [location, latency]
     } catch (e) {
       this.debug(`Error: ${key}@${index} ${e.message}`)

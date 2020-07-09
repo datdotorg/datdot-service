@@ -61,7 +61,6 @@ module.exports = class Hoster {
       const { type } = message
       if (type === 'encoded') {
         const { feed, index, encoded, proof, nodes, signature } = message
-
         const key = Buffer.from(feed)
 
         const isExisting = await this.hasKey(key)

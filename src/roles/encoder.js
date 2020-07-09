@@ -19,9 +19,10 @@ async function role ({ name, account }) {
   await account.initEncoder()
   const encoderKey = account.encoder.publicKey
   const myAddress = account.chainKeypair.address
+  const signer = account.chainKeypair
   chainAPI.listenToEvents(handleEvent)
   const nonce = account.getNonce()
-  await chainAPI.registerEncoder({encoderKey, signer: myAddress, nonce})
+  await chainAPI.registerEncoder({encoderKey, signer, nonce})
 
   // EVENTS
   async function handleEvent (event) {
@@ -32,11 +33,11 @@ async function role ({ name, account }) {
       const encoderAddress = await chainAPI.getUserAddress(encoderID)
       if (encoderAddress === account.chainKeypair.address) {
         log('Event received:', event.method, event.data.toString())
-        const {hosterKey, feedKeyBuffer, ranges} = await getHostingData(contract)
-        const encode = serviceAPI.encode({encoder: account, hosterKey, feedKeyBuffer, ranges})
+        const {hosterKey, feedKey, ranges} = await getHostingData(contract)
+        const encode = serviceAPI.encode({encoder: account, hosterKey, feedKey, ranges})
         encode.then(async () => {
           const nonce = account.getNonce()
-          await chainAPI.encodingDone({contractID, signer: myAddress, nonce})
+          await chainAPI.encodingDone({contractID, signer, nonce})
         })
       }
     }
@@ -49,10 +50,9 @@ async function role ({ name, account }) {
     const planID = contract.plan
     const { feed: feedID} = await chainAPI.getPlanByID(planID)
     const feedKey = await chainAPI.getFeedKey(feedID)
-    const feedKeyBuffer = Buffer.from(feedKey, 'hex')
     const hosterID = contract.hoster
     const hosterKey = await chainAPI.getHosterKey(hosterID)
-    return { hosterKey, feedKeyBuffer, ranges }
+    return { hosterKey, feedKey, ranges }
   }
 
 }

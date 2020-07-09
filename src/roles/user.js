@@ -18,8 +18,8 @@ async function role ({ name, account }) {
   const log = debug(`[${name.toLowerCase()}:${NAME}]`)
   const chainAPI = await getChainAPI()
   const nonce = await account.getNonce()
-  const signer = account.chainKeypair.address
-  log(`New account created => ${signer}`)
+  const myAddress = account.chainKeypair.address
+  const signer = account.chainKeypair
+  log(`New account created => ${myAddress}`)
   await chainAPI.newUser({signer, nonce})
-
 }

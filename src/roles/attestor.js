@@ -19,13 +19,14 @@ async function role ({ name, account }) {
 
   await account.initAttestor()
   const myAddress = account.chainKeypair.address
+  const signer = account.chainKeypair
   const nonce = account.getNonce()
-  await chainAPI.registerAttestor({signer: myAddress, nonce})
+  await chainAPI.registerAttestor({signer, nonce})
 
   // EVENTS
   async function handleEvent (event) {
 
-    if (event.method === 'newAttestation'){
+    if (event.method === 'NewAttestation'){
       const [attestationID] = event.data
       const attestation = await chainAPI.getAttestationByID(attestationID)
       const attestorID = attestation.attestor
@@ -36,13 +37,12 @@ async function role ({ name, account }) {
         const contract = await chainAPI.getContractByID(contractID)
         const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
         const feedKey = await chainAPI.getFeedKey(feedID)
-        const feedKeyBuffer = Buffer.from(feedKey, 'hex')
         const { ranges } = await chainAPI.getPlanByID(contract.plan)
         const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
-        const data = { account, randomChunks, feedKeyBuffer }
+        const data = { account, randomChunks, feedKey }
         const report = await serviceAPI.attest(data)
         const nonce = account.getNonce()
-        await chainAPI.submitAttestationReport({attestationID, report, signer: myAddress, nonce})
+        await chainAPI.submitAttestationReport({attestationID, report, signer, nonce})
       }
     }
   }

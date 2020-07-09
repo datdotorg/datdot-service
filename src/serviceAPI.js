@@ -1,13 +1,10 @@
-const colors = require('colors/safe')
-const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
-function LOG (...msgs) {
-  msgs = [`[${NAME}] `, ...msgs].map(msg => colors.red(msg))
-  console.log(...msgs)
-}
+const debug = require('debug')
 
 module.exports = datdotService
 
 function datdotService () {
+  const NAME = __filename.split('/').pop().split('.')[0].toLowerCase()
+  const log = debug(`${NAME}]`)
 
   const serviceAPI = {
     host,
@@ -18,27 +15,29 @@ function datdotService () {
   return serviceAPI
 
   function host (data) {
-    const {hoster, feedKeyBuffer , encoderKey, plan} = data
+    const {hoster, feedKey: feedKeyBuffer , encoderKey, plan} = data
+    log('start hosting')
     return hoster.hostFeed(feedKeyBuffer, encoderKey, plan)
   }
 
   function encode (data) {
-    const { encoder, hosterKey, feedKeyBuffer, ranges } = data
+    const { encoder, hosterKey, feedKey: feedKeyBuffer, ranges } = data
+    log('start encoding')
     return encoder.encodeFor(hosterKey, feedKeyBuffer, ranges)
   }
 
   async function getProofOfStorage (data) {
-    const { account, challenge, feedKeyBuffer } = data
+    const { account, challenge, feedKey } = data
     const proof = await Promise.all(challenge.chunks.map(async (chunk) => {
-      return await account.hoster.getProofOfStorage(feedKeyBuffer, chunk)
+      return await account.hoster.getProofOfStorage(feedKey, chunk)
     }))
     return proof
   }
 
   async function attest (data) {
-    const { account, randomChunks, feedKeyBuffer } = data
+    const { account, randomChunks, feedKey } = data
     const report = await Promise.all(randomChunks.map(async (chunk) => {
-      return await account.attestor.attest(feedKeyBuffer, chunk)
+      return await account.attestor.attest(feedKey, chunk)
     }))
     return report
   }
