@@ -40,7 +40,7 @@ Service
 
 Chain
 
-##### `.target/release/datdot-node --dev`
+##### `./target/release/datdot-node --dev`
 
 
 ## License
