@@ -21,7 +21,7 @@ async function role ({ name, account }) {
   log('Publishing data', data[0].toString('hex'))
   const myAddress = account.chainKeypair.address
   const signer = account.chainKeypair
-  const nonce = account.getNonce()
+  const nonce = await account.getNonce()
   // @TODO later pass a more sofisticated plan which will include ranges
   const ranges = [[0,8]]
   // publish data and plan to chain (= request hosting)
@@ -38,7 +38,7 @@ async function role ({ name, account }) {
       if (publisherAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
         const { feed: feedID } =  await chainAPI.getPlanByID(planID)
-        const nonce = account.getNonce()
+        const nonce = await account.getNonce()
         await chainAPI.requestProofOfStorageChallenge({contractID, signer, nonce})
       }
     }
@@ -52,7 +52,7 @@ async function role ({ name, account }) {
       if (publisherAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
         const { feed: feedID } =  await chainAPI.getPlanByID(planID)
-        const nonce = account.getNonce()
+        const nonce = await account.getNonce()
         await chainAPI.requestAttestation({contractID, signer, nonce})
       }
     }

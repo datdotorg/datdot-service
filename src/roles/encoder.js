@@ -21,7 +21,7 @@ async function role ({ name, account }) {
   const myAddress = account.chainKeypair.address
   const signer = account.chainKeypair
   chainAPI.listenToEvents(handleEvent)
-  const nonce = account.getNonce()
+  const nonce = await account.getNonce()
   await chainAPI.registerEncoder({encoderKey, signer, nonce})
 
   // EVENTS
@@ -36,7 +36,7 @@ async function role ({ name, account }) {
         const {hosterKey, feedKey, ranges} = await getHostingData(contract)
         const encode = serviceAPI.encode({encoder: account, hosterKey, feedKey, ranges})
         encode.then(async () => {
-          const nonce = account.getNonce()
+          const nonce = await account.getNonce()
           await chainAPI.encodingDone({contractID, signer, nonce})
         })
       }

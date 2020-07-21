@@ -12,7 +12,7 @@ module.exports = role
 
 async function role ({ name, account }) {
   const log = debug(`[${name.toLowerCase()}:${NAME}]`)
-
+  log('Register as attestor')
   const serviceAPI = getServiceAPI()
   const chainAPI = await getChainAPI()
   chainAPI.listenToEvents(handleEvent)
@@ -20,13 +20,14 @@ async function role ({ name, account }) {
   await account.initAttestor()
   const myAddress = account.chainKeypair.address
   const signer = account.chainKeypair
-  const nonce = account.getNonce()
+  const nonce = await account.getNonce()
   await chainAPI.registerAttestor({signer, nonce})
 
   // EVENTS
   async function handleEvent (event) {
 
     if (event.method === 'NewAttestation'){
+      log('New attestation!!')
       const [attestationID] = event.data
       const attestation = await chainAPI.getAttestationByID(attestationID)
       const attestorID = attestation.attestor
@@ -37,11 +38,12 @@ async function role ({ name, account }) {
         const contract = await chainAPI.getContractByID(contractID)
         const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
         const feedKey = await chainAPI.getFeedKey(feedID)
-        const { ranges } = await chainAPI.getPlanByID(contract.plan)
+        const plan = await chainAPI.getPlanByID(contract.plan)
+        const ranges = plan
         const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
         const data = { account, randomChunks, feedKey }
         const report = await serviceAPI.attest(data)
-        const nonce = account.getNonce()
+        const nonce = await account.getNonce()
         await chainAPI.submitAttestationReport({attestationID, report, signer, nonce})
       }
     }

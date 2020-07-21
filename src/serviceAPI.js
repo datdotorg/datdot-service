@@ -36,6 +36,7 @@ function datdotService () {
 
   async function attest (data) {
     const { account, randomChunks, feedKey } = data
+    console.log('start attesting')
     const report = await Promise.all(randomChunks.map(async (chunk) => {
       return await account.attestor.attest(feedKey, chunk)
     }))

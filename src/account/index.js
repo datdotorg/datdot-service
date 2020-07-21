@@ -29,7 +29,7 @@ module.exports = class Account {
     this.persist = persist
 		this.application = application
 
-    this.nonce = 0
+    this.nonce = 0n
 
     this.hoster = null
     this.encoder = null

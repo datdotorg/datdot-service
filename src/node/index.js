@@ -33,7 +33,7 @@ module.exports = class Node {
     this.attestor = null
     this.sdkIdentity = null
     this.chainKeypair = null
-    this.nonce = 0
+    this.nonce = 0n
   }
 
   async init () {

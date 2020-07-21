@@ -1,8 +1,8 @@
-// const { /*ApiPromise,*/ WsProvider, Keyring } = require('@polkadot/api')
-// const ApiPromise = require('./simulate-substrate')
-// const provider = {}
-const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api')
-const provider = new WsProvider('ws://127.0.0.1:9944')
+const { /*ApiPromise,*/ WsProvider, Keyring } = require('@polkadot/api')
+const ApiPromise = require('./simulate-substrate')
+const provider = {}
+// const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api')
+// const provider = new WsProvider('ws://127.0.0.1:9944')
 const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
 const { hexToBn, u8aToBuffer, bufferToU8a } = require('@polkadot/util')
 const fs = require('fs')
@@ -42,72 +42,91 @@ async function datdotChain () {
 
   return chainAPI
 
+async function status ({ events = [], status }) {
+  if (status.isInBlock) {
+    events.forEach(({ phase, event: { data, method, section } }) => {
+      LOG('\t', phase.toString(), `: ${section}.${method}`, data.toString())
+    })
+  }
+}
+
+async function makeNonce (nonce) {
+  const NONCE = await API.createType('Index', nonce)
+  return { nonce: NONCE }
+ }
   async function newUser ({ signer, nonce }) {
-    // @TODO try to send nonce as a hex https://www.npmjs.com/package/bn.js
-    const txHash = await API.tx.datVerify
-      .newUser()
-      .signAndSend(signer)
+    const tx = await API.tx.datVerify.newUser()
+    // tx.signAndSend(signer, await makeNonce(nonce))
+    tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function registerHoster ({ hosterKey, signer, nonce }) {
-    hosterKey = bufferToU8a(hosterKey)
-    const txHash = await API.tx.datVerify
-      .registerHoster(hosterKey)
-      .signAndSend(signer)
+    // hosterKey = bufferToU8a(hosterKey)
+    const tx = await API.tx.datVerify.registerHoster(hosterKey)
+    // tx.signAndSend(signer, await makeNonce(nonce))
+    tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function registerEncoder ({ encoderKey, signer, nonce }) {
-    encoderKey = bufferToU8a(encoderKey)
-    const txHash = await API.tx.datVerify
-      .registerEncoder(encoderKey)
-      .signAndSend(signer)
+    // encoderKey = bufferToU8a(encoderKey)
+    const tx = await API.tx.datVerify.registerEncoder(encoderKey)
+    // tx.signAndSend(signer, await makeNonce(nonce))
+    tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function registerAttestor ({ signer, nonce }) {
-    const txHash = await API.tx.datVerify
-      .registerAttestor()
-      .signAndSend(signer)
+    const tx = await API.tx.datVerify.registerAttestor()
+    // tx.signAndSend(signer, await makeNonce(nonce))
+    tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function publishFeedAndPlan (opts) {
     const { merkleRoot, ranges, signer, nonce } = opts
-    merkleRoot[0] = bufferToU8a(merkleRoot[0])
-    const txHash = await API.tx.datVerify
-      .publishFeedAndPlan(merkleRoot, ranges)
-      .signAndSend(signer)
+    // merkleRoot[0] = bufferToU8a(merkleRoot[0])
+    const tx = await API.tx.datVerify.publishFeedAndPlan(merkleRoot, ranges)
+    // tx.signAndSend(signer, await makeNonce(nonce))
+    tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function getFeedKey (feedID) {
-    const feed = (await API.query.datVerify.getFeedByID(feedID)).unwrap()
-    // console.log('feed', feed)
-    return u8aToBuffer(feed.publickey.toU8a())
+    // const feed = (await API.query.datVerify.getFeedByID(feedID)).unwrap()
+    // return u8aToBuffer(feed.publickey.toU8a())
+    const feed = (await API.query.datVerify.getFeedByID(feedID))
+    return Buffer.from(feed.publickey, 'hex')
   }
   async function getUserAddress (id) {
-    const user = (await API.query.datVerify.getUserByID(id)).unwrap()
-    return user.address.toString()
+    // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
+    // return user.address.toString()
+    const user = await API.query.datVerify.getUserByID(id)
+    return user.address
   }
   async function getHosterKey (id) {
-    const user = (await API.query.datVerify.getUserByID(id)).unwrap()
-    // @TODO check if this makes sense
-    // returned buffer has additional byte 01 at the beginning, use slice to make it match the original
-    return u8aToBuffer(user.noise_key.toU8a().slice(1))
+    // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
+    // return u8aToBuffer(user.noise_key.toU8a().slice(1))
+    const user = (await API.query.datVerify.getUserByID(id))
+    return Buffer.from(user.noiseKey, 'hex')
   }
   async function getEncoderKey (id) {
-    const user = (await API.query.datVerify.getUserByID(id)).unwrap()
-    // @TODO check if this makes sense
-    // returned buffer has additional byte 01 at the beginning, use slice to make it match the original
-    return u8aToBuffer(user.noise_key.toU8a().slice(1))
+    // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
+    // return u8aToBuffer(user.noise_key.toU8a().slice(1))
+    const user = (await API.query.datVerify.getUserByID(id))
+    return Buffer.from(user.noiseKey, 'hex')
   }
   async function getContractByID (id) {
-    return (await API.query.datVerify.getContractByID(id)).toJSON()
+    // return (await API.query.datVerify.getContractByID(id)).toJSON()
+    return await API.query.datVerify.getContractByID(id)
   }
   async function getPlanByID (id) {
-    return (await API.query.datVerify.getPlanByID(id)).toJSON()
+    // return (await API.query.datVerify.getPlanByID(id)).toJSON()
+    return await API.query.datVerify.getPlanByID(id)
   }
   async function getFeedByID (id) {
-    const feedID = (await API.query.datVerify.getFeedByID(id)).toJSON()
+    // const feedID = (await API.query.datVerify.getFeedByID(id)).toJSON()
+    const feedID = (await API.query.datVerify.getFeedByID(id))
     return feedID
   }
   async function getChallengeByID (id) {
-    return (await API.query.datVerify.getChallengeByID(id)).toJSON()
+    // return (await API.query.datVerify.getChallengeByID(id)).toJSON()
+    return await API.query.datVerify.getChallengeByID(id)
   }
   async function getAttestationByID (id) {
-    return (await API.query.datVerify.getAttestationByID(id)).toJSON()
+    // return (await API.query.datVerify.getAttestationByID(id)).toJSON()
+    return await API.query.datVerify.getAttestationByID(id)
   }
 
   async function getEncodedIndex (encoderAddress) {
@@ -117,45 +136,46 @@ async function datdotChain () {
 
   async function encodingDone (opts) {
     const {contractID, signer, nonce} = opts
-    const txHash = await API.tx.datVerify
-      .encodingDone(contractID)
-      .signAndSend(signer)
+    const tx = await API.tx.datVerify.encodingDone(contractID)
+    // tx.signAndSend(signer, await makeNonce(nonce))
+    tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function hostingStarts (opts) {
     const {contractID, signer, nonce} = opts
-    const txHash = await API.tx.datVerify
-      .hostingStarts(contractID)
-      .signAndSend(signer)
+    const tx = await API.tx.datVerify.hostingStarts(contractID)
+    // tx.signAndSend(signer, await makeNonce(nonce))
+    tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function requestProofOfStorageChallenge (opts) {
     const {contractID, signer, nonce} = opts
-    const txHash = await API.tx.datVerify
-      .requestProofOfStorageChallenge(contractID)
-      .signAndSend(signer)
+    const tx = await API.tx.datVerify.requestProofOfStorageChallenge(contractID)
+    // tx.signAndSend(signer, await makeNonce(nonce))
+    tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function submitProofOfStorage (opts) {
     const {challengeID, proofs, signer, nonce} = opts
-    const txHash = await API.tx.datVerify
-      .submitProofOfStorage(challengeID, proofs)
-      .signAndSend(signer)
+    const tx = await API.tx.datVerify.submitProofOfStorage(challengeID, proofs)
+    // tx.signAndSend(signer, await makeNonce(nonce))
+    tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function requestAttestation (opts) {
     const {contractID, signer, nonce} = opts
-    const txHash = await API.tx.datVerify
-      .requestAttestation(contractID)
-      .signAndSend(signer)
+    const tx = await API.tx.datVerify.requestAttestation(contractID)
+    // tx.signAndSend(signer, await makeNonce(nonce))
+    tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function submitAttestationReport (opts) {
     const {attestationID, report, signer, nonce} =  opts
-    const txHash = await API.tx.datVerify
-      .submitAttestationReport(attestationID, report)
-      .signAndSend(signer)
+    const tx = await API.tx.datVerify.submitAttestationReport(attestationID, report)
+    // tx.signAndSend(signer, await makeNonce(nonce))
+    console.log('Submitting attestation', opts)
+    tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   // LISTEN TO EVENTS
   async function listenToEvents (handleEvent) {
     return API.query.system.events((events) => {
       events.forEach(async (record) => {
-        // console.log(record.event.method, record.event.data.toString())
+        console.log(record.event.method, record.event.data.toString())
         const event = record.event
         handleEvent(event)
       })

@@ -14,6 +14,7 @@ module.exports = {
         getAttestationByID,
       }
     },
+    createType: (nonce) => nonce,
     tx: { datVerify: {
       newUser,
       registerEncoder,
@@ -61,7 +62,7 @@ function signAndSend (signer, { nonce }, status) {
   const { type, args } = this
   status({ events: [], status: { isInBlock:1 } })
 
-  const user = _newUser(signer, { nonce }, status)
+  const user = _newUser(signer.address, { nonce }, status)
   if (!user) return console.error('NO USER', user)
 
   if (type === 'publishFeedAndPlan') _publishFeedAndPlan(user, { nonce }, status, args)
@@ -125,14 +126,14 @@ async function _publishFeedAndPlan (user, { nonce }, status, args) {
 async function _registerHoster(user, { nonce }, status, args) {
   const [hosterKey] = args
   const userID = DB.userByAddress[user.address]
-  DB.users[userID - 1].hosterKey = hosterKey
+  DB.users[userID - 1].noiseKey = hosterKey.toString('hex')
   DB.hosters.push(userID)
   makeNewContract({ encoderID: null, hosterID: userID, planID: null})
 }
 async function _registerEncoder (user, { nonce }, status, args) {
   const [encoderKey] = args
   const userID = DB.userByAddress[user.address]
-  DB.users[userID - 1].encoderKey = encoderKey
+  DB.users[userID - 1].noiseKey = encoderKey.toString('hex')
   DB.encoders.push(userID)
   makeNewContract({ encoderID: userID, hosterID: null, planID: null})
 }
@@ -179,7 +180,7 @@ async function _requestAttestation (user, { nonce }, status, args) {
   const attestation = { contract: contractID , attestor: attestorID }
   const attestationID = DB.attestations.push(attestation)
   attestation.id = attestationID
-  const PoRChallenge = { event: { data: [attestationID], method: 'newAttestation' } }
+  const PoRChallenge = { event: { data: [attestationID], method: 'NewAttestation' } }
   handlers.forEach(handler => handler([PoRChallenge]))
 }
 async function _submitAttestationReport (user, { nonce }, status, args) {
@@ -207,9 +208,7 @@ function getRandomInt(min, max) {
 }
 function validateProof (proof, challenge) {
   const chunks = challenge.chunks
-  console.log('Validating the proof of storage for chunks:', chunks)
-  const proofChunks = proof.map(chunkProof => chunkProof.index)
-  if (`${chunks}` === `${proofChunks}`) return true
+  if (`${chunks.length}` === `${proof.length}`) return true
   else return false
 }
 function makeNewContract (opts) {
@@ -227,6 +226,7 @@ function makeNewContract (opts) {
     [encoderID] = getRandom(DB.encoders)
     [hosterID] = getRandom(DB.hosters)
   }
+
   if (!encoderID) return console.log('missing encoder')
   if (!hosterID) return console.log('missing hoster')
 
@@ -239,7 +239,6 @@ function makeNewContract (opts) {
   }
   const contractID = DB.contracts.push(contract)
   contract.id = contractID
-
   // remove planID from unhostedPlans
   // when all contracts for certain plan are hosted => push planID to hostedPlans
   DB.unhostedPlans.splice(planID, 1)
