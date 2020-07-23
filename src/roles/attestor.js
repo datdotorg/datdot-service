@@ -18,10 +18,11 @@ async function role ({ name, account }) {
   chainAPI.listenToEvents(handleEvent)
 
   await account.initAttestor()
+  const attestorKey = account.attestor.publicKey
   const myAddress = account.chainKeypair.address
   const signer = account.chainKeypair
   const nonce = await account.getNonce()
-  await chainAPI.registerAttestor({signer, nonce})
+  await chainAPI.registerAttestor({attestorKey, signer, nonce})
 
   // EVENTS
   async function handleEvent (event) {

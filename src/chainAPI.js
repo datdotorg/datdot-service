@@ -37,6 +37,7 @@ async function datdotChain () {
     getUserAddress,
     getHosterKey,
     getEncoderKey,
+    getAttestorKey,
     getEncodedIndex,
   }
 
@@ -71,8 +72,9 @@ async function makeNonce (nonce) {
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function registerAttestor ({ signer, nonce }) {
-    const tx = await API.tx.datVerify.registerAttestor()
+  async function registerAttestor ({ attestorKey, signer, nonce }) {
+    // attestorKey = bufferToU8a(attestorKey)
+    const tx = await API.tx.datVerify.registerAttestor(attestorKey)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
@@ -99,13 +101,20 @@ async function makeNonce (nonce) {
     // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
     // return u8aToBuffer(user.noise_key.toU8a().slice(1))
     const user = (await API.query.datVerify.getUserByID(id))
-    return Buffer.from(user.noiseKey, 'hex')
+    console.log(user)
+    return Buffer.from(user.hosterKey, 'hex')
   }
   async function getEncoderKey (id) {
     // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
     // return u8aToBuffer(user.noise_key.toU8a().slice(1))
     const user = (await API.query.datVerify.getUserByID(id))
-    return Buffer.from(user.noiseKey, 'hex')
+    return Buffer.from(user.encoderKey, 'hex')
+  }
+  async function getAttestorKey (id) {
+    // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
+    // return u8aToBuffer(user.noise_key.toU8a().slice(1))
+    const user = (await API.query.datVerify.getUserByID(id))
+    return Buffer.from(user.attestorKey, 'hex')
   }
   async function getContractByID (id) {
     // return (await API.query.datVerify.getContractByID(id)).toJSON()

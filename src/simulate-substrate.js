@@ -118,7 +118,7 @@ async function _publishFeedAndPlan (user, { nonce }, status, args) {
   // Add planID to unhostedPlans
   DB.unhostedPlans.push(planID)
   // Find hoster & encoder
-  makeNewContract({encoderID: null, hosterID: null, planID: planID})
+  makeNewContract({encoderID: null, attestorID: null, hosterID: null, planID: planID})
   // Emit event
   const NewPlan = { event: { data: [planID], method: 'NewPlan' } }
   handlers.forEach(handler => handler([NewPlan]))
@@ -126,20 +126,23 @@ async function _publishFeedAndPlan (user, { nonce }, status, args) {
 async function _registerHoster(user, { nonce }, status, args) {
   const [hosterKey] = args
   const userID = DB.userByAddress[user.address]
-  DB.users[userID - 1].noiseKey = hosterKey.toString('hex')
+  DB.users[userID - 1].hosterKey = hosterKey.toString('hex')
   DB.hosters.push(userID)
-  makeNewContract({ encoderID: null, hosterID: userID, planID: null})
+  makeNewContract({ encoderID: null, attestorID: null, hosterID: userID, planID: null})
 }
 async function _registerEncoder (user, { nonce }, status, args) {
   const [encoderKey] = args
   const userID = DB.userByAddress[user.address]
-  DB.users[userID - 1].noiseKey = encoderKey.toString('hex')
+  DB.users[userID - 1].encoderKey = encoderKey.toString('hex')
   DB.encoders.push(userID)
-  makeNewContract({ encoderID: userID, hosterID: null, planID: null})
+  makeNewContract({encoderID: userID, attestorID: null, hosterID: null, planID: null})
 }
-async function _registerAttestor (user, { nonce }, status) {
+async function _registerAttestor (user, { nonce }, status, args) {
+  const [attestorKey] = args
   const userID = DB.userByAddress[user.address]
+  DB.users[userID - 1].attestorKey = attestorKey.toString('hex')
   DB.attestors.push(userID)
+  makeNewContract({encoderID: null, attestorID: userID, hosterID: null, planID: null})
 }
 async function _encodingDone (user, { nonce }, status, args) {
   const [ contractID ] = args
@@ -213,30 +216,46 @@ function validateProof (proof, challenge) {
 }
 function makeNewContract (opts) {
   // Find an unhosted plan
-  let { encoderID, hosterID, planID } = opts
+  let { encoderID, attestorID, hosterID, planID } = opts
   const unhosted = DB.unhostedPlans
-  if (!planID && unhosted.length) [planID] = getRandom(unhosted)
+  if (!planID && unhosted.length) [planID, pos] = getRandom(unhosted)
   const selectedPlan = DB.plans[planID - 1]
   if (!selectedPlan) return console.log('current lack of demand for hosting plans')
 
-  // Pair hoster and encoder
-  if (hosterID && DB.encoders.length) [encoderID] = getRandom(DB.encoders)
-  else if (encoderID && DB.hosters.length) [hosterID] = getRandom(DB.hosters)
-  else if (!hosterID && !encoderID && DB.encoders.length && DB.hosters.length) {
+// Find hoster, encoder, encoding verifier and hosting verifier
+  if (hosterID && DB.encoders.length && DB.attestors.length) {
+    [encoderID] = getRandom(DB.encoders)
+    debugger
+    [attestorID] = getRandom(DB.attestors)
+  }
+  else if (encoderID && DB.hosters.length && DB.attestors.length) {
+    [hosterID] = getRandom(DB.hosters)
+    [attestorID] = getRandom(DB.attestors)
+  }
+  else if (attestorID && DB.hosters.length && DB.encoders.length) {
+    [hosterID] = getRandom(DB.hosters)
+    [encoderID] = getRandom(DB.encoders)
+  }
+  else if (!hosterID && !encoderID && !attestorID && DB.encoders.length && DB.hosters.length && DB.attestors.length) {
     [encoderID] = getRandom(DB.encoders)
     [hosterID] = getRandom(DB.hosters)
+    [attestorID] = getRandom(DB.attestors)
   }
 
   if (!encoderID) return console.log('missing encoder')
   if (!hosterID) return console.log('missing hoster')
+  if (!attestorID) return console.log('missing attestor')
 
   // Make a new contract
   const contract = {
     plan: planID,
     ranges: [ [0, 3], [5, 7] ],
     encoder: encoderID,
-    hoster: hosterID
+    hoster: hosterID,
+    attestor: attestorID
   }
+  unhosted.forEach((id, i) => { if (id === planID) unhosted.splice(i, 1) })
+  console.log('New contract', contract)
   const contractID = DB.contracts.push(contract)
   contract.id = contractID
   // remove planID from unhostedPlans

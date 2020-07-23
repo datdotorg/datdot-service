@@ -16,13 +16,13 @@ function datdotService () {
 
   function host (data) {
     const {hoster, feedKey: feedKeyBuffer , encoderKey, plan} = data
-    log('start hosting')
+    log('start hosting', encoderKey)
     return hoster.hostFeed(feedKeyBuffer, encoderKey, plan)
   }
 
   function encode (data) {
     const { encoder, hosterKey, feedKey: feedKeyBuffer, ranges } = data
-    log('start encoding')
+    log('start encoding', hosterKey)
     return encoder.encodeFor(hosterKey, feedKeyBuffer, ranges)
   }
 
