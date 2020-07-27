@@ -118,7 +118,7 @@ async function _publishFeedAndPlan (user, { nonce }, status, args) {
   // Add planID to unhostedPlans
   DB.unhostedPlans.push(planID)
   // Find hoster & encoder
-  makeNewContract({encoderID: null, attestorID: null, hosterID: null, planID: planID})
+  makeNewContract({planID})
   // Emit event
   const NewPlan = { event: { data: [planID], method: 'NewPlan' } }
   handlers.forEach(handler => handler([NewPlan]))
@@ -127,22 +127,25 @@ async function _registerHoster(user, { nonce }, status, args) {
   const [hosterKey] = args
   const userID = DB.userByAddress[user.address]
   DB.users[userID - 1].hosterKey = hosterKey.toString('hex')
-  DB.hosters.push(userID)
-  makeNewContract({ encoderID: null, attestorID: null, hosterID: userID, planID: null})
+  DB.users[userID - 1].hoster = true
+  DB.idleHosters.push(userID)
+  makeNewContract()
 }
 async function _registerEncoder (user, { nonce }, status, args) {
   const [encoderKey] = args
   const userID = DB.userByAddress[user.address]
   DB.users[userID - 1].encoderKey = encoderKey.toString('hex')
-  DB.encoders.push(userID)
-  makeNewContract({encoderID: userID, attestorID: null, hosterID: null, planID: null})
+  DB.users[userID - 1].encoder = true
+  DB.idleEncoders.push(userID)
+  makeNewContract()
 }
 async function _registerAttestor (user, { nonce }, status, args) {
   const [attestorKey] = args
   const userID = DB.userByAddress[user.address]
   DB.users[userID - 1].attestorKey = attestorKey.toString('hex')
-  DB.attestors.push(userID)
-  makeNewContract({encoderID: null, attestorID: userID, hosterID: null, planID: null})
+  DB.users[userID - 1].attestor = true
+  DB.idleAttestors.push(userID)
+  makeNewContract()
 }
 async function _encodingDone (user, { nonce }, status, args) {
   const [ contractID ] = args
@@ -179,7 +182,8 @@ async function _submitProofOfStorage (user, { nonce }, status, args) {
 }
 async function _requestAttestation (user, { nonce }, status, args) {
   const [ contractID ] = args
-  const [ attestorID ] = getRandom(DB.attestors)
+  const [ attestorID ] = getRandom(DB.idleAttestors)
+  DB.idleAttestors.forEach((id, i) => { if (id === attestorID) unhosted.splice(i, 1) })
   const attestation = { contract: contractID , attestor: attestorID }
   const attestationID = DB.attestations.push(attestation)
   attestation.id = attestationID
@@ -214,47 +218,30 @@ function validateProof (proof, challenge) {
   if (`${chunks.length}` === `${proof.length}`) return true
   else return false
 }
-function makeNewContract (opts) {
+function makeNewContract (planID) {
   // Find an unhosted plan
-  let { encoderID, attestorID, hosterID, planID } = opts
   const unhosted = DB.unhostedPlans
   if (!planID && unhosted.length) [planID, pos] = getRandom(unhosted)
   const selectedPlan = DB.plans[planID - 1]
   if (!selectedPlan) return console.log('current lack of demand for hosting plans')
-
-// Find hoster, encoder, encoding verifier and hosting verifier
-  if (hosterID && DB.encoders.length && DB.attestors.length) {
-    [encoderID] = getRandom(DB.encoders)
-    debugger
-    [attestorID] = getRandom(DB.attestors)
-  }
-  else if (encoderID && DB.hosters.length && DB.attestors.length) {
-    [hosterID] = getRandom(DB.hosters)
-    [attestorID] = getRandom(DB.attestors)
-  }
-  else if (attestorID && DB.hosters.length && DB.encoders.length) {
-    [hosterID] = getRandom(DB.hosters)
-    [encoderID] = getRandom(DB.encoders)
-  }
-  else if (!hosterID && !encoderID && !attestorID && DB.encoders.length && DB.hosters.length && DB.attestors.length) {
-    [encoderID] = getRandom(DB.encoders)
-    [hosterID] = getRandom(DB.hosters)
-    [attestorID] = getRandom(DB.attestors)
-  }
-
-  if (!encoderID) return console.log('missing encoder')
-  if (!hosterID) return console.log('missing hoster')
-  if (!attestorID) return console.log('missing attestor')
+  // Get hosters, encoders and attestors
+  const encoders  = DB.idleEncoders
+  const hosters   = DB.idleHosters
+  const attestors = DB.idleAttestors
+  if (encoders.length <= 3) return console.log(`missing encoders`)
+  if (hosters.length <= 3) return console.log(`missing hosters`)
+  if (!attestors.length) return console.log(`missing attestors`)
 
   // Make a new contract
   const contract = {
     plan: planID,
     ranges: [ [0, 3], [5, 7] ],
-    encoder: encoderID,
-    hoster: hosterID,
-    attestor: attestorID
+    encoders: encoders.splice(0,3),
+    hosters: hosters.splice(0,3),
+    attestor: attestors.splice(0,1)
   }
   unhosted.forEach((id, i) => { if (id === planID) unhosted.splice(i, 1) })
+  // [idleEncoders, idleHosters, idleAttestors] = [ [], [], [] ]
   console.log('New contract', contract)
   const contractID = DB.contracts.push(contract)
   contract.id = contractID

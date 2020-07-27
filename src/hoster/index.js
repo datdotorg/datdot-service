@@ -36,11 +36,11 @@ module.exports = class Hoster {
     this.EncoderDecoder = EncoderDecoder
   }
 
-  async addFeed (key, encoderKey, opts) {
-    await this.setOpts(key, opts)
-    await this.addKey(key, opts)
-    await this.loadFeedData(key)
-    await this.listenEncoder(encoderKey, key)
+  async addFeed ({feedKey, encoderKey, plan}) {
+    await this.setOpts(feedKey, plan)
+    await this.addKey(feedKey, plan)
+    await this.loadFeedData(feedKey)
+    await this.listenEncoder(encoderKey, feedKey)
   }
 
   async listenEncoder (encoderKey, key) {

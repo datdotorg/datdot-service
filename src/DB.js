@@ -56,9 +56,9 @@ const contract = {} //
 /******************************************************************************
   STATUS
 ******************************************************************************/
-const hosters = [] // user ids
-const encoders = [] // user ids
-const attestors = [] // user ids
+const idleHosters = [] // user ids
+const idleEncoders = [] // user ids
+const idleAttestors = [] // user ids
 
 const unhostedPlans = [] // ids of unhosted plans
 const hostedPlans = [] //when all contracts for certain plan are hosted => push planID to hostedPlans
@@ -101,9 +101,9 @@ const DB = {
   userByAddress,
   feedByKey,
   // status
-  hosters,
-  encoders,
-  attestors,
+  idleHosters,
+  idleEncoders,
+  idleAttestors,
   unhostedPlans,
   hostedPlans,
   contractsEncoded,

@@ -30,17 +30,19 @@ async function role ({ name, account }) {
     if (event.method === 'NewContract') {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)
-      const encoderID = contract.encoder
-      const encoderAddress = await chainAPI.getUserAddress(encoderID)
-      if (encoderAddress === account.chainKeypair.address) {
-        log('Event received:', event.method, event.data.toString())
-        const {hosterKey, feedKey, ranges} = await getHostingData(contract)
-        const encode = serviceAPI.encode({encoder: account, hosterKey, feedKey, ranges})
-        encode.then(async () => {
-          const nonce = await account.getNonce()
-          await chainAPI.encodingDone({contractID, signer, nonce})
-        })
-      }
+      const encoders = contract.encoders
+      encoders.forEach(async (id) => {
+        const encoderAddress = await chainAPI.getUserAddress(id)
+        if (encoderAddress === account.chainKeypair.address) {
+          log('Event received:', event.method, event.data.toString())
+          const {hosterKey, attestorKey, feedKey, ranges} = await getHostingData(contract)
+          const encode = serviceAPI.encode({account, hosterKey, attestorKey, feedKey, ranges})
+          encode.then(async () => {
+            const nonce = await account.getNonce()
+            await chainAPI.encodingDone({contractID, signer, nonce})
+          })
+        }
+      })
     }
   }
 
@@ -51,9 +53,12 @@ async function role ({ name, account }) {
     const planID = contract.plan
     const { feed: feedID} = await chainAPI.getPlanByID(planID)
     const feedKey = await chainAPI.getFeedKey(feedID)
-    const hosterID = contract.hoster
+    // @TODO there's many hosters
+    const hosterID = contract.hosters[0]
     const hosterKey = await chainAPI.getHosterKey(hosterID)
-    return { hosterKey, feedKey, ranges }
+    const attestorID = contract.attestor
+    const attestorKey = await chainAPI.getAttestorKey(attestorID)
+    return { hosterKey, attestorKey, feedKey, ranges }
   }
 
 }

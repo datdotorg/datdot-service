@@ -30,16 +30,19 @@ async function role ({ name, account }) {
     if (event.method === 'NewContract') {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)
-      const hosterAddress = await chainAPI.getUserAddress(contract.hoster)
-      if (hosterAddress === myAddress) {
-        log('Event received:', event.method, event.data.toString())
-        const { feedKey, encoderKey, plan } = await getHostingData(contract)
-        const host = serviceAPI.host({hoster: account, feedKey, encoderKey, plan})
-        host.then(async () => {
-          const nonce = account.getNonce()
-          await chainAPI.hostingStarts({contractID, signer, nonce})
-        })
-      }
+      const hosters = contract.hosters
+      hosters.forEach(async (id) => {
+        const hosterAddress = await chainAPI.getUserAddress(id)
+        if (hosterAddress === myAddress) {
+          log('Event received:', event.method, event.data.toString())
+          const { feedKey, encoderKey, plan } = await getHostingData(contract)
+          const host = serviceAPI.host({account, feedKey, encoderKey, plan})
+          host.then(async () => {
+            const nonce = account.getNonce()
+            await chainAPI.hostingStarts({contractID, signer, nonce})
+          })
+        }
+      })
     }
 
     if (event.method === 'NewProofOfStorageChallenge') {
@@ -65,7 +68,8 @@ async function role ({ name, account }) {
 
   async function getHostingData (contract) {
     const ranges = contract.ranges
-    const encoderID = contract.encoder
+    // @TODO there's many encoders
+    const encoderID = contract.encoders[0]
     const encoderKey = await chainAPI.getEncoderKey(encoderID)
     const planID = contract.plan
     const { feed: feedID } = await chainAPI.getPlanByID(planID)

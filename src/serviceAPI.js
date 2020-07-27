@@ -9,21 +9,41 @@ function datdotService () {
   const serviceAPI = {
     host,
     encode,
+    verifyEncoding,
     getProofOfStorage,
     attest,
   }
   return serviceAPI
 
   function host (data) {
-    const {hoster, feedKey: feedKeyBuffer , encoderKey, plan} = data
-    log('start hosting', encoderKey)
-    return hoster.hostFeed(feedKeyBuffer, encoderKey, plan)
+    const {account, feedKey , encoderKey, plan} = data
+    log('start hosting')
+    return account.hoster.addFeed({feedKey, encoderKey, plan})
   }
 
   function encode (data) {
-    const { encoder, hosterKey, feedKey: feedKeyBuffer, ranges } = data
-    log('start encoding', hosterKey)
-    return encoder.encodeFor(hosterKey, feedKeyBuffer, ranges)
+    const { account, hosterKey, attestorKey, feedKey: feedKeyBuffer, ranges } = data
+    log('start encoding')
+    return account.encoder.encodeFor(hosterKey, attestorKey, feedKeyBuffer, ranges)
+  }
+
+  async function verifyEncoding (data) {
+    const {account, encoderKeys, feedKey} = data
+    const msgs = []
+    encoderKeys.forEach(async (encoderKey) => {
+      await account.attestor.listenEncoder(encoderKey, feedKey, (msg, cb) => {
+        if (msgs[msg.index]) msgs[msg.index].push({ msg, cb })
+        else msgs[msg.index] = [ { msg, cb } ]
+        if (msgs[msg.index].length === 3) {
+          const lengths = msgs[msg.index].map(message => msg.encoded.data.length)
+          const allEqual = lengths.every((val, i, arr) => val === arr[0])
+          if (allEqual === true) msgs[msg.index].forEach(chunk => chunk.cb(null, msg))
+          else {
+            // figure out which one is not ok
+          }
+        }
+      })
+    })
   }
 
   async function getProofOfStorage (data) {

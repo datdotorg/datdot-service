@@ -101,7 +101,6 @@ async function makeNonce (nonce) {
     // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
     // return u8aToBuffer(user.noise_key.toU8a().slice(1))
     const user = (await API.query.datVerify.getUserByID(id))
-    console.log(user)
     return Buffer.from(user.hosterKey, 'hex')
   }
   async function getEncoderKey (id) {
@@ -177,7 +176,6 @@ async function makeNonce (nonce) {
     const {attestationID, report, signer, nonce} =  opts
     const tx = await API.tx.datVerify.submitAttestationReport(attestationID, report)
     // tx.signAndSend(signer, await makeNonce(nonce))
-    console.log('Submitting attestation', opts)
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   // LISTEN TO EVENTS

@@ -27,6 +27,20 @@ async function role ({ name, account }) {
   // EVENTS
   async function handleEvent (event) {
 
+    if (event.method === 'NewContract'){
+      const [contractID] = event.data
+      const contract = await chainAPI.getContractByID(contractID)
+      const attestorID = contract.attestor
+      const attestorAddress = await chainAPI.getUserAddress(attestorID)
+      if (attestorAddress === myAddress) {
+        log('Event received:', event.method, event.data.toString())
+        const { feedKey, encoderKeys } = await getContractData(contract)
+        const foo = serviceAPI.verifyEncoding({account, feedKey, encoderKeys})
+        foo.then(async () => {
+          console.log('-------------------->Encoding verified')
+        })
+      }
+    }
     if (event.method === 'NewAttestation'){
       log('New attestation!!')
       const [attestationID] = event.data
@@ -51,6 +65,20 @@ async function role ({ name, account }) {
   }
 
   // HELPERS
+
+  async function getContractData (contract) {
+    // @TODO there's many encoders
+    const encoders = contract.encoders
+    const encoderKeys = []
+    encoders.forEach(async (id) => {
+      const key = await chainAPI.getEncoderKey(id)
+      encoderKeys.push(key)
+    })
+    const planID = contract.plan
+    const { feed: feedID } = await chainAPI.getPlanByID(planID)
+    const feedKey = await chainAPI.getFeedKey(feedID)
+    return { feedKey, encoderKeys }
+  }
 
   function getRandomInt(min, max) {
     min = Math.ceil(min);

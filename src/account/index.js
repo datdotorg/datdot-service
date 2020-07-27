@@ -127,13 +127,13 @@ module.exports = class Account {
     return this.attestor.attest(feedKey, index)
   }
 
-  async encodeFor (hosterIdentity, feedKey, ranges) {
-    return this.encoder.encodeFor(hosterIdentity, feedKey, ranges)
-  }
+  // async encodeFor (hosterIdentity, attestorKey, feedKey, ranges) {
+  //   return this.encoder.encodeFor(hosterIdentity, attestorKey, feedKey, ranges)
+  // }
 
-  async hostFeed (feedKey, encoderIdentity, plan) {
-    return this.hoster.addFeed(feedKey, encoderIdentity, plan)
-  }
+  // async hostFeed (feedKey, encoderIdentity, plan) {
+  //   return this.hoster.addFeed(feedKey, encoderIdentity, plan)
+  // }
 
   async stopHostingFeed (feedKey) {
     return this.hoster.removeFeed(feedKey)

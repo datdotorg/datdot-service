@@ -50,13 +50,12 @@ module.exports = class Encoder {
     this.communication = p2plex({ keyPair: noiseKeyPair })
   }
 
-  async encodeFor (hosterKey, feedKey, ranges) {
+  async encodeFor (hosterKey, attestorKey, feedKey, ranges) {
 
     if (!Array.isArray(ranges)) {
       const index = ranges
       ranges = [[index, index]]
     }
-
 
     // TODO: Derive shared key
     const topic = feedKey
@@ -64,7 +63,14 @@ module.exports = class Encoder {
     const feed = this.Hypercore(feedKey)
 
     // TODO: Add timeout for when we can't find the hoster
-    const peer = await this.communication.findByTopicAndPublicKey(topic, hosterKey, { announce: false, lookup: true })
+    // const peer = await this.communication.findByTopicAndPublicKey(topic, hosterKey, { announce: false, lookup: true })
+    // const resultStream = ndjson.serialize()
+    // const confirmStream = ndjson.parse()
+    //
+    // const encodingStream = peer.createStream(topic)
+    // pump(resultStream, encodingStream, confirmStream)
+
+    const peer = await this.communication.findByTopicAndPublicKey(topic, attestorKey, { announce: false, lookup: true })
     const resultStream = ndjson.serialize()
     const confirmStream = ndjson.parse()
 
