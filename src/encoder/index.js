@@ -109,12 +109,15 @@ module.exports = class Encoder {
         })
         // --------------------------------------------------------------
 
-        // Wait for the hoster to tell us they've handled the data
+        // Wait for the attestor to tell us they've handled the data
         // TODO: Set up timeout for when peer doesn't respond to us
         const [response] = await once(confirmStream, 'data')
 
         if (response.error) {
           throw new Error(response.error)
+          // @TODO what do we do if one or multiple encoders fail to do their work
+          // do we have for example 5% tolerance for each encoder?
+          // do we create a new contract if one fails?
         }
       }
     }

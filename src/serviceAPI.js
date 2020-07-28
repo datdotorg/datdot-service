@@ -15,10 +15,13 @@ function datdotService () {
   }
   return serviceAPI
 
+  /******************************************************************************
+    API FUNCTIONS
+  ******************************************************************************/
   function host (data) {
-    const {account, feedKey , encoderKey, plan} = data
+    const {account, feedKey, attestorKey, plan} = data
     log('start hosting')
-    return account.hoster.addFeed({feedKey, encoderKey, plan})
+    return account.hoster.addFeed({feedKey, attestorKey, plan})
   }
 
   function encode (data) {
@@ -28,21 +31,13 @@ function datdotService () {
   }
 
   async function verifyEncoding (data) {
-    const {account, encoderKeys, feedKey} = data
-    const msgs = []
-    encoderKeys.forEach(async (encoderKey) => {
-      await account.attestor.listenEncoder(encoderKey, feedKey, (msg, cb) => {
-        if (msgs[msg.index]) msgs[msg.index].push({ msg, cb })
-        else msgs[msg.index] = [ { msg, cb } ]
-        if (msgs[msg.index].length === 3) {
-          const lengths = msgs[msg.index].map(message => msg.encoded.data.length)
-          const allEqual = lengths.every((val, i, arr) => val === arr[0])
-          if (allEqual === true) msgs[msg.index].forEach(chunk => chunk.cb(null, msg))
-          else {
-            // figure out which one is not ok
-          }
-        }
-      })
+    const {account, encoderKeys, hosterKeys, feedKey} = data
+    const messages = []
+    encoderKeys.forEach(async (encoderKey, i) => {
+      const pos = i
+      hosterKey = hosterKeys[pos]
+      const opts = { encoderKey, hosterKey, feedKey, cb: (msg, cb) => compareEncodings(messages, msg, cb) }
+      await account.attestor.listenEncoder(opts)
     })
   }
 
@@ -61,6 +56,39 @@ function datdotService () {
       return await account.attestor.attest(feedKey, chunk)
     }))
     return report
+  }
+
+  /******************************************************************************
+    HELPER FUNCTIONS
+  ******************************************************************************/
+
+  function compareEncodings (messages, msg, cb) {
+    if (messages[msg.index]) messages[msg.index].push({ msg, cb })
+    else messages[msg.index] = [ { msg, cb } ]
+    if (messages[msg.index].length === 3) {
+      const sizes = messages[msg.index].map(message => msg.encoded.data.length)
+      // const sizes = [12,13,13] => test usecase for when chunk sizes not same
+      const allEqual = sizes.every((val, i, arr) => val === arr[0])
+      if (allEqual === true) messages[msg.index].forEach(chunk => chunk.cb(null, msg))
+      else findInvalidEncoding(sizes, messages, cb)
+    }
+  }
+  function findInvalidEncoding (sizes, messages, cb) {
+    var smallest = sizes[0]
+    for (var i = 0, len = sizes.length; i < len; i++) {
+      for (var k = i + 1; k < len; k++) {
+        const [a, b] = [sizes[i], sizes[k]]
+        if (a !== b) {
+          if (a < b) {
+            smallest = a
+            cb('Encoding denied', messages[k])
+          } else {
+            smallest = b
+            cb('Encoding denied', messages[i])
+          }
+        }
+      }
+    }
   }
 
 }

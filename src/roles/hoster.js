@@ -35,8 +35,8 @@ async function role ({ name, account }) {
         const hosterAddress = await chainAPI.getUserAddress(id)
         if (hosterAddress === myAddress) {
           log('Event received:', event.method, event.data.toString())
-          const { feedKey, encoderKey, plan } = await getHostingData(contract)
-          const host = serviceAPI.host({account, feedKey, encoderKey, plan})
+          const { feedKey, attestorKey, plan } = await getHostingData(contract)
+          const host = serviceAPI.host({account, feedKey, attestorKey, plan})
           host.then(async () => {
             const nonce = account.getNonce()
             await chainAPI.hostingStarts({contractID, signer, nonce})
@@ -69,14 +69,14 @@ async function role ({ name, account }) {
   async function getHostingData (contract) {
     const ranges = contract.ranges
     // @TODO there's many encoders
-    const encoderID = contract.encoders[0]
-    const encoderKey = await chainAPI.getEncoderKey(encoderID)
+    const attestorID = contract.attestor
+    const attestorKey = await chainAPI.getAttestorKey(attestorID)
     const planID = contract.plan
     const { feed: feedID } = await chainAPI.getPlanByID(planID)
     const feedKey = await chainAPI.getFeedKey(feedID)
     const objArr = ranges.map( range => ({start: range[0], end: range[1]}) )
     const plan = { ranges: objArr }
-    return { feedKey, encoderKey, plan }
+    return { feedKey, attestorKey, plan }
   }
 
 

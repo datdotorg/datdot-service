@@ -36,30 +36,29 @@ module.exports = class Hoster {
     this.EncoderDecoder = EncoderDecoder
   }
 
-  async addFeed ({feedKey, encoderKey, plan}) {
+  async addFeed ({feedKey, attestorKey, plan}) {
     await this.setOpts(feedKey, plan)
     await this.addKey(feedKey, plan)
     await this.loadFeedData(feedKey)
-    await this.listenEncoder(encoderKey, feedKey)
+    await this.listenAttestor(attestorKey, feedKey)
   }
 
-  async listenEncoder (encoderKey, key) {
+  async listenAttestor (attestorKey, key) {
     // TODO: Derive key by combining our public keys and feed key
     const feed = this.Hypercore(key, { sparse: true })
     const topic = key
-    const peer = await this.communication.findByTopicAndPublicKey(topic, encoderKey, ANNOUNCE)
-
+    const peer = await this.communication.findByTopicAndPublicKey(topic, attestorKey, ANNOUNCE)
     const resultStream = new PassThrough({ objectMode: true })
     const rawResultStream = ndjson.parse()
     const confirmStream = ndjson.serialize()
 
-    const encodingStream = peer.receiveStream(topic)
+    const verifiedStream = peer.receiveStream(topic)
 
-    pump(confirmStream, encodingStream, rawResultStream, resultStream)
+    pump(confirmStream, verifiedStream, rawResultStream, resultStream)
 
     for await (const message of resultStream) {
       const { type } = message
-      if (type === 'encoded') {
+      if (type === 'verified') {
         const { feed, index, encoded, proof, nodes, signature } = message
         const key = Buffer.from(feed)
 
@@ -165,7 +164,7 @@ module.exports = class Hoster {
   }
 
   async watchFeed (feed) {
-    console.warn('Watching is not supported since we cannot ask the chain for encoders')
+    console.warn('Watching is not supported since we cannot ask the chain for attestors')
     /* const stringKey = feed.key.toString('hex')
     if (this.watchingFeeds.has(stringKey)) return
     this.watchingFeeds.add(stringKey)

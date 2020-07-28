@@ -34,8 +34,8 @@ async function role ({ name, account }) {
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
-        const { feedKey, encoderKeys } = await getContractData(contract)
-        const foo = serviceAPI.verifyEncoding({account, feedKey, encoderKeys})
+        const { feedKey, encoderKeys, hosterKeys } = await getContractData(contract)
+        const foo = serviceAPI.verifyEncoding({account, hosterKeys, feedKey, encoderKeys})
         foo.then(async () => {
           console.log('-------------------->Encoding verified')
         })
@@ -74,10 +74,16 @@ async function role ({ name, account }) {
       const key = await chainAPI.getEncoderKey(id)
       encoderKeys.push(key)
     })
+    const hosters = contract.hosters
+    const hosterKeys = []
+    hosters.forEach(async (id) => {
+      const key = await chainAPI.getHosterKey(id)
+      hosterKeys.push(key)
+    })
     const planID = contract.plan
     const { feed: feedID } = await chainAPI.getPlanByID(planID)
     const feedKey = await chainAPI.getFeedKey(feedID)
-    return { feedKey, encoderKeys }
+    return { feedKey, encoderKeys, hosterKeys }
   }
 
   function getRandomInt(min, max) {
