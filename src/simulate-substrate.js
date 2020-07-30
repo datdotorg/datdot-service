@@ -154,14 +154,15 @@ async function _encodingDone (user, { nonce }, status, args) {
 async function _hostingStarts (user, { nonce }, status, args) {
   const [ contractID ] = args
   DB.contractsHosted.push(contractID)
-  const HostingStarted = { event: { data: [contractID], method: 'HostingStarted' } }
+  const userID = DB.userByAddress[user.address]
+  const HostingStarted = { event: { data: [contractID, userID], method: 'HostingStarted' } }
   handlers.forEach(handler => handler([HostingStarted]))
 }
 async function _requestProofOfStorageChallenge (user, { nonce }, status, args) {
-  const [ contractID ] = args
+  const [ contractID, hosterID ] = args
   const ranges = DB.contracts[contractID - 1].ranges // [ [0, 3], [5, 7] ]
   const chunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
-  const challenge = { contract: contractID, chunks }
+  const challenge = { contract: contractID, hoster: hosterID, chunks }
   const challengeID = DB.challenges.push(challenge)
   challenge.id = challengeID
   // emit events
@@ -183,7 +184,7 @@ async function _submitProofOfStorage (user, { nonce }, status, args) {
 async function _requestAttestation (user, { nonce }, status, args) {
   const [ contractID ] = args
   const [ attestorID ] = getRandom(DB.idleAttestors)
-  DB.idleAttestors.forEach((id, i) => { if (id === attestorID) unhosted.splice(i, 1) })
+  DB.idleAttestors.forEach((id, i) => { if (id === attestorID) DB.idleAttestors.splice(i, 1) })
   const attestation = { contract: contractID , attestor: attestorID }
   const attestationID = DB.attestations.push(attestation)
   attestation.id = attestationID

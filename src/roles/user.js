@@ -10,12 +10,12 @@ const getChainAPI = require('../chainAPI')
     1. create account
 
 ******************************************************************************/
-const NAME = __filename.split('/').pop().split('.')[0].toLowerCase()
+const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
 module.exports = role
 
 async function role ({ name, account }) {
-  const log = debug(`[${name.toLowerCase()}:${NAME}]`)
+  const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
   const chainAPI = await getChainAPI()
   const nonce = await account.getNonce()
   const myAddress = account.chainKeypair.address

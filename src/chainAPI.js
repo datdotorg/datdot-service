@@ -155,8 +155,8 @@ async function makeNonce (nonce) {
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function requestProofOfStorageChallenge (opts) {
-    const {contractID, signer, nonce} = opts
-    const tx = await API.tx.datVerify.requestProofOfStorageChallenge(contractID)
+    const {contractID, hosterID, signer, nonce} = opts
+    const tx = await API.tx.datVerify.requestProofOfStorageChallenge(contractID, hosterID)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
@@ -182,7 +182,7 @@ async function makeNonce (nonce) {
   async function listenToEvents (handleEvent) {
     return API.query.system.events((events) => {
       events.forEach(async (record) => {
-        console.log(record.event.method, record.event.data.toString())
+        // console.log(record.event.method, record.event.data.toString())
         const event = record.event
         handleEvent(event)
       })

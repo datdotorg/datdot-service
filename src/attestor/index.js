@@ -40,7 +40,7 @@ module.exports = class Attestor {
   }
 
   async listenEncoder (opts) {
-    const { encoderKey, hosterKey, feedKey: key, cb } = opts
+    const { encoderKey, hosterKey, feedKey: key, cb: compareEncodings } = opts
     const attestor = this
 
     // TODO: Derive key by combining our public keys and feed key
@@ -55,6 +55,7 @@ module.exports = class Attestor {
     const hoster = await attestor.communication.findByTopicAndPublicKey(topic, hosterKey, { announce: false, lookup: true })
     const receiveStream = new PassThrough({ objectMode: true })
     const rawReceiveStream = ndjson.parse()
+
     const sendStream = ndjson.serialize()
     const hosterStream = hoster.createStream(topic)
     pump(sendStream, hosterStream, rawReceiveStream, receiveStream)
@@ -63,18 +64,16 @@ module.exports = class Attestor {
       const { type } = message
       if (type === 'encoded') {
         const { feed, index, encoded, proof, nodes, signature } = message
-        cb(message, (err, res) => {
+        compareEncodings(message, (err, res) => {
           if (err) sendError('INVALID_COMPRESSION', { messageIndex: message.index })
           else if (!err) {
-            // send chunk to hoster
-            sendToHoster({ message })
-            console.log(`${res.index} by ${encoderKey.toString('hex')} OK`)
             confirmStream.write({
               type: 'encoded:checked',
               ok: true
             })
+            // send chunk to hoster
+            sendToHoster({ message })
           }
-          // 3. IF last chunk =< WRITE to confirm stream that its successfully checked AND end the confirmStream successfully => JOB done
         })
       } else {
         console.log('UNKNOWN_MESSAGE', { messageType: type })

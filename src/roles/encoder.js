@@ -7,12 +7,12 @@ const getServiceAPI = require('../serviceAPI')
 /******************************************************************************
   ROLE: Encoder
 ******************************************************************************/
-const NAME = __filename.split('/').pop().split('.')[0].toLowerCase()
+const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
 module.exports = role
 
 async function role ({ name, account }) {
-  const log = debug(`[${name.toLowerCase()}:${NAME}]`)
+  const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
 
   const serviceAPI = getServiceAPI()
   const chainAPI = await getChainAPI()

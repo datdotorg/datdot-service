@@ -6,9 +6,9 @@ const feeds = {}
 const pump = require('pump')
 
 const colors = require('colors/safe')
-const NAME = __filename.split('/').pop().split('.')[0].toUpperCase()
+const FILE = __filename.split('/').pop().split('.')[0].toUpperCase()
 function LOG (...msgs) {
-  msgs = [`[${NAME}] `, ...msgs].map(msg => colors.yellow(msg))
+  msgs = [`[${FILE}] `, ...msgs].map(msg => colors.yellow(msg))
   console.log(...msgs)
 }
 

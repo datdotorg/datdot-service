@@ -6,12 +6,12 @@ const { bnToU8a } = require('@polkadot/util')
 /******************************************************************************
   ROLE: Hoster
 ******************************************************************************/
-const NAME = __filename.split('/').pop().split('.')[0].toLowerCase()
+const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
 module.exports = role
 
 async function role ({ name, account }) {
-  const log = debug(`[${name.toLowerCase()}:${NAME}]`)
+  const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
   log('Register as hoster')
   const serviceAPI = getServiceAPI()
   const chainAPI = await getChainAPI()
@@ -49,7 +49,8 @@ async function role ({ name, account }) {
       const [challengeID] = event.data
       const challenge = await chainAPI.getChallengeByID(challengeID)
       const contract = await chainAPI.getContractByID(challenge.contract)
-      const hosterAddress = await chainAPI.getUserAddress(contract.hoster)
+      const hosterID = challenge.hoster
+      const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
         const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)

@@ -3,8 +3,8 @@ const debug = require('debug')
 module.exports = datdotService
 
 function datdotService () {
-  const NAME = __filename.split('/').pop().split('.')[0].toLowerCase()
-  const log = debug(`${NAME}]`)
+  const FILE = __filename.split('/').pop().split('.')[0].toLowerCase()
+  const log = debug(`${FILE}]`)
 
   const serviceAPI = {
     host,

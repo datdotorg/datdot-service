@@ -6,12 +6,12 @@ const getServiceAPI = require('../serviceAPI')
 /******************************************************************************
   ROLE: Attestor
 ******************************************************************************/
-const NAME = __filename.split('/').pop().split('.')[0].toLowerCase()
+const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
 module.exports = role
 
 async function role ({ name, account }) {
-  const log = debug(`[${name.toLowerCase()}:${NAME}]`)
+  const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
   log('Register as attestor')
   const serviceAPI = getServiceAPI()
   const chainAPI = await getChainAPI()
@@ -42,7 +42,6 @@ async function role ({ name, account }) {
       }
     }
     if (event.method === 'NewAttestation'){
-      log('New attestation!!')
       const [attestationID] = event.data
       const attestation = await chainAPI.getAttestationByID(attestationID)
       const attestorID = attestation.attestor

@@ -7,12 +7,12 @@ const getChainAPI = require('../chainAPI')
 /******************************************************************************
   ROLE: Publisher
 ******************************************************************************/
-const NAME = __filename.split('/').pop().split('.')[0].toLowerCase()
+const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
 module.exports = role
 
 async function role ({ name, account }) {
-  const log = debug(`[${name.toLowerCase()}:${NAME}]`)
+  const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
   const chainAPI = await getChainAPI()
   chainAPI.listenToEvents(handleEvent)
 
@@ -31,7 +31,7 @@ async function role ({ name, account }) {
   async function handleEvent (event) {
 
     if (event.method === 'HostingStarted') {
-      const [ contractID] = event.data
+      const [ contractID, userID] = event.data
       const { plan: planID } = await chainAPI.getContractByID(contractID)
       const { publisher: publisherID} = await chainAPI.getPlanByID(planID)
       const publisherAddress = await chainAPI.getUserAddress(publisherID)
@@ -39,7 +39,7 @@ async function role ({ name, account }) {
         log('Event received:', event.method, event.data.toString())
         const { feed: feedID } =  await chainAPI.getPlanByID(planID)
         const nonce = await account.getNonce()
-        await chainAPI.requestProofOfStorageChallenge({contractID, signer, nonce})
+        await chainAPI.requestProofOfStorageChallenge({contractID, hosterID: userID, signer, nonce})
       }
     }
 
