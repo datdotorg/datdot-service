@@ -20,7 +20,8 @@ module.exports = {
       registerEncoder,
       registerAttestor,
       registerHoster,
-      publishFeedAndPlan,
+      publishFeed,
+      publishPlan,
       encodingDone,
       hostingStarts,
       requestProofOfStorageChallenge,
@@ -38,7 +39,8 @@ async function newUser (...args) { return { signAndSend: signAndSend.bind({ args
 async function registerEncoder (...args) { return { signAndSend: signAndSend.bind({ args, type: 'registerEncoder' }) } }
 async function registerAttestor (...args) { return { signAndSend: signAndSend.bind({ args, type: 'registerAttestor' }) } }
 async function registerHoster (...args) { return { signAndSend: signAndSend.bind({ args, type: 'registerHoster' }) } }
-async function publishFeedAndPlan (...args) { return { signAndSend: signAndSend.bind({ args, type: 'publishFeedAndPlan'}) } }
+async function publishFeed (...args) { return { signAndSend: signAndSend.bind({ args, type: 'publishFeed'}) } }
+async function publishPlan (...args) { return { signAndSend: signAndSend.bind({ args, type: 'publishPlan'}) } }
 async function encodingDone (...args) { return { signAndSend: signAndSend.bind({ args, type: 'encodingDone'}) } }
 async function hostingStarts (...args) { return { signAndSend: signAndSend.bind({ args, type: 'hostingStarts'}) } }
 async function requestProofOfStorageChallenge (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestProofOfStorageChallenge'}) } }
@@ -65,7 +67,8 @@ function signAndSend (signer, { nonce }, status) {
   const user = _newUser(signer.address, { nonce }, status)
   if (!user) return console.error('NO USER', user)
 
-  if (type === 'publishFeedAndPlan') _publishFeedAndPlan(user, { nonce }, status, args)
+  if (type === 'publishFeed') _publishFeed(user, { nonce }, status, args)
+  else if (type === 'publishPlan') _publishPlan(user, { nonce }, status, args)
   else if (type === 'registerEncoder') _registerEncoder(user, { nonce }, status, args)
   else if (type === 'registerAttestor') _registerAttestor(user, { nonce }, status, args)
   else if (type === 'registerHoster') _registerHoster(user, { nonce }, status, args)
@@ -95,24 +98,28 @@ function _newUser (address, { nonce }, status) {
   }
   return user
 }
-async function _publishFeedAndPlan (user, { nonce }, status, args) {
-  // Publish FEED
+async function _publishFeed (user, { nonce }, status, args) {
   //@TODO check if feed already exists
-  const [ merkleRoot, plan ] = args
+  const [ merkleRoot ] = args
   const [key, {hashType, children}, signature] = merkleRoot
   const feed = { publickey: key.toString('hex'), meta: { signature, hashType, children } }
   const feedID = DB.feeds.push(feed)
   feed.id = feedID
   // push to feedByKey lookup array
   DB.feedByKey[key.toString('hex')] = feedID
+  const userID = user.id
+  feed.publisher = userID
   // Emit event
-  const NewFeed = { event: { data: [feedID], method: 'NewFeed' } }
+  const NewFeed = { event: { data: [feedID], method: 'FeedPublished' } }
   handlers.forEach(handler => handler([NewFeed]))
-
-// Publish PLAN
-  const userID = DB.userByAddress[user.address]
-  plan.publisher = userID
+}
+async function _publishPlan (user, { nonce }, status, args) {
+  const [ plan ] = args
+  const { feedID, ranges } =  plan
+  const userID = user.id
+  plan.sponsor = userID // or patron?
   plan.feed = feedID
+  plan.ranges = ranges
   const planID = DB.plans.push(plan)
   plan.id = planID
   // Add planID to unhostedPlans
@@ -125,7 +132,7 @@ async function _publishFeedAndPlan (user, { nonce }, status, args) {
 }
 async function _registerHoster(user, { nonce }, status, args) {
   const [hosterKey] = args
-  const userID = DB.userByAddress[user.address]
+  const userID = user.id
   DB.users[userID - 1].hosterKey = hosterKey.toString('hex')
   DB.users[userID - 1].hoster = true
   DB.idleHosters.push(userID)
@@ -133,7 +140,7 @@ async function _registerHoster(user, { nonce }, status, args) {
 }
 async function _registerEncoder (user, { nonce }, status, args) {
   const [encoderKey] = args
-  const userID = DB.userByAddress[user.address]
+  const userID = user.id
   DB.users[userID - 1].encoderKey = encoderKey.toString('hex')
   DB.users[userID - 1].encoder = true
   DB.idleEncoders.push(userID)
@@ -141,7 +148,7 @@ async function _registerEncoder (user, { nonce }, status, args) {
 }
 async function _registerAttestor (user, { nonce }, status, args) {
   const [attestorKey] = args
-  const userID = DB.userByAddress[user.address]
+  const userID = user.id
   DB.users[userID - 1].attestorKey = attestorKey.toString('hex')
   DB.users[userID - 1].attestor = true
   DB.idleAttestors.push(userID)
@@ -154,7 +161,7 @@ async function _encodingDone (user, { nonce }, status, args) {
 async function _hostingStarts (user, { nonce }, status, args) {
   const [ contractID ] = args
   DB.contractsHosted.push(contractID)
-  const userID = DB.userByAddress[user.address]
+  const userID = user.id
   const HostingStarted = { event: { data: [contractID, userID], method: 'HostingStarted' } }
   handlers.forEach(handler => handler([HostingStarted]))
 }
@@ -183,13 +190,15 @@ async function _submitProofOfStorage (user, { nonce }, status, args) {
 }
 async function _requestAttestation (user, { nonce }, status, args) {
   const [ contractID ] = args
-  const [ attestorID ] = getRandom(DB.idleAttestors)
-  DB.idleAttestors.forEach((id, i) => { if (id === attestorID) DB.idleAttestors.splice(i, 1) })
-  const attestation = { contract: contractID , attestor: attestorID }
-  const attestationID = DB.attestations.push(attestation)
-  attestation.id = attestationID
-  const PoRChallenge = { event: { data: [attestationID], method: 'NewAttestation' } }
-  handlers.forEach(handler => handler([PoRChallenge]))
+  if (DB.idleAttestors.length) {    
+    const [ attestorID ] = getRandom(DB.idleAttestors)
+    DB.idleAttestors.forEach((id, i) => { if (id === attestorID) DB.idleAttestors.splice(i, 1) })
+    const attestation = { contract: contractID , attestor: attestorID }
+    const attestationID = DB.attestations.push(attestation)
+    attestation.id = attestationID
+    const PoRChallenge = { event: { data: [attestationID], method: 'NewAttestation' } }
+    handlers.forEach(handler => handler([PoRChallenge]))
+  }
 }
 async function _submitAttestationReport (user, { nonce }, status, args) {
   const [ attestationID, report ] = args
@@ -236,7 +245,7 @@ function makeNewContract (planID) {
   // Make a new contract
   const contract = {
     plan: planID,
-    ranges: [ [0, 3], [5, 7] ],
+    ranges: [ [0, 3], [5, 7] ], // @TODO: plan.ranges
     encoders: encoders.splice(0,3),
     hosters: hosters.splice(0,3),
     attestor: attestors.splice(0,1)

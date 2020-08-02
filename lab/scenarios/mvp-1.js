@@ -21,6 +21,7 @@ const users = ['Alice', 'Bob', 'Charlie', 'Dave', 'Eve'].map(name => {
 ******************************************************************************/
 const user = require('../../src/roles/user.js')
 const publisher = require('../../src/roles/publisher.js')
+const sponsor = require('../../src/roles/sponsor.js')
 const hoster = require('../../src/roles/hoster.js')
 const encoder = require('../../src/roles/encoder.js')
 const attestor = require('../../src/roles/attestor.js')
@@ -31,8 +32,8 @@ const [ alice, bob, charlie, dave, eve ] = users
 
 log('start scenario')
 
-alice([user, publisher, encoder, hoster, attestor])
-bob([user, hoster, encoder])
+alice([user, sponsor, publisher, attestor])
+bob([user, hoster, attestor, encoder])
 charlie([user, encoder, hoster, attestor])
 dave([user, encoder, hoster, attestor])
 eve([user, encoder, hoster, attestor])

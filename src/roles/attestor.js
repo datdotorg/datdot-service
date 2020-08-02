@@ -53,7 +53,7 @@ async function role ({ name, account }) {
         const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
         const feedKey = await chainAPI.getFeedKey(feedID)
         const plan = await chainAPI.getPlanByID(contract.plan)
-        const ranges = plan
+        const ranges = plan.ranges
         const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
         const data = { account, randomChunks, feedKey }
         const report = await serviceAPI.attest(data)

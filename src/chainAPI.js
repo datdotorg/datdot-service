@@ -20,7 +20,8 @@ async function datdotChain () {
     registerHoster,
     registerEncoder,
     registerAttestor,
-    publishFeedAndPlan,
+    publishFeed,
+    publishPlan,
     encodingDone,
     hostingStarts,
     requestProofOfStorageChallenge,
@@ -78,10 +79,16 @@ async function makeNonce (nonce) {
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function publishFeedAndPlan (opts) {
-    const { merkleRoot, ranges, signer, nonce } = opts
+  async function publishFeed (opts) {
+    const { merkleRoot, signer, nonce } = opts
     // merkleRoot[0] = bufferToU8a(merkleRoot[0])
-    const tx = await API.tx.datVerify.publishFeedAndPlan(merkleRoot, ranges)
+    const tx = await API.tx.datVerify.publishFeed(merkleRoot)
+    // tx.signAndSend(signer, await makeNonce(nonce))
+    tx.signAndSend(signer, await makeNonce(nonce), status)
+  }
+  async function publishPlan (opts) {
+    const { plan, signer, nonce } = opts
+    const tx = await API.tx.datVerify.publishPlan(plan)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
@@ -90,6 +97,12 @@ async function makeNonce (nonce) {
     // return u8aToBuffer(feed.publickey.toU8a())
     const feed = (await API.query.datVerify.getFeedByID(feedID))
     return Buffer.from(feed.publickey, 'hex')
+  }
+  async function getFeedByID (feedID) {
+    // const feed = (await API.query.datVerify.getFeedByID(feedID)).unwrap()
+    const feed = (await API.query.datVerify.getFeedByID(feedID))
+    console.log('HERE IS YOUR FEED', feed)
+    return feed
   }
   async function getUserAddress (id) {
     // const user = (await API.query.datVerify.getUserByID(id)).unwrap()

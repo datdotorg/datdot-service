@@ -19,7 +19,7 @@ const plans = []
 /*
 {
   feed: feedID,
-  publisher: 'userID',
+  sponsor: 'userID',
   ranges: [[0, 5], [7, 55]] // default [{0, feed.length}],
 }
 */

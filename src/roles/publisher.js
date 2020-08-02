@@ -23,51 +23,10 @@ async function role ({ name, account }) {
   const signer = account.chainKeypair
   const nonce = await account.getNonce()
   // @TODO later pass a more sofisticated plan which will include ranges
-  const ranges = [[0,8]]
   // publish data and plan to chain (= request hosting)
-  await chainAPI.publishFeedAndPlan({merkleRoot: data, ranges, signer, nonce})
+  await chainAPI.publishFeed({merkleRoot: data, signer, nonce})
 
   // EVENTS
   async function handleEvent (event) {
-
-    if (event.method === 'HostingStarted') {
-      const [ contractID, userID] = event.data
-      const { plan: planID } = await chainAPI.getContractByID(contractID)
-      const { publisher: publisherID} = await chainAPI.getPlanByID(planID)
-      const publisherAddress = await chainAPI.getUserAddress(publisherID)
-      if (publisherAddress === myAddress) {
-        log('Event received:', event.method, event.data.toString())
-        const { feed: feedID } =  await chainAPI.getPlanByID(planID)
-        const nonce = await account.getNonce()
-        await chainAPI.requestProofOfStorageChallenge({contractID, hosterID: userID, signer, nonce})
-      }
-    }
-
-    if (event.method === 'ProofOfStorageConfirmed') {
-      const [ challengeID] = event.data
-      const { contract: contractID } = await chainAPI.getChallengeByID(challengeID)
-      const { plan: planID } = await chainAPI.getContractByID(contractID)
-      const { publisher: publisherID} = await chainAPI.getPlanByID(planID)
-      const publisherAddress = await chainAPI.getUserAddress(publisherID)
-      if (publisherAddress === myAddress) {
-        log('Event received:', event.method, event.data.toString())
-        const { feed: feedID } =  await chainAPI.getPlanByID(planID)
-        const nonce = await account.getNonce()
-        await chainAPI.requestAttestation({contractID, signer, nonce})
-      }
-    }
-
-    if (event.method === 'AttestationReportConfirmed') {
-      const [ attestationID] = event.data
-      const { contract: contractID } = await chainAPI.getAttestationByID(attestationID)
-      const { plan: planID } = await chainAPI.getContractByID(contractID)
-      const { publisher: publisherID} = await chainAPI.getPlanByID(planID)
-      const publisherAddress = await chainAPI.getUserAddress(publisherID)
-      if (publisherAddress === myAddress) {
-        log('Event received:', event.method, event.data.toString())
-      }
-    }
-
   }
-
 }
