@@ -39,7 +39,7 @@ module.exports = class Attestor {
     this.communication = p2plex({ keyPair: noiseKeyPair })
   }
 
-  async listenEncoder (opts) {
+  async verifyEncoding (opts) {
     const { encoderKey, hosterKey, feedKey: key, cb: compareEncodings } = opts
     const attestor = this
 
@@ -71,7 +71,6 @@ module.exports = class Attestor {
               type: 'encoded:checked',
               ok: true
             })
-            // send chunk to hoster
             sendToHoster({ message })
           }
         })

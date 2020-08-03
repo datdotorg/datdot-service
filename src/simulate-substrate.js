@@ -161,6 +161,9 @@ async function _encodingDone (user, { nonce }, status, args) {
 async function _hostingStarts (user, { nonce }, status, args) {
   const [ contractID ] = args
   DB.contractsHosted.push(contractID)
+  const contract = DB.contracts[contractID - 1]
+  // attestor finished job, add them to idleAttestors again
+  DB.idleAttestors.push(contract.attestor)
   const userID = user.id
   const HostingStarted = { event: { data: [contractID, userID], method: 'HostingStarted' } }
   handlers.forEach(handler => handler([HostingStarted]))
@@ -190,7 +193,7 @@ async function _submitProofOfStorage (user, { nonce }, status, args) {
 }
 async function _requestAttestation (user, { nonce }, status, args) {
   const [ contractID ] = args
-  if (DB.idleAttestors.length) {    
+  if (DB.idleAttestors.length) {
     const [ attestorID ] = getRandom(DB.idleAttestors)
     DB.idleAttestors.forEach((id, i) => { if (id === attestorID) DB.idleAttestors.splice(i, 1) })
     const attestation = { contract: contractID , attestor: attestorID }
@@ -203,6 +206,9 @@ async function _requestAttestation (user, { nonce }, status, args) {
 async function _submitAttestationReport (user, { nonce }, status, args) {
   const [ attestationID, report ] = args
   console.log('Submitting Proof Of Retrievability Attestation with ID:', attestationID)
+  const attestation = DB.attestations[attestationID - 1]
+  // attestor finished job, add them to idleAttestors again
+  DB.idleAttestors.push(attestation.attestor)
   // emit events
   if (report) PoR = { event: { data: [attestationID], method: 'AttestationReportConfirmed' } }
   else PoR = { event: { data: [attestationID], method: 'AttestationReportFailed' } }

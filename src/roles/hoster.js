@@ -57,6 +57,10 @@ async function role ({ name, account }) {
         const feedKey = await chainAPI.getFeedKey(feedID)
         const data = { account, challenge, feedKey }
         const response = await serviceAPI.getProofOfStorage(data)
+        // @@TODO:
+        // connect to the attestor
+        // send proof to the attestor
+        // if all good, attestor responds ot the chain
         const nonce = account.getNonce()
         const proofs = response.map(res => res.proof)
         const opts = {challengeID, proofs, signer, nonce}

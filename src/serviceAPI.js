@@ -37,7 +37,7 @@ function datdotService () {
       const pos = i
       hosterKey = hosterKeys[pos]
       const opts = { encoderKey, hosterKey, feedKey, cb: (msg, cb) => compareEncodings(messages, msg, cb) }
-      await account.attestor.listenEncoder(opts)
+      await account.attestor.verifyEncoding(opts)
     })
   }
 
