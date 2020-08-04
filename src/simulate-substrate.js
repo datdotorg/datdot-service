@@ -163,7 +163,8 @@ async function _hostingStarts (user, { nonce }, status, args) {
   DB.contractsHosted.push(contractID)
   const contract = DB.contracts[contractID - 1]
   // attestor finished job, add them to idleAttestors again
-  DB.idleAttestors.push(contract.attestor)
+  const attestorID = contract.attestor
+  if (!DB.idleAttestors.includes(attestorID)) DB.idleAttestors.push(attestorID)
   const userID = user.id
   const HostingStarted = { event: { data: [contractID, userID], method: 'HostingStarted' } }
   handlers.forEach(handler => handler([HostingStarted]))
@@ -175,6 +176,8 @@ async function _requestProofOfStorageChallenge (user, { nonce }, status, args) {
   const challenge = { contract: contractID, hoster: hosterID, chunks }
   const challengeID = DB.challenges.push(challenge)
   challenge.id = challengeID
+  const attestorID = DB.idleAttestors.shift()
+  challenge.attestor = attestorID
   // emit events
   const newChallenge = { event: { data: [challengeID], method: 'NewProofOfStorageChallenge' } }
   handlers.forEach(handler => handler([newChallenge]))
@@ -194,8 +197,7 @@ async function _submitProofOfStorage (user, { nonce }, status, args) {
 async function _requestAttestation (user, { nonce }, status, args) {
   const [ contractID ] = args
   if (DB.idleAttestors.length) {
-    const [ attestorID ] = getRandom(DB.idleAttestors)
-    DB.idleAttestors.forEach((id, i) => { if (id === attestorID) DB.idleAttestors.splice(i, 1) })
+    const attestorID = DB.idleAttestors.splice(0, 1)
     const attestation = { contract: contractID , attestor: attestorID }
     const attestationID = DB.attestations.push(attestation)
     attestation.id = attestationID
@@ -254,7 +256,7 @@ function makeNewContract (planID) {
     ranges: [ [0, 3], [5, 7] ], // @TODO: plan.ranges
     encoders: encoders.splice(0,3),
     hosters: hosters.splice(0,3),
-    attestor: attestors.splice(0,1)
+    attestor: attestors.shift()
   }
   unhosted.forEach((id, i) => { if (id === planID) unhosted.splice(i, 1) })
   // [idleEncoders, idleHosters, idleAttestors] = [ [], [], [] ]

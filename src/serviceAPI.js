@@ -11,6 +11,8 @@ function datdotService () {
     encode,
     verifyEncoding,
     getProofOfStorage,
+    sendProofOfStorageToAttestor,
+    verifyProofOfStorage,
     attest,
   }
   return serviceAPI
@@ -18,12 +20,10 @@ function datdotService () {
   /******************************************************************************
     API FUNCTIONS
   ******************************************************************************/
-  function host (data) {
-    const {account, feedKey, attestorKey, plan} = data
-    log('start hosting')
-    return account.hoster.addFeed({feedKey, attestorKey, plan})
-  }
 
+/* ----------------------------------------------------------------
+               BEFORE HOSTING => ENCODING, VERIFYING, STORING
+------------------------------------------------------------------ */
   function encode (data) {
     const { account, hosterKey, attestorKey, feedKey: feedKeyBuffer, ranges } = data
     log('start encoding')
@@ -41,12 +41,31 @@ function datdotService () {
     })
   }
 
-  async function getProofOfStorage (data) {
-    const { account, challenge, feedKey } = data
+  function host (data) {
+    const {account, feedKey, attestorKey, plan} = data
+    log('start hosting')
+    return account.hoster.addFeed({feedKey, attestorKey, plan})
+  }
+
+  /* ----------------------------------------------------------------
+                     WHILE HOSTING => PROOFS
+------------------------------------------------------------------ */
+  async function getProofOfStorage ({ account, challenge, feedKey }) {
     const proof = await Promise.all(challenge.chunks.map(async (chunk) => {
       return await account.hoster.getProofOfStorage(feedKey, chunk)
     }))
     return proof
+  }
+
+  async function sendProofOfStorageToAttestor (data) {
+    const { account, challengeID, feedKey, attestorKey, proofs } = data
+    await account.hoster.sendProofOfStorage({challengeID, feedKey, attestorKey, proofs})
+    // hoster sends proof of data to the attestor
+  }
+
+  async function verifyProofOfStorage (data) {
+    const {account, hosterKey, feedKey, challengeID} = data
+    return await account.attestor.verifyProofOfStorage({challengeID, feedKey, hosterKey})
   }
 
   async function attest (data) {

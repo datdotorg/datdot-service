@@ -53,18 +53,10 @@ async function role ({ name, account }) {
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
-        const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
-        const feedKey = await chainAPI.getFeedKey(feedID)
-        const data = { account, challenge, feedKey }
-        const response = await serviceAPI.getProofOfStorage(data)
-        // @@TODO:
-        // connect to the attestor
-        // send proof to the attestor
-        // if all good, attestor responds ot the chain
-        const nonce = account.getNonce()
-        const proofs = response.map(res => res.proof)
-        const opts = {challengeID, proofs, signer, nonce}
-        await chainAPI.submitProofOfStorage(opts)
+        const data = await getProofOfStorageData(challenge, contract)
+        data.account = account
+        // log('sendProofOfStorageToAttestor - DATA', data)
+        const sendProofOfStorage = await serviceAPI.sendProofOfStorageToAttestor(data)
       }
     }
   }
@@ -84,5 +76,13 @@ async function role ({ name, account }) {
     return { feedKey, attestorKey, plan }
   }
 
+  async function getProofOfStorageData (challenge, contract) {
+    const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
+    const feedKey = await chainAPI.getFeedKey(feedID)
+    const attestorID = challenge.attestor
+    const attestorKey = await chainAPI.getAttestorKey(attestorID)
+    const proofs = await serviceAPI.getProofOfStorage({ account, challenge, feedKey })
+    return {challengeID: challenge.id, feedKey, attestorKey, proofs}
+  }
 
 }

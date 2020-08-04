@@ -5,6 +5,7 @@ const ndjson = require('ndjson')
 const { PassThrough } = require('stream')
 const pump = require('pump')
 const p2plex = require('p2plex')
+const { once } = require('events')
 const { seedKeygen } = require('noise-peer')
 const HosterStorage = require('../hoster-storage')
 const NAMESPACE = 'datdot-hoster'
@@ -40,10 +41,10 @@ module.exports = class Hoster {
     await this.setOpts(feedKey, plan)
     await this.addKey(feedKey, plan)
     await this.loadFeedData(feedKey)
-    await this.listenAttestor(attestorKey, feedKey)
+    await this.getEncodedDataFromAttestor(attestorKey, feedKey)
   }
 
-  async listenAttestor (attestorKey, key) {
+  async getEncodedDataFromAttestor (attestorKey, key) {
     // TODO: Derive key by combining our public keys and feed key
     const feed = this.Hypercore(key, { sparse: true })
     const topic = key
@@ -185,6 +186,34 @@ module.exports = class Hoster {
     const storage = await this.getStorage(key)
     return storage.getProofOfStorage(index)
   }
+
+  async sendProofOfStorage ({challengeID, feedKey, attestorKey, proofs}) {
+    const topic = feedKey
+    const peer = await this.communication.findByTopicAndPublicKey(topic, attestorKey, { announce: false, lookup: true })
+    const resultStream = ndjson.serialize()
+    const confirmStream = ndjson.parse()
+
+    const encodingStream = peer.createStream(topic)
+    pump(resultStream, encodingStream, confirmStream)
+
+    resultStream.write({
+      type: 'proofOfStorage',
+      feedKey,
+      challengeID,
+      proofs
+    })
+    // --------------------------------------------------------------
+
+    // Wait for the attestor to tell us they've handled the data
+    // TODO: Set up timeout for when peer doesn't respond to us
+    const [response] = await once(confirmStream, 'data')
+
+    if (response.error) {
+      throw new Error(response.error)
+      // @TODO what happens if proof doesn't get verified due to an error? Try again?
+    }
+  }
+
 
   async hasKey (key) {
     const stringKey = key.toString('hex')

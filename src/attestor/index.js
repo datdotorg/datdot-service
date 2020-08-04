@@ -108,6 +108,48 @@ module.exports = class Attestor {
     }
   }
 
+  async verifyProofOfStorage (data) {
+    const {hosterKey, feedKey, challengeID: id} = data
+    // TODO: Derive topic by combining our public keys and feed key
+    const topic = feedKey
+    const peer = await this.communication.findByTopicAndPublicKey(topic, hosterKey, ANNOUNCE)
+    const resultStream = new PassThrough({ objectMode: true })
+    const rawResultStream = ndjson.parse()
+    const confirmStream = ndjson.serialize()
+    const hosterStream = peer.receiveStream(topic)
+    pump(confirmStream, hosterStream, rawResultStream, resultStream)
+
+    for await (const message of resultStream) {
+      const { type } = message
+      if (type === 'proofOfStorage') {
+        const { feedKey, challengeID, proofs} = message
+        if (id === challengeID) {
+          console.log('ChallengeIDs match')
+          // check the proof
+          if (proofs) {
+            confirmStream.write({
+              type: 'proofOfStorage:verified',
+              ok: true
+            })
+            return message
+          }
+        }
+      } else {
+        console.log('UNKNOWN_MESSAGE', { messageType: type })
+        sendError('UNKNOWN_MESSAGE', { messageType: type })
+        return false
+      }
+    }
+
+    function sendError (message, details = {}) {
+      confirmStream.end({
+        type: 'proofOfStorage:error',
+        error: message,
+        ...details
+      })
+    }
+  }
+
   async attest (key, index) {
     const feed = this.Hypercore(key, { persist: false })
     try {

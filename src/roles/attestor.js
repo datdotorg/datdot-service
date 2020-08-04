@@ -37,7 +37,6 @@ async function role ({ name, account }) {
         const { feedKey, encoderKeys, hosterKeys } = await getContractData(contract)
         const foo = serviceAPI.verifyEncoding({account, hosterKeys, feedKey, encoderKeys})
         foo.then(async () => {
-          console.log('-------------------->Encoding verified')
         })
       }
     }
@@ -61,9 +60,36 @@ async function role ({ name, account }) {
         await chainAPI.submitAttestationReport({attestationID, report, signer, nonce})
       }
     }
+    if (event.method === 'NewProofOfStorageChallenge') {
+      const [challengeID] = event.data
+      const challenge = await chainAPI.getChallengeByID(challengeID)
+      const attestorID = challenge.attestor
+      const attestorAddress = await chainAPI.getUserAddress(attestorID)
+      if (attestorAddress === myAddress) {
+        log('Event received:', event.method, event.data.toString())
+        const data = await getChallengeData(challenge)
+        data.account = account
+        const hosterAddress = await chainAPI.getUserAddress(challenge.hoster)
+        const { feedKey, challengeID, proofs} = await serviceAPI.verifyProofOfStorage(data)
+        if (proofs) {
+          const nonce = account.getNonce()
+          const opts = {challengeID, proofs, signer, nonce}
+          await chainAPI.submitProofOfStorage(opts)
+        }
+      }
+    }
   }
 
   // HELPERS
+
+  async function getChallengeData (challenge) {
+    const hosterID = challenge.hoster
+    const hosterKey = await chainAPI.getHosterKey(hosterID)
+    const contract = await chainAPI.getContractByID(challenge.contract)
+    const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
+    const feedKey = await chainAPI.getFeedKey(feedID)
+    return {hosterKey, feedKey, challengeID: challenge.id}
+  }
 
   async function getContractData (contract) {
     // @TODO there's many encoders
