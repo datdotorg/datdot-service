@@ -32,14 +32,19 @@ const contracts = []
   hoster: 'hosterID'
 }
 */
-const challenges = [] // Proof of storage
+const storageChallenges = [] // Storage Proof
 /*
 {
   contract: 'contractID', // get hoster and feed from contract
   chunks: [1,4,6]
 }
 */
-const attestations = [] // proof of retrievability
+
+const attestorJobs = []
+/*
+{ fnName: 'makeRetrievabilityChallenge', opts: contractID ) }
+*/
+const retrievabilityChallenges = [] // Retrievability Proof
 /*
 {
   attestor: 'attestorID',
@@ -69,19 +74,19 @@ const contractsHosted = [] // IDs of contracts where hosting is confirmed
 
 /////////////////////////////////////////////
 const challenging = []
-const challenge_reponses = []
+const storageChallenge_reponses = []
 /*
 {
-  challenge: 'challengeID',
+  storageChallenge: 'storageChallengeID',
   response: 'merkleProof'
 }
 */
 
 const attesting = []
-const attestation_reponses = []
+const retrievabilityChallenge_reponses = []
 /*
 {
-  attestation: 'attestationID',
+  retrievabilityChallenge: 'retrievabilityChallengeID',
   response: {
     latency: 'foo',
     location: 'bar'
@@ -95,8 +100,8 @@ const DB = {
   feeds,
   plans,
   contracts,
-  challenges,
-  attestations,
+  storageChallenges,
+  retrievabilityChallenges,
   // lookups
   userByAddress,
   feedByKey,
@@ -108,5 +113,6 @@ const DB = {
   hostedPlans,
   contractsEncoded,
   contractsHosted,
+  attestorJobs
 }
 module.exports = DB

@@ -182,12 +182,12 @@ module.exports = class Hoster {
     return storage.storeEncoded(index, proof, encoded, nodes, signature)
   }
 
-  async getProofOfStorage (key, index) {
+  async getStorageChallenge (key, index) {
     const storage = await this.getStorage(key)
-    return storage.getProofOfStorage(index)
+    return storage.getStorageChallenge(index)
   }
 
-  async sendProofOfStorage ({challengeID, feedKey, attestorKey, proofs}) {
+  async sendStorageChallenge ({storageChallengeID, feedKey, attestorKey, proofs}) {
     const topic = feedKey
     const peer = await this.communication.findByTopicAndPublicKey(topic, attestorKey, { announce: false, lookup: true })
     const resultStream = ndjson.serialize()
@@ -197,9 +197,9 @@ module.exports = class Hoster {
     pump(resultStream, encodingStream, confirmStream)
 
     resultStream.write({
-      type: 'proofOfStorage',
+      type: 'StorageChallenge',
       feedKey,
-      challengeID,
+      storageChallengeID,
       proofs
     })
     // --------------------------------------------------------------

@@ -18,6 +18,6 @@ await hoster.addFeed(key, {
 	watch: true
 })
 await hoster.storeEncoded(key, index, proof, encoded)
-const {proof, encoded} = await hoster.getProofOfStorage(key, index)
+const {proof, encoded} = await hoster.getStorageChallenge(key, index)
 await hoster.removeFeed(key)
 ```

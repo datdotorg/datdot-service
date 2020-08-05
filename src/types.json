@@ -7,9 +7,9 @@
   "FeedId": "u32",
   "UserId": "u32",
   "ContractId": "u32",
-  "ChallengeId": "u32",
+  "storageChallengeID": "u32",
   "PlanId": "u32",
-  "AttestationId": "u32",
+  "retrievabilityChallengeID": "u32",
   "NoiseKey": "Public",
   "FeedKey": "Public",
   "Proof": "Public",
@@ -59,8 +59,8 @@
     "encoder": "UserId",
     "hoster": "UserId"
   },
-  "Challenge": {
-    "id": "ChallengeId",
+  "storageChallenge": {
+    "id": "storageChallengeID",
     "contract": "ContractId",
     "chunks": "Vec<ChunkIndex>"
   },
@@ -69,8 +69,8 @@
     "hash": "H256",
     "size": "u64"
   },
-  "Attestation": {
-    "id": "AttestationId",
+  "retrievabilityChallenge": {
+    "id": "retrievabilityChallengeID",
     "attestor": "UserId",
     "contract": "ContractId"
   },

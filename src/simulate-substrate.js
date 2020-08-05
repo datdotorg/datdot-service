@@ -10,8 +10,8 @@ module.exports = {
         getFeedByID,
         getPlanByID,
         getContractByID,
-        getChallengeByID,
-        getAttestationByID,
+        getStorageChallengeByID,
+        getRetrievabilityChallengeByID,
       }
     },
     createType: (nonce) => nonce,
@@ -24,10 +24,10 @@ module.exports = {
       publishPlan,
       encodingDone,
       hostingStarts,
-      requestProofOfStorageChallenge,
-      requestAttestation,
-      submitProofOfStorage,
-      submitAttestationReport
+      requestStorageChallenge,
+      requestRetrievabilityChallenge,
+      submitStorageChallenge,
+      submitRetrievabilityChallenge
       }
     }
   })
@@ -43,10 +43,10 @@ async function publishFeed (...args) { return { signAndSend: signAndSend.bind({ 
 async function publishPlan (...args) { return { signAndSend: signAndSend.bind({ args, type: 'publishPlan'}) } }
 async function encodingDone (...args) { return { signAndSend: signAndSend.bind({ args, type: 'encodingDone'}) } }
 async function hostingStarts (...args) { return { signAndSend: signAndSend.bind({ args, type: 'hostingStarts'}) } }
-async function requestProofOfStorageChallenge (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestProofOfStorageChallenge'}) } }
-async function requestAttestation (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestAttestation'}) } }
-async function submitProofOfStorage (...args) { return { signAndSend: signAndSend.bind({ args, type: 'submitProofOfStorage'}) } }
-async function submitAttestationReport (...args) { return { signAndSend: signAndSend.bind({ args, type: 'submitAttestationReport'}) } }
+async function requestStorageChallenge (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestStorageChallenge'}) } }
+async function requestRetrievabilityChallenge (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestRetrievabilityChallenge'}) } }
+async function submitStorageChallenge (...args) { return { signAndSend: signAndSend.bind({ args, type: 'submitStorageChallenge'}) } }
+async function submitRetrievabilityChallenge (...args) { return { signAndSend: signAndSend.bind({ args, type: 'submitRetrievabilityChallenge'}) } }
 /******************************************************************************
   QUERIES
 ******************************************************************************/
@@ -54,8 +54,8 @@ function getFeedByID (id) { return DB.feeds[id - 1] }
 function getUserByID (id) { return DB.users[id - 1] }
 function getPlanByID (id) { return DB.plans[id - 1] }
 function getContractByID (id) { return DB.contracts[id - 1] }
-function getChallengeByID (id) { return DB.challenges[id - 1] }
-function getAttestationByID (id) { return DB.attestations[id - 1] }
+function getStorageChallengeByID (id) { return DB.storageChallenges[id - 1] }
+function getRetrievabilityChallengeByID (id) { return DB.retrievabilityChallenges[id - 1] }
 
 /******************************************************************************
   ROUTING (sign & send)
@@ -74,10 +74,10 @@ function signAndSend (signer, { nonce }, status) {
   else if (type === 'registerHoster') _registerHoster(user, { nonce }, status, args)
   else if (type === 'encodingDone') _encodingDone(user, { nonce }, status, args)
   else if (type === 'hostingStarts') _hostingStarts(user, { nonce }, status, args)
-  else if (type === 'requestProofOfStorageChallenge') _requestProofOfStorageChallenge(user, { nonce }, status, args)
-  else if (type === 'requestAttestation') _requestAttestation(user, { nonce }, status, args)
-  else if (type === 'submitProofOfStorage') _submitProofOfStorage(user, { nonce }, status, args)
-  else if (type === 'submitAttestationReport') _submitAttestationReport(user, { nonce }, status, args)
+  else if (type === 'requestStorageChallenge') _requestStorageChallenge(user, { nonce }, status, args)
+  else if (type === 'requestRetrievabilityChallenge') _requestRetrievabilityChallenge(user, { nonce }, status, args)
+  else if (type === 'submitStorageChallenge') _submitStorageChallenge(user, { nonce }, status, args)
+  else if (type === 'submitRetrievabilityChallenge') _submitRetrievabilityChallenge(user, { nonce }, status, args)
   // else if ...
 }
 /******************************************************************************
@@ -152,6 +152,7 @@ async function _registerAttestor (user, { nonce }, status, args) {
   DB.users[userID - 1].attestorKey = attestorKey.toString('hex')
   DB.users[userID - 1].attestor = true
   DB.idleAttestors.push(userID)
+  checkAttestorJobs()
   makeNewContract()
 }
 async function _encodingDone (user, { nonce }, status, args) {
@@ -164,57 +165,69 @@ async function _hostingStarts (user, { nonce }, status, args) {
   const contract = DB.contracts[contractID - 1]
   // attestor finished job, add them to idleAttestors again
   const attestorID = contract.attestor
-  if (!DB.idleAttestors.includes(attestorID)) DB.idleAttestors.push(attestorID)
+  if (!DB.idleAttestors.includes(attestorID)) {
+    DB.idleAttestors.push(attestorID)
+    checkAttestorJobs()
+  }
   const userID = user.id
-  const HostingStarted = { event: { data: [contractID, userID], method: 'HostingStarted' } }
-  handlers.forEach(handler => handler([HostingStarted]))
+  const confirmation = { event: { data: [contractID, userID], method: 'HostingStarted' } }
+  handlers.forEach(handler => handler([confirmation]))
 }
-async function _requestProofOfStorageChallenge (user, { nonce }, status, args) {
+async function _requestStorageChallenge (user, { nonce }, status, args) {
   const [ contractID, hosterID ] = args
   const ranges = DB.contracts[contractID - 1].ranges // [ [0, 3], [5, 7] ]
   const chunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
-  const challenge = { contract: contractID, hoster: hosterID, chunks }
-  const challengeID = DB.challenges.push(challenge)
-  challenge.id = challengeID
+  const storageChallenge = { contract: contractID, hoster: hosterID, chunks }
+  const storageChallengeID = DB.storageChallenges.push(storageChallenge)
+  storageChallenge.id = storageChallengeID
   const attestorID = DB.idleAttestors.shift()
-  challenge.attestor = attestorID
+  storageChallenge.attestor = attestorID
   // emit events
-  const newChallenge = { event: { data: [challengeID], method: 'NewProofOfStorageChallenge' } }
-  handlers.forEach(handler => handler([newChallenge]))
+  const challenge = { event: { data: [storageChallengeID], method: 'NewStorageChallenge' } }
+  handlers.forEach(handler => handler([challenge]))
 }
-async function _submitProofOfStorage (user, { nonce }, status, args) {
-  const [ challengeID, proof ] = args
-  const challenge = DB.challenges[challengeID - 1]
-  const isValid = validateProof(proof, challenge)
-  let proofValidation
-  const data = [challengeID]
-  console.log('Submitting Proof Of Storage Challenge with ID:', challengeID)
-  if (isValid) proofValidation = { event: { data, method: 'ProofOfStorageConfirmed' } }
-  else proofValidation = { event: { data: [challengeID], method: 'ProofOfStorageFailed' } }
-  // emit events
-  handlers.forEach(handler => handler([proofValidation]))
-}
-async function _requestAttestation (user, { nonce }, status, args) {
-  const [ contractID ] = args
-  if (DB.idleAttestors.length) {
-    const attestorID = DB.idleAttestors.splice(0, 1)
-    const attestation = { contract: contractID , attestor: attestorID }
-    const attestationID = DB.attestations.push(attestation)
-    attestation.id = attestationID
-    const PoRChallenge = { event: { data: [attestationID], method: 'NewAttestation' } }
-    handlers.forEach(handler => handler([PoRChallenge]))
-  }
-}
-async function _submitAttestationReport (user, { nonce }, status, args) {
-  const [ attestationID, report ] = args
-  console.log('Submitting Proof Of Retrievability Attestation with ID:', attestationID)
-  const attestation = DB.attestations[attestationID - 1]
+async function _submitStorageChallenge (user, { nonce }, status, args) {
+  const [ storageChallengeID, proof ] = args
+  const storageChallenge = DB.storageChallenges[storageChallengeID - 1]
   // attestor finished job, add them to idleAttestors again
-  DB.idleAttestors.push(attestation.attestor)
+  const attestorID = storageChallenge.attestor
+  if (!DB.idleAttestors.includes(attestorID)) {
+    DB.idleAttestors.push(attestorID)
+    checkAttestorJobs()
+  }
+  // validate proof
+  const isValid = validateProof(proof, storageChallenge)
+  let proofValidation
+  const data = [storageChallengeID]
+  console.log('StorageChallenge Proof for challenge:', storageChallengeID)
+  if (isValid) response = { event: { data, method: 'StorageChallengeConfirmed' } }
+  else response = { event: { data: [storageChallengeID], method: 'StorageChallengeFailed' } }
   // emit events
-  if (report) PoR = { event: { data: [attestationID], method: 'AttestationReportConfirmed' } }
-  else PoR = { event: { data: [attestationID], method: 'AttestationReportFailed' } }
-  handlers.forEach(handler => handler([PoR]))
+  handlers.forEach(handler => handler([response]))
+}
+async function _requestRetrievabilityChallenge (user, { nonce }, status, args) {
+  const [ contractID ] = args
+  const retrievabilityChallenge = { contract: contractID }
+  const retrievabilityChallengeID = DB.retrievabilityChallenges.push(retrievabilityChallenge)
+  retrievabilityChallenge.id = retrievabilityChallengeID
+  if (DB.idleAttestors.length >= 5) emitRetrievabilityChallenge(retrievabilityChallenge)
+  else DB.attestorJobs.push({ fnName: 'emitRetrievabilityChallenge', opts: retrievabilityChallenge })
+}
+
+async function _submitRetrievabilityChallenge (user, { nonce }, status, args) {
+  const [ retrievabilityChallengeID, report ] = args
+  console.log(`Retrievability Challenge proof by attestor: ${user.id} for challenge: ${retrievabilityChallengeID}`)
+  const retrievabilityChallenge = DB.retrievabilityChallenges[retrievabilityChallengeID - 1]
+  // attestor finished job, add them to idleAttestors again
+  const attestorID = user.id
+  if (!DB.idleAttestors.includes(attestorID)) {
+    DB.idleAttestors.push(attestorID)
+    checkAttestorJobs()
+  }
+  // emit events
+  if (report) response = { event: { data: [retrievabilityChallengeID], method: 'RetrievabilityChallengeConfirmed' } }
+  else response = { event: { data: [retrievabilityChallengeID], method: 'RetrievabilityChallengeFailed' } }
+  handlers.forEach(handler => handler([response]))
 }
 
 /******************************************************************************
@@ -231,11 +244,12 @@ function getRandomInt(min, max) {
   max = Math.floor(max);
   return Math.floor(Math.random() * (max - min)) + min; //The maximum is exclusive and the minimum is inclusive
 }
-function validateProof (proof, challenge) {
-  const chunks = challenge.chunks
+function validateProof (proof, storageChallenge) {
+  const chunks = storageChallenge.chunks
   if (`${chunks.length}` === `${proof.length}`) return true
   else return false
 }
+////////////////////////////////////////////////////////////////////////////
 function makeNewContract (planID) {
   // Find an unhosted plan
   const unhosted = DB.unhostedPlans
@@ -268,5 +282,21 @@ function makeNewContract (planID) {
   DB.unhostedPlans.splice(planID, 1)
   const NewContract = { event: { data: [contractID], method: 'NewContract' } }
   handlers.forEach(handler => handler([NewContract]))
-
+}
+////////////////////////////////////////////////////////////////////////////
+function checkAttestorJobs () {
+  if (DB.attestorJobs.length) {
+    const next = DB.attestorJobs[0]
+    if (next.fnName === 'emitRetrievabilityChallenge' && DB.idleAttestors.length >= 5) {
+      DB.attestorJobs.shift()
+      emitRetrievabilityChallenge(next.opts)
+    }
+  }
+}
+////////////////////////////////////////////////////////////////////////////
+function emitRetrievabilityChallenge (retrievabilityChallenge) {
+  retrievabilityChallenge.attestors = DB.idleAttestors.splice(0, 5)
+  const retrievabilityChallengeID = retrievabilityChallenge.id
+  const challenge = { event: { data: [retrievabilityChallengeID], method: 'NewRetrievabilityChallenge' } }
+  handlers.forEach(handler => handler([challenge]))
 }

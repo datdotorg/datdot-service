@@ -10,9 +10,9 @@ function datdotService () {
     host,
     encode,
     verifyEncoding,
-    getProofOfStorage,
-    sendProofOfStorageToAttestor,
-    verifyProofOfStorage,
+    getStorageChallenge,
+    sendStorageChallengeToAttestor,
+    verifyStorageChallenge,
     attest,
   }
   return serviceAPI
@@ -50,22 +50,22 @@ function datdotService () {
   /* ----------------------------------------------------------------
                      WHILE HOSTING => PROOFS
 ------------------------------------------------------------------ */
-  async function getProofOfStorage ({ account, challenge, feedKey }) {
-    const proof = await Promise.all(challenge.chunks.map(async (chunk) => {
-      return await account.hoster.getProofOfStorage(feedKey, chunk)
+  async function getStorageChallenge ({ account, storageChallenge, feedKey }) {
+    const proof = await Promise.all(storageChallenge.chunks.map(async (chunk) => {
+      return await account.hoster.getStorageChallenge(feedKey, chunk)
     }))
     return proof
   }
 
-  async function sendProofOfStorageToAttestor (data) {
-    const { account, challengeID, feedKey, attestorKey, proofs } = data
-    await account.hoster.sendProofOfStorage({challengeID, feedKey, attestorKey, proofs})
+  async function sendStorageChallengeToAttestor (data) {
+    const { account, storageChallengeID, feedKey, attestorKey, proofs } = data
+    await account.hoster.sendStorageChallenge({storageChallengeID, feedKey, attestorKey, proofs})
     // hoster sends proof of data to the attestor
   }
 
-  async function verifyProofOfStorage (data) {
-    const {account, hosterKey, feedKey, challengeID} = data
-    return await account.attestor.verifyProofOfStorage({challengeID, feedKey, hosterKey})
+  async function verifyStorageChallenge (data) {
+    const {account, hosterKey, feedKey, storageChallengeID} = data
+    return await account.attestor.verifyStorageChallenge({storageChallengeID, feedKey, hosterKey})
   }
 
   async function attest (data) {

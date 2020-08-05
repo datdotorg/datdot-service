@@ -22,7 +22,6 @@ async function role ({ name, account }) {
 
   // EVENTS
   async function handleEvent (event) {
-    log('new event received B', event.method)
     if (event.method === 'FeedPublished') {
       const [ feedID] = event.data
       log('Event received:', event.method, event.data.toString())
@@ -41,27 +40,27 @@ async function role ({ name, account }) {
         log('Event received:', event.method, event.data.toString())
         const { feed: feedID } =  await chainAPI.getPlanByID(planID)
         const nonce = await account.getNonce()
-        await chainAPI.requestProofOfStorageChallenge({contractID, hosterID: userID, signer, nonce})
+        await chainAPI.requestStorageChallenge({contractID, hosterID: userID, signer, nonce})
+        await chainAPI.requestRetrievabilityChallenge({contractID, signer, nonce})
       }
     }
 
-    if (event.method === 'ProofOfStorageConfirmed') {
-      const [ challengeID] = event.data
-      const { contract: contractID } = await chainAPI.getChallengeByID(challengeID)
-      const { plan: planID } = await chainAPI.getContractByID(contractID)
-      const { sponsor: sponsorID} = await chainAPI.getPlanByID(planID)
-      const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
-      if (sponsorAddress === myAddress) {
-        log('Event received:', event.method, event.data.toString())
-        const { feed: feedID } =  await chainAPI.getPlanByID(planID)
-        const nonce = await account.getNonce()
-        await chainAPI.requestAttestation({contractID, signer, nonce})
-      }
+    if (event.method === 'StorageChallengeConfirmed') {
+      // const [ storageChallengeID] = event.data
+      // const { contract: contractID } = await chainAPI.getStorageChallengeByID(storageChallengeID)
+      // const { plan: planID } = await chainAPI.getContractByID(contractID)
+      // const { sponsor: sponsorID} = await chainAPI.getPlanByID(planID)
+      // const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
+      // if (sponsorAddress === myAddress) {
+      //   log('Event received:', event.method, event.data.toString())
+      //   const { feed: feedID } =  await chainAPI.getPlanByID(planID)
+      //   const nonce = await account.getNonce()
+      // }
     }
 
-    if (event.method === 'AttestationReportConfirmed') {
-      const [ attestationID] = event.data
-      const { contract: contractID } = await chainAPI.getAttestationByID(attestationID)
+    if (event.method === 'RetrievabilityChallengeConfirmed') {
+      const [ retrievabilityChallengeID] = event.data
+      const { contract: contractID } = await chainAPI.getRetrievabilityChallengeByID(retrievabilityChallengeID)
       const { plan: planID } = await chainAPI.getContractByID(contractID)
       const { sponsor: sponsorID} = await chainAPI.getPlanByID(planID)
       const sponsorAddress = await chainAPI.getUserAddress(sponsorID)

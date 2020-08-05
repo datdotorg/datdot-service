@@ -49,7 +49,7 @@ module.exports = class HosterStorage {
   }
 
   // Invoked by whoever to test that the hoster is actually hosting stuff
-  async getProofOfStorage (index) {
+  async getStorageChallenge (index) {
     const [encoded, proof] = await Promise.all([
       this._getEncoded(index),
       this._getProof(index)

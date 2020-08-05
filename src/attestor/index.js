@@ -108,8 +108,8 @@ module.exports = class Attestor {
     }
   }
 
-  async verifyProofOfStorage (data) {
-    const {hosterKey, feedKey, challengeID: id} = data
+  async verifyStorageChallenge (data) {
+    const {hosterKey, feedKey, storageChallengeID: id} = data
     // TODO: Derive topic by combining our public keys and feed key
     const topic = feedKey
     const peer = await this.communication.findByTopicAndPublicKey(topic, hosterKey, ANNOUNCE)
@@ -121,14 +121,14 @@ module.exports = class Attestor {
 
     for await (const message of resultStream) {
       const { type } = message
-      if (type === 'proofOfStorage') {
-        const { feedKey, challengeID, proofs} = message
-        if (id === challengeID) {
-          console.log('ChallengeIDs match')
+      if (type === 'StorageChallenge') {
+        const { feedKey, storageChallengeID, proofs} = message
+        if (id === storageChallengeID) {
+          console.log('storageChallengeIDs match')
           // check the proof
           if (proofs) {
             confirmStream.write({
-              type: 'proofOfStorage:verified',
+              type: 'StorageChallenge:verified',
               ok: true
             })
             return message
@@ -143,7 +143,7 @@ module.exports = class Attestor {
 
     function sendError (message, details = {}) {
       confirmStream.end({
-        type: 'proofOfStorage:error',
+        type: 'StorageChallenge:error',
         error: message,
         ...details
       })

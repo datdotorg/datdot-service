@@ -126,7 +126,7 @@ module.exports = class Node {
   }
 
   async getHostingProof (feedKey, index) {
-    const { encoded, proof } = await this.hoster.getProofOfStorage(feedKey, index)
+    const { encoded, proof } = await this.hoster.getStorageChallenge(feedKey, index)
 
     return { index, encoded, proof, feed: feedKey }
   }

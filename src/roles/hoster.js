@@ -45,18 +45,18 @@ async function role ({ name, account }) {
       })
     }
 
-    if (event.method === 'NewProofOfStorageChallenge') {
-      const [challengeID] = event.data
-      const challenge = await chainAPI.getChallengeByID(challengeID)
-      const contract = await chainAPI.getContractByID(challenge.contract)
-      const hosterID = challenge.hoster
+    if (event.method === 'NewStorageChallenge') {
+      const [storageChallengeID] = event.data
+      const storageChallenge = await chainAPI.getStorageChallengeByID(storageChallengeID)
+      const contract = await chainAPI.getContractByID(storageChallenge.contract)
+      const hosterID = storageChallenge.hoster
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
-        const data = await getProofOfStorageData(challenge, contract)
+        const data = await getStorageChallengeData(storageChallenge, contract)
         data.account = account
-        // log('sendProofOfStorageToAttestor - DATA', data)
-        const sendProofOfStorage = await serviceAPI.sendProofOfStorageToAttestor(data)
+        // log('sendStorageChallengeToAttestor - DATA', data)
+        const sendStorageChallenge = await serviceAPI.sendStorageChallengeToAttestor(data)
       }
     }
   }
@@ -76,13 +76,13 @@ async function role ({ name, account }) {
     return { feedKey, attestorKey, plan }
   }
 
-  async function getProofOfStorageData (challenge, contract) {
+  async function getStorageChallengeData (storageChallenge, contract) {
     const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
     const feedKey = await chainAPI.getFeedKey(feedID)
-    const attestorID = challenge.attestor
+    const attestorID = storageChallenge.attestor
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
-    const proofs = await serviceAPI.getProofOfStorage({ account, challenge, feedKey })
-    return {challengeID: challenge.id, feedKey, attestorKey, proofs}
+    const proofs = await serviceAPI.getStorageChallenge({ account, storageChallenge, feedKey })
+    return {storageChallengeID: storageChallenge.id, feedKey, attestorKey, proofs}
   }
 
 }

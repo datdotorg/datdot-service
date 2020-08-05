@@ -58,7 +58,7 @@ const EncoderDecoder = require('../EncoderDecoder')
     const isSame = storedData.equals(SAMPLE_DATA)
     console.log('Host data is same:', isSame)
 
-    const { proof } = await host.getProofOfStorage(0)
+    const { proof } = await host.getStorageChallenge(0)
 
     const isSameProof = proof.equals(SAMPLE_PROOF)
 

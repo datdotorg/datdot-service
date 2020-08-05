@@ -24,16 +24,16 @@ async function datdotChain () {
     publishPlan,
     encodingDone,
     hostingStarts,
-    requestProofOfStorageChallenge,
-    submitProofOfStorage,
-    requestAttestation,
-    submitAttestationReport,
+    requestStorageChallenge,
+    submitStorageChallenge,
+    requestRetrievabilityChallenge,
+    submitRetrievabilityChallenge,
     listenToEvents,
     getFeedByID,
     getPlanByID,
     getContractByID,
-    getChallengeByID,
-    getAttestationByID,
+    getStorageChallengeByID,
+    getRetrievabilityChallengeByID,
     getFeedKey,
     getUserAddress,
     getHosterKey,
@@ -141,13 +141,13 @@ async function makeNonce (nonce) {
     const feedID = (await API.query.datVerify.getFeedByID(id))
     return feedID
   }
-  async function getChallengeByID (id) {
-    // return (await API.query.datVerify.getChallengeByID(id)).toJSON()
-    return await API.query.datVerify.getChallengeByID(id)
+  async function getStorageChallengeByID (id) {
+    // return (await API.query.datVerify.getStorageChallengeByID(id)).toJSON()
+    return await API.query.datVerify.getStorageChallengeByID(id)
   }
-  async function getAttestationByID (id) {
-    // return (await API.query.datVerify.getAttestationByID(id)).toJSON()
-    return await API.query.datVerify.getAttestationByID(id)
+  async function getRetrievabilityChallengeByID (id) {
+    // return (await API.query.datVerify.getRetrievabilityChallengeByID(id)).toJSON()
+    return await API.query.datVerify.getRetrievabilityChallengeByID(id)
   }
 
   async function getEncodedIndex (encoderAddress) {
@@ -167,27 +167,27 @@ async function makeNonce (nonce) {
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function requestProofOfStorageChallenge (opts) {
+  async function requestStorageChallenge (opts) {
     const {contractID, hosterID, signer, nonce} = opts
-    const tx = await API.tx.datVerify.requestProofOfStorageChallenge(contractID, hosterID)
+    const tx = await API.tx.datVerify.requestStorageChallenge(contractID, hosterID)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function submitProofOfStorage (opts) {
-    const {challengeID, proofs, signer, nonce} = opts
-    const tx = await API.tx.datVerify.submitProofOfStorage(challengeID, proofs)
+  async function submitStorageChallenge (opts) {
+    const {storageChallengeID, proofs, signer, nonce} = opts
+    const tx = await API.tx.datVerify.submitStorageChallenge(storageChallengeID, proofs)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function requestAttestation (opts) {
+  async function requestRetrievabilityChallenge (opts) {
     const {contractID, signer, nonce} = opts
-    const tx = await API.tx.datVerify.requestAttestation(contractID)
+    const tx = await API.tx.datVerify.requestRetrievabilityChallenge(contractID)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function submitAttestationReport (opts) {
-    const {attestationID, report, signer, nonce} =  opts
-    const tx = await API.tx.datVerify.submitAttestationReport(attestationID, report)
+  async function submitRetrievabilityChallenge (opts) {
+    const {retrievabilityChallengeID, report, signer, nonce} =  opts
+    const tx = await API.tx.datVerify.submitRetrievabilityChallenge(retrievabilityChallengeID, report)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }

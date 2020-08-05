@@ -40,41 +40,43 @@ async function role ({ name, account }) {
         })
       }
     }
-    if (event.method === 'NewAttestation'){
-      const [attestationID] = event.data
-      const attestation = await chainAPI.getAttestationByID(attestationID)
-      const attestorID = attestation.attestor
-      const attestorAddress = await chainAPI.getUserAddress(attestorID)
-      if (attestorAddress === myAddress) {
-        log('Event received:', event.method, event.data.toString())
-        const contractID = attestation.contract
-        const contract = await chainAPI.getContractByID(contractID)
-        const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
-        const feedKey = await chainAPI.getFeedKey(feedID)
-        const plan = await chainAPI.getPlanByID(contract.plan)
-        const ranges = plan.ranges
-        const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
-        const data = { account, randomChunks, feedKey }
-        const report = await serviceAPI.attest(data)
-        const nonce = await account.getNonce()
-        await chainAPI.submitAttestationReport({attestationID, report, signer, nonce})
-      }
+    if (event.method === 'NewRetrievabilityChallenge') {
+      const [retrievabilityChallengeID] = event.data
+      const retrievabilityChallenge = await chainAPI.getRetrievabilityChallengeByID(retrievabilityChallengeID)
+      const attestors = retrievabilityChallenge.attestors
+      attestors.forEach(async (attestorID) => {
+        const attestorAddress = await chainAPI.getUserAddress(attestorID)
+        if (attestorAddress === myAddress) {
+          log('Event received:', event.method, event.data.toString())
+          const contractID = retrievabilityChallenge.contract
+          const contract = await chainAPI.getContractByID(contractID)
+          const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
+          const feedKey = await chainAPI.getFeedKey(feedID)
+          const plan = await chainAPI.getPlanByID(contract.plan)
+          const ranges = plan.ranges
+          const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
+          const data = { account, randomChunks, feedKey }
+          const report = await serviceAPI.attest(data)
+          const nonce = await account.getNonce()
+          await chainAPI.submitRetrievabilityChallenge({retrievabilityChallengeID, report, signer, nonce})
+        }
+      })
     }
-    if (event.method === 'NewProofOfStorageChallenge') {
-      const [challengeID] = event.data
-      const challenge = await chainAPI.getChallengeByID(challengeID)
-      const attestorID = challenge.attestor
+    if (event.method === 'NewStorageChallenge') {
+      const [storageChallengeID] = event.data
+      const storageChallenge = await chainAPI.getStorageChallengeByID(storageChallengeID)
+      const attestorID = storageChallenge.attestor
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
-        const data = await getChallengeData(challenge)
+        const data = await getStorageChallengeData(storageChallenge)
         data.account = account
-        const hosterAddress = await chainAPI.getUserAddress(challenge.hoster)
-        const { feedKey, challengeID, proofs} = await serviceAPI.verifyProofOfStorage(data)
+        const hosterAddress = await chainAPI.getUserAddress(storageChallenge.hoster)
+        const { feedKey, storageChallengeID, proofs} = await serviceAPI.verifyStorageChallenge(data)
         if (proofs) {
           const nonce = account.getNonce()
-          const opts = {challengeID, proofs, signer, nonce}
-          await chainAPI.submitProofOfStorage(opts)
+          const opts = {storageChallengeID, proofs, signer, nonce}
+          await chainAPI.submitStorageChallenge(opts)
         }
       }
     }
@@ -82,13 +84,13 @@ async function role ({ name, account }) {
 
   // HELPERS
 
-  async function getChallengeData (challenge) {
-    const hosterID = challenge.hoster
+  async function getStorageChallengeData (storageChallenge) {
+    const hosterID = storageChallenge.hoster
     const hosterKey = await chainAPI.getHosterKey(hosterID)
-    const contract = await chainAPI.getContractByID(challenge.contract)
+    const contract = await chainAPI.getContractByID(storageChallenge.contract)
     const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
     const feedKey = await chainAPI.getFeedKey(feedID)
-    return {hosterKey, feedKey, challengeID: challenge.id}
+    return {hosterKey, feedKey, storageChallengeID: storageChallenge.id}
   }
 
   async function getContractData (contract) {
