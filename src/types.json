@@ -9,7 +9,7 @@
   "ContractId": "u32",
   "storageChallengeID": "u32",
   "PlanId": "u32",
-  "retrievabilityChallengeID": "u32",
+  "performanceChallengeID": "u32",
   "NoiseKey": "Public",
   "FeedKey": "Public",
   "Proof": "Public",
@@ -69,8 +69,8 @@
     "hash": "H256",
     "size": "u64"
   },
-  "retrievabilityChallenge": {
-    "id": "retrievabilityChallengeID",
+  "performanceChallenge": {
+    "id": "performanceChallengeID",
     "attestor": "UserId",
     "contract": "ContractId"
   },

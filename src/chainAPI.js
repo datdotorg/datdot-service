@@ -26,14 +26,14 @@ async function datdotChain () {
     hostingStarts,
     requestStorageChallenge,
     submitStorageChallenge,
-    requestRetrievabilityChallenge,
-    submitRetrievabilityChallenge,
+    requestPerformanceChallenge,
+    submitPerformanceChallenge,
     listenToEvents,
     getFeedByID,
     getPlanByID,
     getContractByID,
     getStorageChallengeByID,
-    getRetrievabilityChallengeByID,
+    getPerformanceChallengeByID,
     getFeedKey,
     getUserAddress,
     getHosterKey,
@@ -145,9 +145,9 @@ async function makeNonce (nonce) {
     // return (await API.query.datVerify.getStorageChallengeByID(id)).toJSON()
     return await API.query.datVerify.getStorageChallengeByID(id)
   }
-  async function getRetrievabilityChallengeByID (id) {
-    // return (await API.query.datVerify.getRetrievabilityChallengeByID(id)).toJSON()
-    return await API.query.datVerify.getRetrievabilityChallengeByID(id)
+  async function getPerformanceChallengeByID (id) {
+    // return (await API.query.datVerify.getPerformanceChallengeByID(id)).toJSON()
+    return await API.query.datVerify.getPerformanceChallengeByID(id)
   }
 
   async function getEncodedIndex (encoderAddress) {
@@ -179,15 +179,15 @@ async function makeNonce (nonce) {
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function requestRetrievabilityChallenge (opts) {
+  async function requestPerformanceChallenge (opts) {
     const {contractID, signer, nonce} = opts
-    const tx = await API.tx.datVerify.requestRetrievabilityChallenge(contractID)
+    const tx = await API.tx.datVerify.requestPerformanceChallenge(contractID)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function submitRetrievabilityChallenge (opts) {
-    const {retrievabilityChallengeID, report, signer, nonce} =  opts
-    const tx = await API.tx.datVerify.submitRetrievabilityChallenge(retrievabilityChallengeID, report)
+  async function submitPerformanceChallenge (opts) {
+    const {performanceChallengeID, report, signer, nonce} =  opts
+    const tx = await API.tx.datVerify.submitPerformanceChallenge(performanceChallengeID, report)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }

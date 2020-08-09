@@ -8,9 +8,9 @@ const ndjson = require('ndjson')
 const { PassThrough } = require('stream')
 const NAMESPACE = 'datdot-attestor'
 const NOISE_NAME = 'noise'
+const {performance} = require('perf_hooks')
 
 const DEFAULT_TIMEOUT = 5000
-const DEFAULT_LOCATION = 0
 const ANNOUNCE = { announce: true, lookup: false }
 let attestorCount = 0
 
@@ -61,6 +61,7 @@ module.exports = class Attestor {
     pump(sendStream, hosterStream, rawReceiveStream, receiveStream)
 
     for await (const message of resultStream) {
+      // @TODO: verify each chunk
       const { type } = message
       if (type === 'encoded') {
         const { feed, index, encoded, proof, nodes, signature } = message
@@ -125,7 +126,9 @@ module.exports = class Attestor {
         const { feedKey, storageChallengeID, proofs} = message
         if (id === storageChallengeID) {
           console.log('storageChallengeIDs match')
-          // check the proof
+          // @TODO: verify each chunk (to see if it belongs to the feed) && verify the signature
+          // @TODO: check the proof
+          // @TODO: hash the data
           if (proofs) {
             confirmStream.write({
               type: 'StorageChallenge:verified',
@@ -153,7 +156,7 @@ module.exports = class Attestor {
   async attest (key, index) {
     const feed = this.Hypercore(key, { persist: false })
     try {
-      const start = Date.now()
+      const start = performance.now()
 
       await Promise.race([
         feed.get(index),
@@ -162,19 +165,46 @@ module.exports = class Attestor {
         })
       ])
 
-      const end = Date.now()
+      const end = performance.now()
       const latency = end - start
 
-      // TODO: Figure out how locations should work?
-      const location = DEFAULT_LOCATION
-
-      return [location, latency]
+      const attestor = this
+      const stats = await getFeedStats(feed)
+      // console.log(`Stats for feed: ${key.toString('hex')}, index: ${index}, attestor: ${attestor.publicKey.toString('hex')} => ${JSON.stringify(stats)}`)
+      return [stats, latency]
     } catch (e) {
       this.debug(`Error: ${key}@${index} ${e.message}`)
-      return [DEFAULT_LOCATION, null]
+      return [null, null]
     } finally {
       await feed.close()
     }
+
+    async function getFeedStats (feed) {
+      if (!feed) return {}
+      const stats = feed.stats
+      const openedPeers = feed.peers.filter(p => p.remoteOpened)
+      const networkingStats = {
+        key: feed.key,
+        discoveryKey: feed.discoveryKey,
+        peerCount: feed.peers.length,
+        peers: openedPeers.map(p => {
+          return {
+            ...p.stats,
+            remoteAddress: p.remoteAddress
+          }
+        })
+      }
+      return {
+        ...networkingStats,
+        uploadedBytes: stats.totals.uploadedBytes,
+        uploadedChunks: stats.totals.uploadedBlocks,
+        downloadedBytes: stats.totals.downloadedBytes,
+        downloadedChunks: feed.downloaded(),
+        totalBlocks: feed.length
+      }
+    }
+
   }
+
 
 }

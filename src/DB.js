@@ -26,10 +26,11 @@ const plans = []
 const contracts = []
 /*
 {
-  plan: planID,
-  ranges: [ [0, 3], [5, 10] ],
-  encoder: 'encoderID',
-  hoster: 'hosterID'
+plan: planID,
+ranges: selectedPlan.ranges,
+encoders: encoders.splice(0,3),
+hosters: hosters.splice(0,3),
+attestor: attestors.shift()
 }
 */
 const storageChallenges = [] // Storage Proof
@@ -42,9 +43,9 @@ const storageChallenges = [] // Storage Proof
 
 const attestorJobs = []
 /*
-{ fnName: 'makeRetrievabilityChallenge', opts: contractID ) }
+{ fnName: 'makePerformanceChallenge', opts: contractID ) }
 */
-const retrievabilityChallenges = [] // Retrievability Proof
+const performanceChallenges = [] // Performance Proof
 /*
 {
   attestor: 'attestorID',
@@ -83,10 +84,10 @@ const storageChallenge_reponses = []
 */
 
 const attesting = []
-const retrievabilityChallenge_reponses = []
+const performanceChallenge_reponses = []
 /*
 {
-  retrievabilityChallenge: 'retrievabilityChallengeID',
+  performanceChallenge: 'performanceChallengeID',
   response: {
     latency: 'foo',
     location: 'bar'
@@ -101,7 +102,7 @@ const DB = {
   plans,
   contracts,
   storageChallenges,
-  retrievabilityChallenges,
+  performanceChallenges,
   // lookups
   userByAddress,
   feedByKey,

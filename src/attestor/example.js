@@ -26,7 +26,7 @@ async function run () {
 
     const [location, latency] = await attestor.attest(feed.key, 0)
 
-    console.log('retrievabilityChallenge results:', { location, latency })
+    console.log('performanceChallenge results:', { location, latency })
   } finally {
     sdk.close()
     close()

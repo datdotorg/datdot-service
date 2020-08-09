@@ -58,6 +58,7 @@ module.exports = class Hoster {
     pump(confirmStream, verifiedStream, rawResultStream, resultStream)
 
     for await (const message of resultStream) {
+      // @TODO: decode and verify each chunk (to see if it belongs to the feed) && verify the signature
       const { type } = message
       if (type === 'verified') {
         const { feed, index, encoded, proof, nodes, signature } = message
@@ -195,7 +196,7 @@ module.exports = class Hoster {
 
     const encodingStream = peer.createStream(topic)
     pump(resultStream, encodingStream, confirmStream)
-
+    // @TODO add event signature
     resultStream.write({
       type: 'StorageChallenge',
       feedKey,

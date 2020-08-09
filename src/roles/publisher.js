@@ -17,6 +17,7 @@ async function role ({ name, account }) {
   chainAPI.listenToEvents(handleEvent)
 
   //create or use existing data
+  // @TODO: seed hypercore in a separate process and just pass in the feed key and swarm key
   const data = await getData(account)
   log('Publishing data', data[0].toString('hex'))
   const myAddress = account.chainKeypair.address

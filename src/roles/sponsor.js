@@ -40,27 +40,14 @@ async function role ({ name, account }) {
         log('Event received:', event.method, event.data.toString())
         const { feed: feedID } =  await chainAPI.getPlanByID(planID)
         const nonce = await account.getNonce()
+        // @TODO:Request regular challenges
         await chainAPI.requestStorageChallenge({contractID, hosterID: userID, signer, nonce})
-        await chainAPI.requestRetrievabilityChallenge({contractID, signer, nonce})
+        await chainAPI.requestPerformanceChallenge({contractID, signer, nonce})
       }
     }
-
-    if (event.method === 'StorageChallengeConfirmed') {
-      // const [ storageChallengeID] = event.data
-      // const { contract: contractID } = await chainAPI.getStorageChallengeByID(storageChallengeID)
-      // const { plan: planID } = await chainAPI.getContractByID(contractID)
-      // const { sponsor: sponsorID} = await chainAPI.getPlanByID(planID)
-      // const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
-      // if (sponsorAddress === myAddress) {
-      //   log('Event received:', event.method, event.data.toString())
-      //   const { feed: feedID } =  await chainAPI.getPlanByID(planID)
-      //   const nonce = await account.getNonce()
-      // }
-    }
-
-    if (event.method === 'RetrievabilityChallengeConfirmed') {
-      const [ retrievabilityChallengeID] = event.data
-      const { contract: contractID } = await chainAPI.getRetrievabilityChallengeByID(retrievabilityChallengeID)
+    if (event.method === 'performanceChallengeConfirmed') {
+      const [ performanceChallengeID] = event.data
+      const { contract: contractID } = await chainAPI.getPerformanceChallengeByID(performanceChallengeID)
       const { plan: planID } = await chainAPI.getContractByID(contractID)
       const { sponsor: sponsorID} = await chainAPI.getPlanByID(planID)
       const sponsorAddress = await chainAPI.getUserAddress(sponsorID)

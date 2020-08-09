@@ -11,7 +11,7 @@ module.exports = {
         getPlanByID,
         getContractByID,
         getStorageChallengeByID,
-        getRetrievabilityChallengeByID,
+        getPerformanceChallengeByID,
       }
     },
     createType: (nonce) => nonce,
@@ -25,9 +25,9 @@ module.exports = {
       encodingDone,
       hostingStarts,
       requestStorageChallenge,
-      requestRetrievabilityChallenge,
+      requestPerformanceChallenge,
       submitStorageChallenge,
-      submitRetrievabilityChallenge
+      submitPerformanceChallenge
       }
     }
   })
@@ -44,9 +44,9 @@ async function publishPlan (...args) { return { signAndSend: signAndSend.bind({ 
 async function encodingDone (...args) { return { signAndSend: signAndSend.bind({ args, type: 'encodingDone'}) } }
 async function hostingStarts (...args) { return { signAndSend: signAndSend.bind({ args, type: 'hostingStarts'}) } }
 async function requestStorageChallenge (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestStorageChallenge'}) } }
-async function requestRetrievabilityChallenge (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestRetrievabilityChallenge'}) } }
+async function requestPerformanceChallenge (...args) { return { signAndSend: signAndSend.bind({ args, type: 'requestPerformanceChallenge'}) } }
 async function submitStorageChallenge (...args) { return { signAndSend: signAndSend.bind({ args, type: 'submitStorageChallenge'}) } }
-async function submitRetrievabilityChallenge (...args) { return { signAndSend: signAndSend.bind({ args, type: 'submitRetrievabilityChallenge'}) } }
+async function submitPerformanceChallenge (...args) { return { signAndSend: signAndSend.bind({ args, type: 'submitPerformanceChallenge'}) } }
 /******************************************************************************
   QUERIES
 ******************************************************************************/
@@ -55,7 +55,7 @@ function getUserByID (id) { return DB.users[id - 1] }
 function getPlanByID (id) { return DB.plans[id - 1] }
 function getContractByID (id) { return DB.contracts[id - 1] }
 function getStorageChallengeByID (id) { return DB.storageChallenges[id - 1] }
-function getRetrievabilityChallengeByID (id) { return DB.retrievabilityChallenges[id - 1] }
+function getPerformanceChallengeByID (id) { return DB.performanceChallenges[id - 1] }
 
 /******************************************************************************
   ROUTING (sign & send)
@@ -75,9 +75,9 @@ function signAndSend (signer, { nonce }, status) {
   else if (type === 'encodingDone') _encodingDone(user, { nonce }, status, args)
   else if (type === 'hostingStarts') _hostingStarts(user, { nonce }, status, args)
   else if (type === 'requestStorageChallenge') _requestStorageChallenge(user, { nonce }, status, args)
-  else if (type === 'requestRetrievabilityChallenge') _requestRetrievabilityChallenge(user, { nonce }, status, args)
+  else if (type === 'requestPerformanceChallenge') _requestPerformanceChallenge(user, { nonce }, status, args)
   else if (type === 'submitStorageChallenge') _submitStorageChallenge(user, { nonce }, status, args)
-  else if (type === 'submitRetrievabilityChallenge') _submitRetrievabilityChallenge(user, { nonce }, status, args)
+  else if (type === 'submitPerformanceChallenge') _submitPerformanceChallenge(user, { nonce }, status, args)
   // else if ...
 }
 /******************************************************************************
@@ -158,6 +158,11 @@ async function _registerAttestor (user, { nonce }, status, args) {
 async function _encodingDone (user, { nonce }, status, args) {
   const [ contractID ] = args
   DB.contractsEncoded.push(contractID)
+  console.log('ENCODEEEEEEEEEEEEEEEEEEEEERS', DB.idleEncoders )
+  const contract = DB.contracts[contractID - 1]
+  const encoderIDs = contract.encoders
+  encoderIDs.forEach(encoderID => { if (!DB.idleEncoders.includes(encoderID)) DB.idleEncoders.push(encoderID) })
+  console.log('ENCODEEEEEEEEEEEEEEEEEEEEERS', DB.idleEncoders )
 }
 async function _hostingStarts (user, { nonce }, status, args) {
   const [ contractID ] = args
@@ -176,6 +181,7 @@ async function _hostingStarts (user, { nonce }, status, args) {
 async function _requestStorageChallenge (user, { nonce }, status, args) {
   const [ contractID, hosterID ] = args
   const ranges = DB.contracts[contractID - 1].ranges // [ [0, 3], [5, 7] ]
+  // @TODO currently we check one chunk in each range => find better logic
   const chunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
   const storageChallenge = { contract: contractID, hoster: hosterID, chunks }
   const storageChallengeID = DB.storageChallenges.push(storageChallenge)
@@ -195,7 +201,7 @@ async function _submitStorageChallenge (user, { nonce }, status, args) {
     DB.idleAttestors.push(attestorID)
     checkAttestorJobs()
   }
-  // validate proof
+  // @TODO validate proof
   const isValid = validateProof(proof, storageChallenge)
   let proofValidation
   const data = [storageChallengeID]
@@ -205,19 +211,19 @@ async function _submitStorageChallenge (user, { nonce }, status, args) {
   // emit events
   handlers.forEach(handler => handler([response]))
 }
-async function _requestRetrievabilityChallenge (user, { nonce }, status, args) {
+async function _requestPerformanceChallenge (user, { nonce }, status, args) {
   const [ contractID ] = args
-  const retrievabilityChallenge = { contract: contractID }
-  const retrievabilityChallengeID = DB.retrievabilityChallenges.push(retrievabilityChallenge)
-  retrievabilityChallenge.id = retrievabilityChallengeID
-  if (DB.idleAttestors.length >= 5) emitRetrievabilityChallenge(retrievabilityChallenge)
-  else DB.attestorJobs.push({ fnName: 'emitRetrievabilityChallenge', opts: retrievabilityChallenge })
+  const performanceChallenge = { contract: contractID }
+  const performanceChallengeID = DB.performanceChallenges.push(performanceChallenge)
+  performanceChallenge.id = performanceChallengeID
+  if (DB.idleAttestors.length >= 5) emitPerformanceChallenge(performanceChallenge)
+  else DB.attestorJobs.push({ fnName: 'emitPerformanceChallenge', opts: performanceChallenge })
 }
 
-async function _submitRetrievabilityChallenge (user, { nonce }, status, args) {
-  const [ retrievabilityChallengeID, report ] = args
-  console.log(`Retrievability Challenge proof by attestor: ${user.id} for challenge: ${retrievabilityChallengeID}`)
-  const retrievabilityChallenge = DB.retrievabilityChallenges[retrievabilityChallengeID - 1]
+async function _submitPerformanceChallenge (user, { nonce }, status, args) {
+  const [ performanceChallengeID, report ] = args
+  console.log(`Performance Challenge proof by attestor: ${user.id} for challenge: ${performanceChallengeID}`)
+  const performanceChallenge = DB.performanceChallenges[performanceChallengeID - 1]
   // attestor finished job, add them to idleAttestors again
   const attestorID = user.id
   if (!DB.idleAttestors.includes(attestorID)) {
@@ -225,8 +231,8 @@ async function _submitRetrievabilityChallenge (user, { nonce }, status, args) {
     checkAttestorJobs()
   }
   // emit events
-  if (report) response = { event: { data: [retrievabilityChallengeID], method: 'RetrievabilityChallengeConfirmed' } }
-  else response = { event: { data: [retrievabilityChallengeID], method: 'RetrievabilityChallengeFailed' } }
+  if (report) response = { event: { data: [performanceChallengeID], method: 'performanceChallengeConfirmed' } }
+  else response = { event: { data: [performanceChallengeID], method: 'performanceChallengeFailed' } }
   handlers.forEach(handler => handler([response]))
 }
 
@@ -267,7 +273,7 @@ function makeNewContract (planID) {
   // Make a new contract
   const contract = {
     plan: planID,
-    ranges: [ [0, 3], [5, 7] ], // @TODO: plan.ranges
+    ranges: selectedPlan.ranges,
     encoders: encoders.splice(0,3),
     hosters: hosters.splice(0,3),
     attestor: attestors.shift()
@@ -287,16 +293,16 @@ function makeNewContract (planID) {
 function checkAttestorJobs () {
   if (DB.attestorJobs.length) {
     const next = DB.attestorJobs[0]
-    if (next.fnName === 'emitRetrievabilityChallenge' && DB.idleAttestors.length >= 5) {
+    if (next.fnName === 'emitPerformanceChallenge' && DB.idleAttestors.length >= 5) {
       DB.attestorJobs.shift()
-      emitRetrievabilityChallenge(next.opts)
+      emitPerformanceChallenge(next.opts)
     }
   }
 }
 ////////////////////////////////////////////////////////////////////////////
-function emitRetrievabilityChallenge (retrievabilityChallenge) {
-  retrievabilityChallenge.attestors = DB.idleAttestors.splice(0, 5)
-  const retrievabilityChallengeID = retrievabilityChallenge.id
-  const challenge = { event: { data: [retrievabilityChallengeID], method: 'NewRetrievabilityChallenge' } }
+function emitPerformanceChallenge (performanceChallenge) {
+  performanceChallenge.attestors = DB.idleAttestors.splice(0, 5)
+  const performanceChallengeID = performanceChallenge.id
+  const challenge = { event: { data: [performanceChallengeID], method: 'NewPerformanceChallenge' } }
   handlers.forEach(handler => handler([challenge]))
 }

@@ -40,25 +40,30 @@ async function role ({ name, account }) {
         })
       }
     }
-    if (event.method === 'NewRetrievabilityChallenge') {
-      const [retrievabilityChallengeID] = event.data
-      const retrievabilityChallenge = await chainAPI.getRetrievabilityChallengeByID(retrievabilityChallengeID)
-      const attestors = retrievabilityChallenge.attestors
+    if (event.method === 'NewPerformanceChallenge') {
+      const [performanceChallengeID] = event.data
+      const performanceChallenge = await chainAPI.getperformanceChallengeByID(performanceChallengeID)
+      const attestors = performanceChallenge.attestors
       attestors.forEach(async (attestorID) => {
         const attestorAddress = await chainAPI.getUserAddress(attestorID)
         if (attestorAddress === myAddress) {
           log('Event received:', event.method, event.data.toString())
-          const contractID = retrievabilityChallenge.contract
+          const contractID = performanceChallenge.contract
           const contract = await chainAPI.getContractByID(contractID)
           const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
           const feedKey = await chainAPI.getFeedKey(feedID)
           const plan = await chainAPI.getPlanByID(contract.plan)
           const ranges = plan.ranges
           const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
+          // @TODO: meet with other attestors in the swarm to decide on random number of attestors
+          // @TODO: sign random number
+          // @TODO: add time of execution for each attestor
+          // @TODO: select a reporter
+          // const meeting = await serviceAPI.meetAttestors(feedKey)
           const data = { account, randomChunks, feedKey }
           const report = await serviceAPI.attest(data)
           const nonce = await account.getNonce()
-          await chainAPI.submitRetrievabilityChallenge({retrievabilityChallengeID, report, signer, nonce})
+          await chainAPI.submitperformanceChallenge({performanceChallengeID, report, signer, nonce})
         }
       })
     }
