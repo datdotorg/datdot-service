@@ -65,39 +65,43 @@ module.exports = class Attestor {
       const { type } = message
       if (type === 'encoded') {
         const { feed, index, encoded, proof, nodes, signature } = message
+
         compareEncodings(message, (err, res) => {
-          if (err) sendError('INVALID_COMPRESSION', { messageIndex: message.index })
-          else if (!err) {
+          if (!err) {
             confirmStream.write({
               type: 'encoded:checked',
               ok: true
             })
-            sendToHoster({ message })
+            sendToHoster(message)
           }
+          else if (err) sendError('INVALID_COMPRESSION', { messageIndex: message.index })
         })
       } else {
-        console.log('UNKNOWN_MESSAGE', { messageType: type })
+        this.debug('UNKNOWN_MESSAGE', { messageType: type })
         sendError('UNKNOWN_MESSAGE', { messageType: type })
       }
     }
     hosterStream.end()
 
-    async function sendToHoster ({ message }) {
-      sendStream.write({
-        type: 'verified',
-        feed: message.feed,
-        index: message.index,
-        encoded: message.encoded,
-        proof: message.proof,
-        nodes: message.nodes,
-        signature: message.signature
-      })
+    async function sendToHoster (message) {
+      const { type, feed, index, encoded, proof, nodes, signature } = message
+      if (type === 'encoded') {
+        sendStream.write({
+          type: 'verified',
+          feed,
+          index,
+          encoded,
+          proof,
+          nodes,
+          signature
+        })
 
-      // Wait for the hoster to tell us they've handled the data
-      // TODO: Set up timeout for when peer doesn't respond to us
-      const [response] = await once(receiveStream, 'data')
-      console.log('Response', response)
-      if (response.error) throw new Error(response.error)
+        // Wait for the hoster to tell us they've handled the data
+        // TODO: Set up timeout for when peer doesn't respond to us
+        const [response] = await once(receiveStream, 'data')
+        console.log('Response', response)
+        if (response.error) throw new Error(response.error)
+      }
     }
 
     function sendError (message, details = {}) {
@@ -125,7 +129,7 @@ module.exports = class Attestor {
       if (type === 'StorageChallenge') {
         const { feedKey, storageChallengeID, proofs} = message
         if (id === storageChallengeID) {
-          console.log('storageChallengeIDs match')
+          this.debug('storageChallengeIDs match')
           // @TODO: verify each chunk (to see if it belongs to the feed) && verify the signature
           // @TODO: check the proof
           // @TODO: hash the data
@@ -138,7 +142,7 @@ module.exports = class Attestor {
           }
         }
       } else {
-        console.log('UNKNOWN_MESSAGE', { messageType: type })
+        this.debug('UNKNOWN_MESSAGE', { messageType: type })
         sendError('UNKNOWN_MESSAGE', { messageType: type })
         return false
       }
@@ -157,7 +161,6 @@ module.exports = class Attestor {
     const feed = this.Hypercore(key, { persist: false })
     try {
       const start = performance.now()
-
       await Promise.race([
         feed.get(index),
         delay(this.timeout).then(() => {
@@ -167,13 +170,14 @@ module.exports = class Attestor {
 
       const end = performance.now()
       const latency = end - start
-
-      const attestor = this
+      const foo = await feed.get(index)
+      this.debug(foo.toString())
       const stats = await getFeedStats(feed)
-      // console.log(`Stats for feed: ${key.toString('hex')}, index: ${index}, attestor: ${attestor.publicKey.toString('hex')} => ${JSON.stringify(stats)}`)
+      // this.debug(`Stats for feed: ${key.toString('hex')}, index: ${index}, attestor: ${attestor.publicKey.toString('hex')} => ${JSON.stringify(stats)}`)
       return [stats, latency]
     } catch (e) {
       this.debug(`Error: ${key}@${index} ${e.message}`)
+      this.debug(e)
       return [null, null]
     } finally {
       await feed.close()

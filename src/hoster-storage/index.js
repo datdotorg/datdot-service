@@ -3,7 +3,7 @@ const intercept = require('intercept-hypercore-storage')
 const ENCODED_PREFIX = 0
 const DECODED_PREFIX = 1
 const PROOF_PREFIX = 2
-
+var stuff = { storeEnc: [], storeDec: [], getEnc: [], getDec:[] }
 module.exports = class HosterStorage {
   /**
   EncoderDecoder is an object with `async encode(rawData)` and `async decode(encodedData)`
@@ -24,8 +24,9 @@ module.exports = class HosterStorage {
   async storeEncoded (index, proof, encoded, nodes, signature) {
     // Get the decoded data at the index
     // In parallel, decode the encoded data
-    const decoded = this.EncoderDecoder.decode(encoded)
-
+    const decoded = await this.EncoderDecoder.decode(encoded)
+    stuff.storeEnc[index] = encoded
+    stuff.storeDec[index] = decoded
     const packet = {
       index,
       value: decoded,
@@ -68,8 +69,14 @@ module.exports = class HosterStorage {
       .then(async (encoded) => {
         // Got encoded data!
         // Decode and return it
+        const enc = stuff.storeEnc[index]
+        const dec = stuff.storeDec[index]
+        console.log('ENCOOOOODED in HOSTER STORAGE', dec.toString())
+        console.log('ENCOOOOODED in HOSTER STORAGE', enc.toString())
+        console.log('ENCOOOOODED in HOSTER STORAGE', encoded.toString())
+        console.log(enc.toString() === encoded.toString())
         const decoded = await this.EncoderDecoder.decode(encoded)
-
+        console.log('DECOOOOOODED', decoded)
         return decoded
       }, async () => {
         // Key doesn't exist? Try to get decoded version

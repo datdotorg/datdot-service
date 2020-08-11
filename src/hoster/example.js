@@ -78,7 +78,7 @@ async function run () {
 
     const data = await feed.get(index)
 
-    const encoded = EncoderDecoder.encode(data)
+    const encoded = await EncoderDecoder.encode(data)
 
     const proof = Buffer.from('Pranked')
 

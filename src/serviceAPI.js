@@ -51,10 +51,10 @@ function datdotService () {
                      WHILE HOSTING => PROOFS
 ------------------------------------------------------------------ */
   async function getStorageChallenge ({ account, storageChallenge, feedKey }) {
-    const proof = await Promise.all(storageChallenge.chunks.map(async (chunk) => {
+    const data = await Promise.all(storageChallenge.chunks.map(async (chunk) => {
       return await account.hoster.getStorageChallenge(feedKey, chunk)
     }))
-    return proof
+    return data
   }
 
   async function sendStorageChallengeToAttestor (data) {
@@ -82,13 +82,15 @@ function datdotService () {
   ******************************************************************************/
 
   function compareEncodings (messages, msg, cb) {
-    if (messages[msg.index]) messages[msg.index].push({ msg, cb })
-    else messages[msg.index] = [ { msg, cb } ]
-    if (messages[msg.index].length === 3) {
-      const sizes = messages[msg.index].map(message => msg.encoded.data.length)
+    const { feed, index, encoded, proof, nodes, signature } = msg
+    if (messages[index]) messages[index].push({ msg, cb })
+    else messages[index] = [ { msg, cb } ]
+    if (messages[index].length === 3) {
+      const encodedBuffer = Buffer.from(encoded)
+      const sizes = messages[index].map(message => encodedBuffer.length)
       // const sizes = [12,13,13] => test usecase for when chunk sizes not same
       const allEqual = sizes.every((val, i, arr) => val === arr[0])
-      if (allEqual === true) messages[msg.index].forEach(chunk => chunk.cb(null, msg))
+      if (allEqual === true) messages[index].forEach(chunk => chunk.cb(null, msg))
       else findInvalidEncoding(sizes, messages, cb)
     }
   }

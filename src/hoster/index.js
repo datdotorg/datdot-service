@@ -16,6 +16,7 @@ const DEFAULT_OPTS = {
   watch: true
 }
 const ANNOUNCE = { announce: true, lookup: false }
+const EncoderDecoder = require('../EncoderDecoder')
 
 module.exports = class Hoster {
   constructor ({
@@ -62,8 +63,8 @@ module.exports = class Hoster {
       const { type } = message
       if (type === 'verified') {
         const { feed, index, encoded, proof, nodes, signature } = message
-        const key = Buffer.from(feed)
 
+        const key = Buffer.from(feed)
         const isExisting = await this.hasKey(key)
 
         // Fix up the JSON serialization by converting things to buffers
@@ -196,7 +197,8 @@ module.exports = class Hoster {
 
     const encodingStream = peer.createStream(topic)
     pump(resultStream, encodingStream, confirmStream)
-    // @TODO add event signature
+    // @TODO add event signature in ext message after chunk x
+
     resultStream.write({
       type: 'StorageChallenge',
       feedKey,

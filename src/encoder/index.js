@@ -57,18 +57,12 @@ module.exports = class Encoder {
       ranges = [[index, index]]
     }
 
-    // TODO: Derive shared key
+    // @TODO: Derive shared key
     const topic = feedKey
 
     const feed = this.Hypercore(feedKey)
 
-    // TODO: Add timeout for when we can't find the hoster
-    // const peer = await this.communication.findByTopicAndPublicKey(topic, hosterKey, { announce: false, lookup: true })
-    // const resultStream = ndjson.serialize()
-    // const confirmStream = ndjson.parse()
-    //
-    // const encodingStream = peer.createStream(topic)
-    // pump(resultStream, encodingStream, confirmStream)
+    // @TODO: Add timeout for when we can't find the attestor
 
     const peer = await this.communication.findByTopicAndPublicKey(topic, attestorKey, { announce: false, lookup: true })
     const resultStream = ndjson.serialize()
@@ -83,7 +77,6 @@ module.exports = class Encoder {
         const data = await feed.get(index)
 
         const encoded = await this.EncoderDecoder.encode(data)
-
         const { nodes, signature } = await feed.proof(index)
         // Allocate buffer for the proof
         const proof = Buffer.alloc(sodium.crypto_sign_BYTES)
@@ -95,7 +88,7 @@ module.exports = class Encoder {
         // Copy the encoded data into the buffer that will be signed
         encoded.copy(toSign, varint.encode.bytes)
 
-        // Sign the data with our singning scret key and write it to the proof buffer
+        // Sign the data with our signing secret key and write it to the proof buffer
         sodium.crypto_sign_detached(proof, toSign, this.signingSecretKey)
         // Send the encoded stuff over to the hoster so they can store it
         resultStream.write({
@@ -110,7 +103,7 @@ module.exports = class Encoder {
         // --------------------------------------------------------------
 
         // Wait for the attestor to tell us they've handled the data
-        // TODO: Set up timeout for when peer doesn't respond to us
+        // @TODO: Set up timeout for when peer doesn't respond to us
         const [response] = await once(confirmStream, 'data')
 
         if (response.error) {

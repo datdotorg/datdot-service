@@ -5,7 +5,7 @@ const getChainAPI = require('../chainAPI')
 
 
 /******************************************************************************
-  ROLE: Sponsor
+  ROLE: supporter
 ******************************************************************************/
 const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
@@ -13,7 +13,7 @@ module.exports = role
 
 async function role ({ name, account }) {
   const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
-  log('I am a sponsor')
+  log('I am a supporter')
   const chainAPI = await getChainAPI()
   chainAPI.listenToEvents(handleEvent)
 
@@ -34,9 +34,9 @@ async function role ({ name, account }) {
     if (event.method === 'HostingStarted') {
       const [ contractID, userID] = event.data
       const { plan: planID } = await chainAPI.getContractByID(contractID)
-      const { sponsor: sponsorID} = await chainAPI.getPlanByID(planID)
-      const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
-      if (sponsorAddress === myAddress) {
+      const { supporter: supporterID} = await chainAPI.getPlanByID(planID)
+      const supporterAddress = await chainAPI.getUserAddress(supporterID)
+      if (supporterAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
         const { feed: feedID } =  await chainAPI.getPlanByID(planID)
         const nonce = await account.getNonce()
@@ -49,9 +49,9 @@ async function role ({ name, account }) {
       const [ performanceChallengeID] = event.data
       const { contract: contractID } = await chainAPI.getPerformanceChallengeByID(performanceChallengeID)
       const { plan: planID } = await chainAPI.getContractByID(contractID)
-      const { sponsor: sponsorID} = await chainAPI.getPlanByID(planID)
-      const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
-      if (sponsorAddress === myAddress) {
+      const { supporter: supporterID} = await chainAPI.getPlanByID(planID)
+      const supporterAddress = await chainAPI.getUserAddress(supporterID)
+      if (supporterAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
       }
     }

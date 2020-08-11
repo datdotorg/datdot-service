@@ -42,7 +42,7 @@ async function role ({ name, account }) {
     }
     if (event.method === 'NewPerformanceChallenge') {
       const [performanceChallengeID] = event.data
-      const performanceChallenge = await chainAPI.getperformanceChallengeByID(performanceChallengeID)
+      const performanceChallenge = await chainAPI.getPerformanceChallengeByID(performanceChallengeID)
       const attestors = performanceChallenge.attestors
       attestors.forEach(async (attestorID) => {
         const attestorAddress = await chainAPI.getUserAddress(attestorID)
@@ -63,7 +63,7 @@ async function role ({ name, account }) {
           const data = { account, randomChunks, feedKey }
           const report = await serviceAPI.attest(data)
           const nonce = await account.getNonce()
-          await chainAPI.submitperformanceChallenge({performanceChallengeID, report, signer, nonce})
+          await chainAPI.submitPerformanceChallenge({performanceChallengeID, report, signer, nonce})
         }
       })
     }

@@ -117,7 +117,7 @@ async function _publishPlan (user, { nonce }, status, args) {
   const [ plan ] = args
   const { feedID, ranges } =  plan
   const userID = user.id
-  plan.sponsor = userID // or patron?
+  plan.supporter = userID // or patron?
   plan.feed = feedID
   plan.ranges = ranges
   const planID = DB.plans.push(plan)
@@ -158,11 +158,9 @@ async function _registerAttestor (user, { nonce }, status, args) {
 async function _encodingDone (user, { nonce }, status, args) {
   const [ contractID ] = args
   DB.contractsEncoded.push(contractID)
-  console.log('ENCODEEEEEEEEEEEEEEEEEEEEERS', DB.idleEncoders )
   const contract = DB.contracts[contractID - 1]
   const encoderIDs = contract.encoders
   encoderIDs.forEach(encoderID => { if (!DB.idleEncoders.includes(encoderID)) DB.idleEncoders.push(encoderID) })
-  console.log('ENCODEEEEEEEEEEEEEEEEEEEEERS', DB.idleEncoders )
 }
 async function _hostingStarts (user, { nonce }, status, args) {
   const [ contractID ] = args
