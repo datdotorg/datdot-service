@@ -8,6 +8,7 @@ const envPaths = require('env-paths')
 const path = require('path')
 const fs = require('fs-extra')
 const levelup = require('levelup')
+const encode = require('encoding-down')
 const memdown = require('memdown')
 const { Keyring } = require('@polkadot/api')
 const keyring = new Keyring({ type: 'sr25519' })
@@ -15,6 +16,7 @@ const keyring = new Keyring({ type: 'sr25519' })
 const DEFAULT_SDK_APPLICATION = 'datdot-account'
 const NAMESPACE = 'datdot-account'
 const IDENTITY_NAME = 'identity'
+
 
 module.exports = class Account {
   constructor ({ sdk, EncoderDecoder, application, persist }) {
@@ -74,7 +76,7 @@ module.exports = class Account {
 
     if (!db) {
       const storage = this.persist ? path.resolve(this.storageLocation, './hosterDB') : memdown()
-      db = levelup(storage)
+      db = levelup(encode(storage, {valueEncoding: 'binary'}))
     }
 
     this.hoster = await Hoster.load({ sdk, db, EncoderDecoder, ...opts })

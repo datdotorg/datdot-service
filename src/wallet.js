@@ -8,6 +8,7 @@ async function account (name) {
   await ready
   return await Account.load({
     persist: false,
+    valueEncoding: 'binary',
     application: `datdot-account-${name}`
   })
 }

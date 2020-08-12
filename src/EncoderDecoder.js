@@ -13,6 +13,7 @@ const EncoderDecoder = {
       level: 12,
     }
     zlib.brotliCompress(data, (err, encoded) => {
+      encoded = Buffer.from(encoded)
       if (err) {
         console.log('Ooops, we have a problem with encoding')
         return reject(err)
@@ -28,6 +29,7 @@ const EncoderDecoder = {
     const e = new Error('foobar')
     const stack = e.stack
     zlib.brotliDecompress(encoded, options,  (err, decoded) => {
+      encoded = Buffer.from(encoded)
       counter++
       console.log('-------------', counter)
       if (err) {
