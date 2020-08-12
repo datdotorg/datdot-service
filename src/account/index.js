@@ -76,7 +76,7 @@ module.exports = class Account {
 
     if (!db) {
       const storage = this.persist ? path.resolve(this.storageLocation, './hosterDB') : memdown()
-      db = levelup(encode(storage, {valueEncoding: 'binary'}))
+      db = levelup(encode(storage))
     }
 
     this.hoster = await Hoster.load({ sdk, db, EncoderDecoder, ...opts })

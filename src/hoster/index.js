@@ -30,7 +30,7 @@ module.exports = class Hoster {
     this.loaderCache = new Map()
 
     this.db = db
-    this.hosterDB = sub(this.db, 'hoster', { valueEncoding: 'json' })
+    this.hosterDB = sub(this.db, 'hoster', { valueEncoding: 'binary' })
 
     const { Hypercore } = sdk
     this.sdk = sdk
