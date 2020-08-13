@@ -20,7 +20,6 @@ module.exports = class Attestor {
     this.Hypercore = Hypercore
     this.sdk = sdk
     this.timeout = timeout
-    this.debug = debug(`datdot:attestor:${attestorCount++}`)
   }
 
   static async load (opts) {
@@ -61,7 +60,7 @@ module.exports = class Attestor {
     pump(sendStream, hosterStream, rawReceiveStream, receiveStream)
 
     for await (const message of resultStream) {
-      // @TODO: verify each chunk
+      // @TODO: merkle verify each chunk
       const { type } = message
       if (type === 'encoded') {
         const { feed, index, encoded, proof, nodes, signature } = message
@@ -72,6 +71,7 @@ module.exports = class Attestor {
               type: 'encoded:checked',
               ok: true
             })
+            console.log('Encoding checked')
             sendToHoster(message)
           }
           else if (err) sendError('INVALID_COMPRESSION', { messageIndex: message.index })
@@ -99,7 +99,6 @@ module.exports = class Attestor {
         // Wait for the hoster to tell us they've handled the data
         // TODO: Set up timeout for when peer doesn't respond to us
         const [response] = await once(receiveStream, 'data')
-        console.log('Response', response)
         if (response.error) throw new Error(response.error)
       }
     }
@@ -129,8 +128,7 @@ module.exports = class Attestor {
       if (type === 'StorageChallenge') {
         const { feedKey, storageChallengeID, proofs} = message
         if (id === storageChallengeID) {
-          this.debug('storageChallengeIDs match')
-          // @TODO: verify each chunk (to see if it belongs to the feed) && verify the signature
+          // @TODO: merkle verify each chunk (to see if it belongs to the feed) && verify the signature
           // @TODO: check the proof
           // @TODO: hash the data
           if (proofs) {
@@ -157,7 +155,7 @@ module.exports = class Attestor {
     }
   }
 
-  async attest (key, index) {
+  async checkPerformance (key, index) {
     const feed = this.Hypercore(key, { persist: false })
     try {
       const start = performance.now()
@@ -170,14 +168,11 @@ module.exports = class Attestor {
 
       const end = performance.now()
       const latency = end - start
-      const foo = await feed.get(index)
-      this.debug(foo.toString())
       const stats = await getFeedStats(feed)
-      // this.debug(`Stats for feed: ${key.toString('hex')}, index: ${index}, attestor: ${attestor.publicKey.toString('hex')} => ${JSON.stringify(stats)}`)
+      // console.log(`Stats for feed: ${key.toString('hex')}, index: ${index}, attestor: ${attestor.publicKey.toString('hex')} => ${JSON.stringify(stats)}`)
       return [stats, latency]
     } catch (e) {
-      this.debug(`Error: ${key}@${index} ${e.message}`)
-      this.debug(e)
+      console.log(`Error: ${key}@${index} ${e.message}`)
       return [null, null]
     } finally {
       await feed.close()

@@ -229,8 +229,8 @@ async function _submitPerformanceChallenge (user, { nonce }, status, args) {
     checkAttestorJobs()
   }
   // emit events
-  if (report) response = { event: { data: [performanceChallengeID], method: 'performanceChallengeConfirmed' } }
-  else response = { event: { data: [performanceChallengeID], method: 'performanceChallengeFailed' } }
+  if (report) response = { event: { data: [performanceChallengeID], method: 'PerformanceChallengeConfirmed' } }
+  else response = { event: { data: [performanceChallengeID], method: 'PerformanceChallengeFailed' } }
   handlers.forEach(handler => handler([response]))
 }
 

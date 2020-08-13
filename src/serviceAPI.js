@@ -13,7 +13,7 @@ function datdotService () {
     getStorageChallenge,
     sendStorageChallengeToAttestor,
     verifyStorageChallenge,
-    attest,
+    checkPerformance,
   }
   return serviceAPI
 
@@ -68,11 +68,11 @@ function datdotService () {
     return await account.attestor.verifyStorageChallenge({storageChallengeID, feedKey, hosterKey})
   }
 
-  async function attest (data) {
+  async function checkPerformance (data) {
     const { account, randomChunks, feedKey } = data
-    console.log('start attesting')
+    console.log('check performance')
     const report = await Promise.all(randomChunks.map(async (chunk) => {
-      return await account.attestor.attest(feedKey, chunk)
+      return await account.attestor.checkPerformance(feedKey, chunk)
     }))
     return report
   }

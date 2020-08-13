@@ -61,7 +61,7 @@ async function role ({ name, account }) {
           // @TODO: select a reporter
           // const meeting = await serviceAPI.meetAttestors(feedKey)
           const data = { account, randomChunks, feedKey }
-          const report = await serviceAPI.attest(data)
+          const report = await serviceAPI.checkPerformance(data)
           const nonce = await account.getNonce()
           await chainAPI.submitPerformanceChallenge({performanceChallengeID, report, signer, nonce})
         }

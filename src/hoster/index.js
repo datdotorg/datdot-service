@@ -30,7 +30,7 @@ module.exports = class Hoster {
     this.loaderCache = new Map()
 
     this.db = db
-    this.hosterDB = sub(this.db, 'hoster', { valueEncoding: 'binary' })
+    this.hosterDB = sub(this.db, 'hoster')
 
     const { Hypercore } = sdk
     this.sdk = sdk
@@ -59,7 +59,7 @@ module.exports = class Hoster {
     pump(confirmStream, verifiedStream, rawResultStream, resultStream)
 
     for await (const message of resultStream) {
-      // @TODO: decode and verify each chunk (to see if it belongs to the feed) && verify the signature
+      // @TODO: decode and merkle verify each chunk (to see if it belongs to the feed) && verify the signature
       const { type } = message
       if (type === 'verified') {
         const { feed, index, encoded, proof, nodes, signature } = message
@@ -217,7 +217,6 @@ module.exports = class Hoster {
     }
   }
 
-
   async hasKey (key) {
     const stringKey = key.toString('hex')
     return this.storages.has(stringKey)
@@ -230,7 +229,7 @@ module.exports = class Hoster {
     }
 
     const feed = this.Hypercore(key, { sparse: true })
-    const db = sub(this.db, stringKey)
+    const db = sub(this.db, stringKey, { valueEncoding: 'binary' })
 
     await reallyReady(feed)
 

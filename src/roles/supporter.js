@@ -45,7 +45,17 @@ async function role ({ name, account }) {
         await chainAPI.requestPerformanceChallenge({contractID, signer, nonce})
       }
     }
-    if (event.method === 'performanceChallengeConfirmed') {
+    if (event.method === 'StorageChallengeConfirmed') {
+      const [ storageChallengeID] = event.data
+      const { contract: contractID } = await chainAPI.getStorageChallengeByID(storageChallengeID)
+      const { plan: planID } = await chainAPI.getContractByID(contractID)
+      const { supporter: supporterID} = await chainAPI.getPlanByID(planID)
+      const supporterAddress = await chainAPI.getUserAddress(supporterID)
+      if (supporterAddress === myAddress) {
+        log('Event received:', event.method, event.data.toString())
+      }
+    }
+    if (event.method === 'PerformanceChallengeConfirmed') {
       const [ performanceChallengeID] = event.data
       const { contract: contractID } = await chainAPI.getPerformanceChallengeByID(performanceChallengeID)
       const { plan: planID } = await chainAPI.getContractByID(contractID)

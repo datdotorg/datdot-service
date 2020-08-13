@@ -25,11 +25,7 @@ module.exports = class HosterStorage {
     // Get the decoded data at the index
     // In parallel, decode the encoded data
     encoded = Buffer.from(encoded)
-    console.log("STOOOOOOOOOOOOOOOORE ENCODED", encoded)
-    console.log("STOOOOOOOOOOOOOOOORE ENCODED to STRING", encoded.toString())
     const decoded = await this.EncoderDecoder.decode(encoded)
-    console.log("STOOOOOOOOOOOOOOOORE DECODED", decoded)
-    console.log("STOOOOOOOOOOOOOOOORE DECODED to STRING", decoded.toString())
     stuff.storeEnc[index] = encoded
     stuff.storeDec[index] = decoded
     const packet = {
@@ -76,38 +72,7 @@ module.exports = class HosterStorage {
         // Decode and return it
         const enc = stuff.storeEnc[index]
         const dec = stuff.storeDec[index]
-        console.log('------------------------------------------------')
-        console.log('A: LOADED ENCODEDs type:')
-        console.log('------------------------------------------------')
-        console.log(typeof encoded)
-        console.log('------------------------------------------------')
-        console.log('B: LOADED ENCODED:')
-        console.log('------------------------------------------------')
-        console.log(encoded)
-        console.log('------------------------------------------------')
-        console.log('C: ORIGINAL ENCODED to STRING:')
-        console.log('------------------------------------------------')
-        console.log(enc.toString())
-        const encoded2 = Buffer.from(encoded, 'binary')
-        console.log('------------------------------------------------')
-        console.log('D: BUFFERIFIED(binary) ENCODED to STRING:')
-        console.log('------------------------------------------------')
-        console.log(encoded2.toString())
-        console.log('------------------------------------------------')
-        console.log('E: ORIGINAL ENCODED to HEX:')
-        console.log('------------------------------------------------')
-        console.log(enc.toString('hex'))
-        console.log('------------------------------------------------')
-        console.log('F: BUFFERIFIED(binary) ENCODED to HEX:')
-        console.log('------------------------------------------------')
-        console.log(encoded2.toString('hex'))
-        console.log('------------------------------------------------')
-        console.log('C === B', enc.toString() === encoded)
-        console.log('C === D', enc.toString() === encoded2.toString())
-        console.log('E === F', enc.toString('hex') === encoded2.toString('hex'))
-
         const decoded = await this.EncoderDecoder.decode(encoded)
-        console.log('DECOOOOOODED', decoded)
         return decoded
       }, async () => {
         // Key doesn't exist? Try to get decoded version
@@ -144,11 +109,11 @@ module.exports = class HosterStorage {
   }
 
   async _putEncoded (index, data) {
-    return this.db.put(makeKey(ENCODED_PREFIX, index), data)
+    return this.db.put(makeKey(ENCODED_PREFIX, index), data, Buffer.from([0, 255]))
   }
 
   async _putDecoded (index, data) {
-    return this.db.put(makeKey(DECODED_PREFIX, index), data)
+    return this.db.put(makeKey(DECODED_PREFIX, index), data, Buffer.from([0, 255]))
   }
 
   async _delDecoded (index) {
@@ -164,7 +129,7 @@ module.exports = class HosterStorage {
   }
 
   async _putProof (index, proof) {
-    return this.db.put(makeKey(PROOF_PREFIX, index), proof)
+    return this.db.put(makeKey(PROOF_PREFIX, index), proof, Buffer.from([0, 255]))
   }
 
   async close () {

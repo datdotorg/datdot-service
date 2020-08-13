@@ -15,7 +15,7 @@ const EncoderDecoder = {
     zlib.brotliCompress(data, (err, encoded) => {
       encoded = Buffer.from(encoded)
       if (err) {
-        console.log('Ooops, we have a problem with encoding')
+        console.log('Ooops, we have a problem with encoding', err)
         return reject(err)
       }
       resolve(encoded)
@@ -26,19 +26,13 @@ const EncoderDecoder = {
     const options = {
       finishFlush: zlib.constants.Z_FINISH,
     }
-    const e = new Error('foobar')
-    const stack = e.stack
     zlib.brotliDecompress(encoded, options,  (err, decoded) => {
       encoded = Buffer.from(encoded)
       counter++
-      console.log('-------------', counter)
       if (err) {
         console.log('Ooops, we have a problem with decoding', err)
-        console.log('more', e)
-        console.log('-------------', counter)
         return reject(err)
       }
-      console.log('-------------', counter)
       resolve(decoded)
     })
   })
