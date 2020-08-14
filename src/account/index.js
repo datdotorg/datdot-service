@@ -17,7 +17,6 @@ const DEFAULT_SDK_APPLICATION = 'datdot-account'
 const NAMESPACE = 'datdot-account'
 const IDENTITY_NAME = 'identity'
 
-
 module.exports = class Account {
   constructor ({ sdk, EncoderDecoder, application, persist }) {
     const { Hypercore, Hyperdrive } = sdk
@@ -29,7 +28,7 @@ module.exports = class Account {
     this.application = application
     this.storageLocation = envPaths(application).data
     this.persist = persist
-		this.application = application
+    this.application = application
 
     this.nonce = 0n
 
@@ -39,9 +38,11 @@ module.exports = class Account {
     this.sdkIdentity = null
     this.chainKeypair = null
   }
+
   async getNonce () {
     return this.nonce++
   }
+
   async init () {
     if (this.persist) await fs.ensureDir(this.storageLocation)
 
@@ -76,7 +77,7 @@ module.exports = class Account {
 
     if (!db) {
       const storage = this.persist ? path.resolve(this.storageLocation, './hosterDB') : memdown()
-      db = levelup(encode(storage, {valueEncoding: 'binary'}))
+      db = levelup(encode(storage, { valueEncoding: 'binary' }))
     }
 
     this.hoster = await Hoster.load({ sdk, db, EncoderDecoder, ...opts })
@@ -117,33 +118,25 @@ module.exports = class Account {
   }
 
   get name () {
-		if(!this.application) return DEFAULT_SDK_APPLICATION
-		return this.application.replace('datdot-account-', '')
+    if (!this.application) return DEFAULT_SDK_APPLICATION
+    return this.application.replace('datdot-account-', '')
   }
 
-  get address() {
-		return this.chainKeypair.address
+  get address () {
+    return this.chainKeypair.address
   }
 
   async attest (feedKey, index) {
     return this.attestor.attest(feedKey, index)
   }
 
-  // async encodeFor (hosterIdentity, attestorKey, feedKey, ranges) {
-  //   return this.encoder.encodeFor(hosterIdentity, attestorKey, feedKey, ranges)
-  // }
-
-  // async hostFeed (feedKey, encoderIdentity, plan) {
-  //   return this.hoster.addFeed(feedKey, encoderIdentity, plan)
-  // }
-
   async stopHostingFeed (feedKey) {
     return this.hoster.removeFeed(feedKey)
   }
 
   async getHostingProof (feedKey, index) {
-    const { encoded, proof, merkleProof } = await this.hoster.getStorageChallenge(feedKey, index)
-
+    const { encoded, proof } = await this.hoster.getStorageChallenge(feedKey, index)
+    // const { encoded, proof, merkleProof } = await this.hoster.getStorageChallenge(feedKey, index)
     return { index, encoded, proof, feed: feedKey }
   }
 

@@ -2,8 +2,6 @@ const debug = require('debug')
 const getChainAPI = require('../chainAPI')
 const getServiceAPI = require('../serviceAPI')
 
-
-
 /******************************************************************************
   ROLE: Encoder
 ******************************************************************************/
@@ -23,7 +21,7 @@ async function role ({ name, account }) {
   const signer = account.chainKeypair
   chainAPI.listenToEvents(handleEvent)
   const nonce = await account.getNonce()
-  await chainAPI.registerEncoder({encoderKey, signer, nonce})
+  await chainAPI.registerEncoder({ encoderKey, signer, nonce })
 
   // EVENTS
   async function handleEvent (event) {
@@ -33,13 +31,13 @@ async function role ({ name, account }) {
       const encoders = contract.encoders
       encoders.forEach(async (id) => {
         const encoderAddress = await chainAPI.getUserAddress(id)
-        if (encoderAddress === account.chainKeypair.address) {
+        if (encoderAddress === myAddress) {
           log('Event received:', event.method, event.data.toString())
-          const {hosterKey, attestorKey, feedKey, ranges} = await getHostingData(contract)
-          const encode = serviceAPI.encode({account, hosterKey, attestorKey, feedKey, ranges})
+          const { attestorKey, feedKey, ranges } = await getHostingData(contract)
+          const encode = serviceAPI.encode({ account, attestorKey, feedKey, ranges })
           encode.then(async () => {
             const nonce = await account.getNonce()
-            await chainAPI.encodingDone({contractID, signer, nonce})
+            await chainAPI.encodingDone({ contractID, signer, nonce })
           })
         }
       })
@@ -51,14 +49,10 @@ async function role ({ name, account }) {
   async function getHostingData (contract) {
     const ranges = contract.ranges
     const planID = contract.plan
-    const { feed: feedID} = await chainAPI.getPlanByID(planID)
+    const { feed: feedID } = await chainAPI.getPlanByID(planID)
     const feedKey = await chainAPI.getFeedKey(feedID)
-    // @TODO there's many hosters
-    const hosterID = contract.hosters[0]
-    const hosterKey = await chainAPI.getHosterKey(hosterID)
     const attestorID = contract.attestor
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
-    return { hosterKey, attestorKey, feedKey, ranges }
+    return { attestorKey, feedKey, ranges }
   }
-
 }

@@ -1,10 +1,10 @@
-const { /*ApiPromise,*/ WsProvider, Keyring } = require('@polkadot/api')
 const ApiPromise = require('./simulate-substrate')
 const provider = {}
 // const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api')
 // const provider = new WsProvider('ws://127.0.0.1:9944')
-const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
-const { hexToBn, u8aToBuffer, bufferToU8a } = require('@polkadot/util')
+// const { WsProvider, Keyring } = require('@polkadot/api')
+// const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
+// const { hexToBn, u8aToBuffer, bufferToU8a } = require('@polkadot/util')
 const fs = require('fs')
 const path = require('path')
 const filename = path.join(__dirname, './types.json')
@@ -38,24 +38,23 @@ async function datdotChain () {
     getUserAddress,
     getHosterKey,
     getEncoderKey,
-    getAttestorKey,
-    getEncodedIndex,
+    getAttestorKey
   }
 
   return chainAPI
 
-async function status ({ events = [], status }) {
-  if (status.isInBlock) {
-    events.forEach(({ phase, event: { data, method, section } }) => {
-      LOG('\t', phase.toString(), `: ${section}.${method}`, data.toString())
-    })
+  async function status ({ events = [], status }) {
+    if (status.isInBlock) {
+      events.forEach(({ phase, event: { data, method, section } }) => {
+        console.log('\t', phase.toString(), `: ${section}.${method}`, data.toString())
+      })
+    }
   }
-}
 
-async function makeNonce (nonce) {
-  const NONCE = await API.createType('Index', nonce)
-  return { nonce: NONCE }
- }
+  async function makeNonce (nonce) {
+    const NONCE = await API.createType('Index', nonce)
+    return { nonce: NONCE }
+  }
   async function newUser ({ signer, nonce }) {
     const tx = await API.tx.datVerify.newUser()
     // tx.signAndSend(signer, await makeNonce(nonce))
@@ -136,11 +135,6 @@ async function makeNonce (nonce) {
     // return (await API.query.datVerify.getPlanByID(id)).toJSON()
     return await API.query.datVerify.getPlanByID(id)
   }
-  async function getFeedByID (id) {
-    // const feedID = (await API.query.datVerify.getFeedByID(id)).toJSON()
-    const feedID = (await API.query.datVerify.getFeedByID(id))
-    return feedID
-  }
   async function getStorageChallengeByID (id) {
     // return (await API.query.datVerify.getStorageChallengeByID(id)).toJSON()
     return await API.query.datVerify.getStorageChallengeByID(id)
@@ -149,44 +143,38 @@ async function makeNonce (nonce) {
     // return (await API.query.datVerify.getPerformanceChallengeByID(id)).toJSON()
     return await API.query.datVerify.getPerformanceChallengeByID(id)
   }
-
-  async function getEncodedIndex (encoderAddress) {
-    const encoded = await HostedMap.encoded
-    encoded.forEach((item, i) => { if (item[0] === encoderAddress) return i })
-  }
-
   async function encodingDone (opts) {
-    const {contractID, signer, nonce} = opts
+    const { contractID, signer, nonce } = opts
     const tx = await API.tx.datVerify.encodingDone(contractID)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function hostingStarts (opts) {
-    const {contractID, signer, nonce} = opts
+    const { contractID, signer, nonce } = opts
     const tx = await API.tx.datVerify.hostingStarts(contractID)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function requestStorageChallenge (opts) {
-    const {contractID, hosterID, signer, nonce} = opts
+    const { contractID, hosterID, signer, nonce } = opts
     const tx = await API.tx.datVerify.requestStorageChallenge(contractID, hosterID)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function submitStorageChallenge (opts) {
-    const {storageChallengeID, proofs, signer, nonce} = opts
+    const { storageChallengeID, proofs, signer, nonce } = opts
     const tx = await API.tx.datVerify.submitStorageChallenge(storageChallengeID, proofs)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function requestPerformanceChallenge (opts) {
-    const {contractID, signer, nonce} = opts
+    const { contractID, signer, nonce } = opts
     const tx = await API.tx.datVerify.requestPerformanceChallenge(contractID)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function submitPerformanceChallenge (opts) {
-    const {performanceChallengeID, report, signer, nonce} =  opts
+    const { performanceChallengeID, report, signer, nonce } = opts
     const tx = await API.tx.datVerify.submitPerformanceChallenge(performanceChallengeID, report)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
@@ -205,9 +193,12 @@ async function makeNonce (nonce) {
     let counter = 0
     while (true) {
       // Try to execute the promise function and return the result
-      try { return promiseFn() }
+      try {
+        return promiseFn()
+      } catch (error) {
+        if (counter >= maxTries) throw error
+      }
       // If we get an error maxTries time, we finally error
-      catch (error) { if (counter >= maxTries) throw error }
       // Otherwise we increase the counter and keep looping
       counter++
     }

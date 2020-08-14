@@ -28,7 +28,7 @@ const attestor = require('../../src/roles/attestor.js')
 /******************************************************************************
   SCENARIO
 ******************************************************************************/
-const [ alice, bob, charlie, dave, eve ] = users
+const [alice, bob, charlie, dave, eve] = users
 
 log('start scenario')
 

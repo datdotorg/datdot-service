@@ -1,18 +1,11 @@
-// const EncoderDecoder = {
-//   encode: (data) => Buffer.from(JSON.stringify(data.toString('utf8'))),
-//   decode: (data) => Buffer.from(JSON.parse(data.toString('utf8')))
-// }
-
-
 const zlib = require('zlib')
-var counter = 0
 const EncoderDecoder = {
-
-  encode: (data) =>	new Promise((resolve, reject) => {
+  encode: (data) => new Promise((resolve, reject) => {
+    // @TODO refine options
     const options = {
-      level: 12,
+      level: 12
     }
-    zlib.brotliCompress(data, (err, encoded) => {
+    zlib.brotliCompress(data, options, (err, encoded) => {
       encoded = Buffer.from(encoded)
       if (err) {
         console.log('Ooops, we have a problem with encoding', err)
@@ -23,12 +16,12 @@ const EncoderDecoder = {
   }),
 
   decode: (encoded) => new Promise((resolve, reject) => {
+    // @TODO refine options
     const options = {
-      finishFlush: zlib.constants.Z_FINISH,
+      finishFlush: zlib.constants.Z_FINISH
     }
-    zlib.brotliDecompress(encoded, options,  (err, decoded) => {
+    zlib.brotliDecompress(encoded, options, (err, decoded) => {
       encoded = Buffer.from(encoded)
-      counter++
       if (err) {
         console.log('Ooops, we have a problem with decoding', err)
         return reject(err)
@@ -36,6 +29,5 @@ const EncoderDecoder = {
       resolve(decoded)
     })
   })
-
 }
 module.exports = EncoderDecoder

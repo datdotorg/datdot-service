@@ -56,9 +56,8 @@ const performanceChallenges = [] // Performance Proof
   LOOKUP
 ******************************************************************************/
 const userByAddress = {} // address
-const feedByKey = {} //key
-const plan = {} //
-const contract = {} //
+const feedByKey = {} // key
+
 /******************************************************************************
   STATUS
 ******************************************************************************/
@@ -67,33 +66,11 @@ const idleEncoders = [] // user ids
 const idleAttestors = [] // user ids
 
 const unhostedPlans = [] // ids of unhosted plans
-const hostedPlans = [] //when all contracts for certain plan are hosted => push planID to hostedPlans
+const hostedPlans = [] // when all contracts for certain plan are hosted => push planID to hostedPlans
 
 const contractsEncoded = [] // IDs of contracts where encoding is confirmed
 const contractsHosted = [] // IDs of contracts where hosting is confirmed
 
-
-/////////////////////////////////////////////
-const challenging = []
-const storageChallenge_reponses = []
-/*
-{
-  storageChallenge: 'storageChallengeID',
-  response: 'merkleProof'
-}
-*/
-
-const attesting = []
-const performanceChallenge_reponses = []
-/*
-{
-  performanceChallenge: 'performanceChallengeID',
-  response: {
-    latency: 'foo',
-    location: 'bar'
-  }
-}
-*/
 /*****************************************************************************/
 const DB = {
   // state

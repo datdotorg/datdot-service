@@ -25,9 +25,9 @@ function datdotService () {
                BEFORE HOSTING => ENCODING, VERIFYING, STORING
 ------------------------------------------------------------------ */
   function encode (data) {
-    const { account, hosterKey, attestorKey, feedKey: feedKeyBuffer, ranges } = data
+    const { account, attestorKey, feedKey: feedKeyBuffer, ranges } = data
     log('start encoding')
-    return account.encoder.encodeFor(hosterKey, attestorKey, feedKeyBuffer, ranges)
+    return account.encoder.encodeFor(attestorKey, feedKeyBuffer, ranges)
   }
 
   async function verifyEncoding (data) {

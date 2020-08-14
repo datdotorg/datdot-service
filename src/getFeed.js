@@ -1,10 +1,3 @@
-const Hypercore = require('hypercore')
-const hyperswarm = require('hyperswarm')
-const swarm = hyperswarm()
-const ram = require('random-access-memory')
-const feeds = {}
-const pump = require('pump')
-
 const colors = require('colors/safe')
 const FILE = __filename.split('/').pop().split('.')[0].toUpperCase()
 function LOG (...msgs) {
@@ -28,14 +21,14 @@ function getData (account) {
     await feed.append('Здраво Свете!')
     await feed.append('Hai dunia!')
     const data = []
-    const feed_pubkey = feed.key
+    const feedPubkey = feed.key
     feed.rootHashes(feed.length - 1, (err, res) => {
       if (err) return LOG(err) && reject(err)
       const children = res.map(renameProperties)
       feed.signature((err, { signature }) => {
         if (err) LOG(err) && reject(err)
-        data.push(feed_pubkey)
-        LOG('New data feed created', feed_pubkey, feed_pubkey.toString('hex') )
+        data.push(feedPubkey)
+        LOG('New data feed created', feedPubkey, feedPubkey.toString('hex'))
         data.push({ hashType: 2, children }) // push TreeHashPayload
         data.push(signature)
         resolve(data)

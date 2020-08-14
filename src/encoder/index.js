@@ -50,8 +50,7 @@ module.exports = class Encoder {
     this.communication = p2plex({ keyPair: noiseKeyPair })
   }
 
-  async encodeFor (hosterKey, attestorKey, feedKey, ranges) {
-
+  async encodeFor (attestorKey, feedKey, ranges) {
     if (!Array.isArray(ranges)) {
       const index = ranges
       ranges = [[index, index]]

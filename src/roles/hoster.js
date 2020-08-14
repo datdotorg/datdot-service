@@ -65,7 +65,6 @@ async function role ({ name, account }) {
 
   async function getHostingData (contract) {
     const ranges = contract.ranges
-    // @TODO there's many encoders
     const attestorID = contract.attestor
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
     const planID = contract.plan

@@ -16,7 +16,6 @@ const DEFAULT_OPTS = {
   watch: true
 }
 const ANNOUNCE = { announce: true, lookup: false }
-const EncoderDecoder = require('../EncoderDecoder')
 
 module.exports = class Hoster {
   constructor ({
@@ -38,7 +37,7 @@ module.exports = class Hoster {
     this.EncoderDecoder = EncoderDecoder
   }
 
-  async addFeed ({feedKey, attestorKey, plan}) {
+  async addFeed ({ feedKey, attestorKey, plan }) {
     await this.setOpts(feedKey, plan)
     await this.addKey(feedKey, plan)
     await this.loadFeedData(feedKey)
@@ -47,7 +46,6 @@ module.exports = class Hoster {
 
   async getEncodedDataFromAttestor (attestorKey, key) {
     // TODO: Derive key by combining our public keys and feed key
-    const feed = this.Hypercore(key, { sparse: true })
     const topic = key
     const peer = await this.communication.findByTopicAndPublicKey(topic, attestorKey, ANNOUNCE)
     const resultStream = new PassThrough({ objectMode: true })
@@ -189,7 +187,7 @@ module.exports = class Hoster {
     return storage.getStorageChallenge(index)
   }
 
-  async sendStorageChallenge ({storageChallengeID, feedKey, attestorKey, proofs}) {
+  async sendStorageChallenge ({ storageChallengeID, feedKey, attestorKey, proofs }) {
     const topic = feedKey
     const peer = await this.communication.findByTopicAndPublicKey(topic, attestorKey, { announce: false, lookup: true })
     const resultStream = ndjson.serialize()

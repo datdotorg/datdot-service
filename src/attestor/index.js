@@ -1,5 +1,4 @@
 const delay = require('delay')
-const debug = require('debug')
 const p2plex = require('p2plex')
 const { seedKeygen } = require('noise-peer')
 const pump = require('pump')
@@ -8,11 +7,10 @@ const ndjson = require('ndjson')
 const { PassThrough } = require('stream')
 const NAMESPACE = 'datdot-attestor'
 const NOISE_NAME = 'noise'
-const {performance} = require('perf_hooks')
+const { performance } = require('perf_hooks')
 
 const DEFAULT_TIMEOUT = 5000
 const ANNOUNCE = { announce: true, lookup: false }
-let attestorCount = 0
 
 module.exports = class Attestor {
   constructor ({ sdk, timeout = DEFAULT_TIMEOUT }) {
@@ -23,7 +21,6 @@ module.exports = class Attestor {
   }
 
   static async load (opts) {
-
     const attestor = new Attestor(opts)
     await attestor.init()
     return attestor
@@ -32,9 +29,7 @@ module.exports = class Attestor {
   async init () {
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
     const noiseKeyPair = seedKeygen(noiseSeed)
-
     this.publicKey = noiseKeyPair.publicKey
-
     this.communication = p2plex({ keyPair: noiseKeyPair })
   }
 
@@ -63,8 +58,6 @@ module.exports = class Attestor {
       // @TODO: merkle verify each chunk
       const { type } = message
       if (type === 'encoded') {
-        const { feed, index, encoded, proof, nodes, signature } = message
-
         compareEncodings(message, (err, res) => {
           if (!err) {
             confirmStream.write({
@@ -73,8 +66,7 @@ module.exports = class Attestor {
             })
             console.log('Encoding checked')
             sendToHoster(message)
-          }
-          else if (err) sendError('INVALID_COMPRESSION', { messageIndex: message.index })
+          } else if (err) sendError('INVALID_COMPRESSION', { messageIndex: message.index })
         })
       } else {
         this.debug('UNKNOWN_MESSAGE', { messageType: type })
@@ -113,7 +105,7 @@ module.exports = class Attestor {
   }
 
   async verifyStorageChallenge (data) {
-    const {hosterKey, feedKey, storageChallengeID: id} = data
+    const { hosterKey, feedKey, storageChallengeID: id } = data
     // TODO: Derive topic by combining our public keys and feed key
     const topic = feedKey
     const peer = await this.communication.findByTopicAndPublicKey(topic, hosterKey, ANNOUNCE)
@@ -126,7 +118,7 @@ module.exports = class Attestor {
     for await (const message of resultStream) {
       const { type } = message
       if (type === 'StorageChallenge') {
-        const { feedKey, storageChallengeID, proofs} = message
+        const { storageChallengeID, proofs } = message
         if (id === storageChallengeID) {
           // @TODO: merkle verify each chunk (to see if it belongs to the feed) && verify the signature
           // @TODO: check the proof
@@ -169,7 +161,6 @@ module.exports = class Attestor {
       const end = performance.now()
       const latency = end - start
       const stats = await getFeedStats(feed)
-      // console.log(`Stats for feed: ${key.toString('hex')}, index: ${index}, attestor: ${attestor.publicKey.toString('hex')} => ${JSON.stringify(stats)}`)
       return [stats, latency]
     } catch (e) {
       console.log(`Error: ${key}@${index} ${e.message}`)
@@ -202,8 +193,5 @@ module.exports = class Attestor {
         totalBlocks: feed.length
       }
     }
-
   }
-
-
 }

@@ -2,7 +2,6 @@ const debug = require('debug')
 const getChainAPI = require('../chainAPI')
 const getServiceAPI = require('../serviceAPI')
 
-
 /******************************************************************************
   ROLE: Attestor
 ******************************************************************************/
@@ -22,12 +21,11 @@ async function role ({ name, account }) {
   const myAddress = account.chainKeypair.address
   const signer = account.chainKeypair
   const nonce = await account.getNonce()
-  await chainAPI.registerAttestor({attestorKey, signer, nonce})
+  await chainAPI.registerAttestor({ attestorKey, signer, nonce })
 
   // EVENTS
   async function handleEvent (event) {
-
-    if (event.method === 'NewContract'){
+    if (event.method === 'NewContract') {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)
       const attestorID = contract.attestor
@@ -35,7 +33,7 @@ async function role ({ name, account }) {
       if (attestorAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
         const { feedKey, encoderKeys, hosterKeys } = await getContractData(contract)
-        const foo = serviceAPI.verifyEncoding({account, hosterKeys, feedKey, encoderKeys})
+        const foo = serviceAPI.verifyEncoding({ account, hosterKeys, feedKey, encoderKeys })
         foo.then(async () => {
         })
       }
@@ -63,7 +61,7 @@ async function role ({ name, account }) {
           const data = { account, randomChunks, feedKey }
           const report = await serviceAPI.checkPerformance(data)
           const nonce = await account.getNonce()
-          await chainAPI.submitPerformanceChallenge({performanceChallengeID, report, signer, nonce})
+          await chainAPI.submitPerformanceChallenge({ performanceChallengeID, report, signer, nonce })
         }
       })
     }
@@ -76,11 +74,10 @@ async function role ({ name, account }) {
         log('Event received:', event.method, event.data.toString())
         const data = await getStorageChallengeData(storageChallenge)
         data.account = account
-        const hosterAddress = await chainAPI.getUserAddress(storageChallenge.hoster)
-        const { feedKey, storageChallengeID, proofs} = await serviceAPI.verifyStorageChallenge(data)
+        const { storageChallengeID, proofs } = await serviceAPI.verifyStorageChallenge(data)
         if (proofs) {
           const nonce = account.getNonce()
-          const opts = {storageChallengeID, proofs, signer, nonce}
+          const opts = { storageChallengeID, proofs, signer, nonce }
           await chainAPI.submitStorageChallenge(opts)
         }
       }
@@ -95,11 +92,10 @@ async function role ({ name, account }) {
     const contract = await chainAPI.getContractByID(storageChallenge.contract)
     const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
     const feedKey = await chainAPI.getFeedKey(feedID)
-    return {hosterKey, feedKey, storageChallengeID: storageChallenge.id}
+    return { hosterKey, feedKey, storageChallengeID: storageChallenge.id }
   }
 
   async function getContractData (contract) {
-    // @TODO there's many encoders
     const encoders = contract.encoders
     const encoderKeys = []
     encoders.forEach(async (id) => {
@@ -118,10 +114,9 @@ async function role ({ name, account }) {
     return { feedKey, encoderKeys, hosterKeys }
   }
 
-  function getRandomInt(min, max) {
-    min = Math.ceil(min);
-    max = Math.floor(max);
-    return Math.floor(Math.random() * (max - min)) + min; //The maximum is exclusive and the minimum is inclusive
+  function getRandomInt (min, max) {
+    min = Math.ceil(min)
+    max = Math.floor(max)
+    return Math.floor(Math.random() * (max - min)) + min // The maximum is exclusive and the minimum is inclusive
   }
-
 }
