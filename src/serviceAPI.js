@@ -13,7 +13,7 @@ function datdotService () {
     getStorageChallenge,
     sendStorageChallengeToAttestor,
     verifyStorageChallenge,
-    checkPerformance,
+    checkPerformance
   }
   return serviceAPI
 
@@ -21,9 +21,9 @@ function datdotService () {
     API FUNCTIONS
   ******************************************************************************/
 
-/* ----------------------------------------------------------------
-               BEFORE HOSTING => ENCODING, VERIFYING, STORING
------------------------------------------------------------------- */
+  /* ----------------------------------------------------------------
+                 BEFORE HOSTING => ENCODING, VERIFYING, STORING
+  ------------------------------------------------------------------ */
   function encode (data) {
     const { account, attestorKey, feedKey: feedKeyBuffer, ranges } = data
     log('start encoding')
@@ -31,20 +31,20 @@ function datdotService () {
   }
 
   async function verifyEncoding (data) {
-    const {account, encoderKeys, hosterKeys, feedKey} = data
+    const { account, encoderKeys, hosterKeys, feedKey } = data
     const messages = []
     encoderKeys.forEach(async (encoderKey, i) => {
       const pos = i
-      hosterKey = hosterKeys[pos]
+      const hosterKey = hosterKeys[pos]
       const opts = { encoderKey, hosterKey, feedKey, cb: (msg, cb) => compareEncodings(messages, msg, cb) }
       await account.attestor.verifyEncoding(opts)
     })
   }
 
   function host (data) {
-    const {account, feedKey, attestorKey, plan} = data
+    const { account, feedKey, attestorKey, plan } = data
     log('start hosting')
-    return account.hoster.addFeed({feedKey, attestorKey, plan})
+    return account.hoster.addFeed({ feedKey, attestorKey, plan })
   }
 
   /* ----------------------------------------------------------------
@@ -59,13 +59,13 @@ function datdotService () {
 
   async function sendStorageChallengeToAttestor (data) {
     const { account, storageChallengeID, feedKey, attestorKey, proofs } = data
-    await account.hoster.sendStorageChallenge({storageChallengeID, feedKey, attestorKey, proofs})
+    await account.hoster.sendStorageChallenge({ storageChallengeID, feedKey, attestorKey, proofs })
     // hoster sends proof of data to the attestor
   }
 
   async function verifyStorageChallenge (data) {
-    const {account, hosterKey, feedKey, storageChallengeID} = data
-    return await account.attestor.verifyStorageChallenge({storageChallengeID, feedKey, hosterKey})
+    const { account, hosterKey, feedKey, storageChallengeID } = data
+    return await account.attestor.verifyStorageChallenge({ storageChallengeID, feedKey, hosterKey })
   }
 
   async function checkPerformance (data) {
@@ -82,13 +82,14 @@ function datdotService () {
   ******************************************************************************/
 
   function compareEncodings (messages, msg, cb) {
-    const { feed, index, encoded, proof, nodes, signature } = msg
+    const { index } = msg
     if (messages[index]) messages[index].push({ msg, cb })
-    else messages[index] = [ { msg, cb } ]
+    else messages[index] = [{ msg, cb }]
     if (messages[index].length === 3) {
-      const encodedBuffer = Buffer.from(encoded)
-      const sizes = messages[index].map(message => encodedBuffer.length)
-      // const sizes = [12,13,13] => test usecase for when chunk sizes not same
+      const sizes = messages[index].map(message => {
+        return Buffer.from(message.msg.encoded).length
+      })
+      // const sizes = [12,13,13] // => test usecase for when chunk sizes not same
       const allEqual = sizes.every((val, i, arr) => val === arr[0])
       if (allEqual === true) messages[index].forEach(chunk => chunk.cb(null, msg))
       else findInvalidEncoding(sizes, messages, cb)
@@ -99,17 +100,17 @@ function datdotService () {
     for (var i = 0, len = sizes.length; i < len; i++) {
       for (var k = i + 1; k < len; k++) {
         const [a, b] = [sizes[i], sizes[k]]
+        const err = 'Encoding denied'
         if (a !== b) {
           if (a < b) {
             smallest = a
-            cb('Encoding denied', messages[k])
+            cb(err, messages[k])
           } else {
             smallest = b
-            cb('Encoding denied', messages[i])
+            cb(err, messages[i])
           }
         }
       }
     }
   }
-
 }

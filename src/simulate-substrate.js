@@ -8,6 +8,7 @@ module.exports = {
       datVerify: {
         getUserByID,
         getFeedByID,
+        getFeedByKey,
         getPlanByID,
         getContractByID,
         getStorageChallengeByID,
@@ -51,6 +52,7 @@ async function submitPerformanceChallenge (...args) { return { signAndSend: sign
   QUERIES
 ******************************************************************************/
 function getFeedByID (id) { return DB.feeds[id - 1] }
+function getFeedByKey (key) { return DB.feedByKey[key.toString('hex')] }
 function getUserByID (id) { return DB.users[id - 1] }
 function getPlanByID (id) { return DB.plans[id - 1] }
 function getContractByID (id) { return DB.contracts[id - 1] }
@@ -99,9 +101,10 @@ function _newUser (address, { nonce }, status) {
   return user
 }
 async function _publishFeed (user, { nonce }, status, args) {
-  //@TODO check if feed already exists
   const [ merkleRoot ] = args
   const [key, {hashType, children}, signature] = merkleRoot
+  // check if feed already exists
+  if (DB.feedByKey[key.toString('hex')]) return
   const feed = { publickey: key.toString('hex'), meta: { signature, hashType, children } }
   const feedID = DB.feeds.push(feed)
   feed.id = feedID

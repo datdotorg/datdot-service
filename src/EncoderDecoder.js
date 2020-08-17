@@ -2,32 +2,21 @@ const zlib = require('zlib')
 const EncoderDecoder = {
   encode: (data) => new Promise((resolve, reject) => {
     // @TODO refine options
-    const options = {
-      level: 12
-    }
-    zlib.brotliCompress(data, options, (err, encoded) => {
-      encoded = Buffer.from(encoded)
-      if (err) {
-        console.log('Ooops, we have a problem with encoding', err)
-        return reject(err)
+    const deflater = new zlib.BrotliCompress({
+      params: {
+        [zlib.constants.BROTLI_PARAM_QUALITY]: zlib.constants.BROTLI_MAX_QUALITY
       }
-      resolve(encoded)
     })
+    deflater.end(data)
+    deflater.on('data', encoded => resolve(encoded))
   }),
 
   decode: (encoded) => new Promise((resolve, reject) => {
     // @TODO refine options
-    const options = {
-      finishFlush: zlib.constants.Z_FINISH
-    }
-    zlib.brotliDecompress(encoded, options, (err, decoded) => {
-      encoded = Buffer.from(encoded)
-      if (err) {
-        console.log('Ooops, we have a problem with decoding', err)
-        return reject(err)
-      }
-      resolve(decoded)
-    })
+    const inflater = new zlib.BrotliDecompress()
+    inflater.end(encoded)
+    inflater.on('data', decoded => resolve(decoded))
   })
 }
+
 module.exports = EncoderDecoder

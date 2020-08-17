@@ -1,6 +1,6 @@
 const Account = require('./account')
 const { cryptoWaitReady } = require('@polkadot/util-crypto')
-const ready = cryptoWaitReady();
+const ready = cryptoWaitReady()
 
 module.exports = account
 

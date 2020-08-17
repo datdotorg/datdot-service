@@ -1,8 +1,5 @@
 const debug = require('debug')
-const getData = require('../getFeed')
 const getChainAPI = require('../chainAPI')
-// const serviceAPI = require('../..')
-
 
 /******************************************************************************
   ROLE: supporter
@@ -23,43 +20,42 @@ async function role ({ name, account }) {
   // EVENTS
   async function handleEvent (event) {
     if (event.method === 'FeedPublished') {
-      const [ feedID] = event.data
+      const [feedID] = event.data
       log('Event received:', event.method, event.data.toString())
       const nonce = await account.getNonce()
       // @TODO later pass a more sofisticated plan which will include ranges
-      const ranges = [[0,8]]
+      const ranges = [[0, 8]]
       const plan = { ranges, feedID }
       await chainAPI.publishPlan({ plan, signer, nonce })
     }
     if (event.method === 'HostingStarted') {
-      const [ contractID, userID] = event.data
+      const [contractID, userID] = event.data
       const { plan: planID } = await chainAPI.getContractByID(contractID)
-      const { supporter: supporterID} = await chainAPI.getPlanByID(planID)
+      const { supporter: supporterID } = await chainAPI.getPlanByID(planID)
       const supporterAddress = await chainAPI.getUserAddress(supporterID)
       if (supporterAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
-        const { feed: feedID } =  await chainAPI.getPlanByID(planID)
         const nonce = await account.getNonce()
         // @TODO:Request regular challenges
-        await chainAPI.requestStorageChallenge({contractID, hosterID: userID, signer, nonce})
-        await chainAPI.requestPerformanceChallenge({contractID, signer, nonce})
+        await chainAPI.requestStorageChallenge({ contractID, hosterID: userID, signer, nonce })
+        await chainAPI.requestPerformanceChallenge({ contractID, signer, nonce })
       }
     }
     if (event.method === 'StorageChallengeConfirmed') {
-      const [ storageChallengeID] = event.data
+      const [storageChallengeID] = event.data
       const { contract: contractID } = await chainAPI.getStorageChallengeByID(storageChallengeID)
       const { plan: planID } = await chainAPI.getContractByID(contractID)
-      const { supporter: supporterID} = await chainAPI.getPlanByID(planID)
+      const { supporter: supporterID } = await chainAPI.getPlanByID(planID)
       const supporterAddress = await chainAPI.getUserAddress(supporterID)
       if (supporterAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
       }
     }
     if (event.method === 'PerformanceChallengeConfirmed') {
-      const [ performanceChallengeID] = event.data
+      const [performanceChallengeID] = event.data
       const { contract: contractID } = await chainAPI.getPerformanceChallengeByID(performanceChallengeID)
       const { plan: planID } = await chainAPI.getContractByID(contractID)
-      const { supporter: supporterID} = await chainAPI.getPlanByID(planID)
+      const { supporter: supporterID } = await chainAPI.getPlanByID(planID)
       const supporterAddress = await chainAPI.getUserAddress(supporterID)
       if (supporterAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())

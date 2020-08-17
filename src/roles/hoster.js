@@ -1,7 +1,6 @@
 const debug = require('debug')
 const getChainAPI = require('../chainAPI')
 const getServiceAPI = require('../serviceAPI')
-const { bnToU8a } = require('@polkadot/util')
 
 /******************************************************************************
   ROLE: Hoster
@@ -22,11 +21,10 @@ async function role ({ name, account }) {
   const signer = account.chainKeypair
   chainAPI.listenToEvents(handleEvent)
   const nonce = account.getNonce()
-  await chainAPI.registerHoster({hosterKey, signer, nonce})
+  await chainAPI.registerHoster({ hosterKey, signer, nonce })
 
-// EVENTS
+  // EVENTS
   async function handleEvent (event) {
-
     if (event.method === 'NewContract') {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)
@@ -36,10 +34,10 @@ async function role ({ name, account }) {
         if (hosterAddress === myAddress) {
           log('Event received:', event.method, event.data.toString())
           const { feedKey, attestorKey, plan } = await getHostingData(contract)
-          const host = serviceAPI.host({account, feedKey, attestorKey, plan})
+          const host = serviceAPI.host({ account, feedKey, attestorKey, plan })
           host.then(async () => {
             const nonce = account.getNonce()
-            await chainAPI.hostingStarts({contractID, signer, nonce})
+            await chainAPI.hostingStarts({ contractID, signer, nonce })
           })
         }
       })
@@ -56,7 +54,7 @@ async function role ({ name, account }) {
         const data = await getStorageChallengeData(storageChallenge, contract)
         data.account = account
         // log('sendStorageChallengeToAttestor - DATA', data)
-        const sendStorageChallenge = await serviceAPI.sendStorageChallengeToAttestor(data)
+        await serviceAPI.sendStorageChallengeToAttestor(data)
       }
     }
   }
@@ -70,7 +68,7 @@ async function role ({ name, account }) {
     const planID = contract.plan
     const { feed: feedID } = await chainAPI.getPlanByID(planID)
     const feedKey = await chainAPI.getFeedKey(feedID)
-    const objArr = ranges.map( range => ({start: range[0], end: range[1]}) )
+    const objArr = ranges.map(range => ({ start: range[0], end: range[1] }))
     const plan = { ranges: objArr }
     return { feedKey, attestorKey, plan }
   }
@@ -81,7 +79,6 @@ async function role ({ name, account }) {
     const attestorID = storageChallenge.attestor
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
     const proofs = await serviceAPI.getStorageChallenge({ account, storageChallenge, feedKey })
-    return {storageChallengeID: storageChallenge.id, feedKey, attestorKey, proofs}
+    return { storageChallengeID: storageChallenge.id, feedKey, attestorKey, proofs }
   }
-
 }

@@ -21,5 +21,5 @@ async function role ({ name, account }) {
   const myAddress = account.chainKeypair.address
   const signer = account.chainKeypair
   log(`New account created => ${myAddress}`)
-  await chainAPI.newUser({signer, nonce})
+  await chainAPI.newUser({ signer, nonce })
 }

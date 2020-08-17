@@ -56,7 +56,9 @@ const performanceChallenges = [] // Performance Proof
   LOOKUP
 ******************************************************************************/
 const userByAddress = {} // address
-const feedByKey = {} // key
+const feedByKey = {
+  // { key: id }
+}
 
 /******************************************************************************
   STATUS
