@@ -48,10 +48,9 @@ async function role ({ name, account }) {
           log('Event received:', event.method, event.data.toString())
           const contractID = performanceChallenge.contract
           const contract = await chainAPI.getContractByID(contractID)
-          const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
+          const feedID = contract.feed
           const feedKey = await chainAPI.getFeedKey(feedID)
-          const plan = await chainAPI.getPlanByID(contract.plan)
-          const ranges = plan.ranges
+          const ranges = contract.ranges
           const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
           // @TODO: meet with other attestors in the swarm to decide on random number of attestors
           // @TODO: sign random number
@@ -74,10 +73,10 @@ async function role ({ name, account }) {
         log('Event received:', event.method, event.data.toString())
         const data = await getStorageChallengeData(storageChallenge)
         data.account = account
-        const { storageChallengeID, proofs } = await serviceAPI.verifyStorageChallenge(data)
-        if (proofs) {
+        const { storageChallengeID, proof } = await serviceAPI.verifyStorageChallenge(data)
+        if (proof) {
           const nonce = account.getNonce()
-          const opts = { storageChallengeID, proofs, signer, nonce }
+          const opts = { storageChallengeID, proof, signer, nonce }
           await chainAPI.submitStorageChallenge(opts)
         }
       }
@@ -90,7 +89,7 @@ async function role ({ name, account }) {
     const hosterID = storageChallenge.hoster
     const hosterKey = await chainAPI.getHosterKey(hosterID)
     const contract = await chainAPI.getContractByID(storageChallenge.contract)
-    const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
+    const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
     return { hosterKey, feedKey, storageChallengeID: storageChallenge.id }
   }
@@ -108,8 +107,7 @@ async function role ({ name, account }) {
       const key = await chainAPI.getHosterKey(id)
       hosterKeys.push(key)
     })
-    const planID = contract.plan
-    const { feed: feedID } = await chainAPI.getPlanByID(planID)
+    const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
     return { feedKey, encoderKeys, hosterKeys }
   }

@@ -37,6 +37,7 @@ async function role ({ name, account }) {
           const encode = serviceAPI.encode({ account, attestorKey, feedKey, ranges })
           encode.then(async () => {
             const nonce = await account.getNonce()
+            // @TODO double check we notify chain only if encoding was checked
             await chainAPI.encodingDone({ contractID, signer, nonce })
           })
         }
@@ -49,7 +50,7 @@ async function role ({ name, account }) {
   async function getHostingData (contract) {
     const ranges = contract.ranges
     const planID = contract.plan
-    const { feed: feedID } = await chainAPI.getPlanByID(planID)
+    const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
     const attestorID = contract.attestor
     const attestorKey = await chainAPI.getAttestorKey(attestorID)

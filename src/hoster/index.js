@@ -187,7 +187,7 @@ module.exports = class Hoster {
     return storage.getStorageChallenge(index)
   }
 
-  async sendStorageChallenge ({ storageChallengeID, feedKey, attestorKey, proofs }) {
+  async sendStorageChallenge ({ storageChallengeID, feedKey, attestorKey, proof }) {
     const topic = feedKey
     const peer = await this.communication.findByTopicAndPublicKey(topic, attestorKey, { announce: false, lookup: true })
     const resultStream = ndjson.serialize()
@@ -201,7 +201,7 @@ module.exports = class Hoster {
       type: 'StorageChallenge',
       feedKey,
       storageChallengeID,
-      proofs
+      proof
     })
     // --------------------------------------------------------------
 

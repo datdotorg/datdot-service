@@ -48,7 +48,7 @@ function datdotService () {
   }
 
   /* ----------------------------------------------------------------
-                     WHILE HOSTING => PROOFS
+                     WHILE HOSTING => proof
 ------------------------------------------------------------------ */
   async function getStorageChallenge ({ account, storageChallenge, feedKey }) {
     const data = await Promise.all(storageChallenge.chunks.map(async (chunk) => {
@@ -58,13 +58,14 @@ function datdotService () {
   }
 
   async function sendStorageChallengeToAttestor (data) {
-    const { account, storageChallengeID, feedKey, attestorKey, proofs } = data
-    await account.hoster.sendStorageChallenge({ storageChallengeID, feedKey, attestorKey, proofs })
+    const { account, storageChallengeID, feedKey, attestorKey, proof } = data
+    await account.hoster.sendStorageChallenge({ storageChallengeID, feedKey, attestorKey, proof })
     // hoster sends proof of data to the attestor
   }
 
   async function verifyStorageChallenge (data) {
     const { account, hosterKey, feedKey, storageChallengeID } = data
+    // @TODO prepare the response: hash, proof etc. instead of sending the full chunk
     return await account.attestor.verifyStorageChallenge({ storageChallengeID, feedKey, hosterKey })
   }
 

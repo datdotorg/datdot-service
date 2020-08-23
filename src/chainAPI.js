@@ -20,7 +20,7 @@ async function datdotChain () {
     registerHoster,
     registerEncoder,
     registerAttestor,
-    publishFeed,
+    publishFeeds,
     publishPlan,
     encodingDone,
     hostingStarts,
@@ -78,10 +78,12 @@ async function datdotChain () {
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function publishFeed (opts) {
-    const { merkleRoot, signer, nonce } = opts
-    // merkleRoot[0] = bufferToU8a(merkleRoot[0])
-    const tx = await API.tx.datVerify.publishFeed(merkleRoot)
+  async function publishFeeds (opts) {
+    const { feeds, signer, nonce } = opts
+    // feeds.forEach(merkleRoot => {
+    //   merkleRoot[0] = bufferToU8a(merkleRoot[0])
+    // })
+    const tx = await API.tx.datVerify.publishFeeds(feeds)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
@@ -162,8 +164,8 @@ async function datdotChain () {
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function submitStorageChallenge (opts) {
-    const { storageChallengeID, proofs, signer, nonce } = opts
-    const tx = await API.tx.datVerify.submitStorageChallenge(storageChallengeID, proofs)
+    const { storageChallengeID, proof, signer, nonce } = opts
+    const tx = await API.tx.datVerify.submitStorageChallenge(storageChallengeID, proof)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }

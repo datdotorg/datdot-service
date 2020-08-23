@@ -2,7 +2,7 @@ const debug = require('debug')
 const getChainAPI = require('../chainAPI')
 
 /******************************************************************************
-  ROLE: supporter
+  ROLE: sponsor
 ******************************************************************************/
 const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
@@ -10,7 +10,7 @@ module.exports = role
 
 async function role ({ name, account }) {
   const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
-  log('I am a supporter')
+  log('I am a sponsor')
   const chainAPI = await getChainAPI()
   chainAPI.listenToEvents(handleEvent)
 
@@ -23,17 +23,15 @@ async function role ({ name, account }) {
       const [feedID] = event.data
       log('Event received:', event.method, event.data.toString())
       const nonce = await account.getNonce()
-      // @TODO later pass a more sofisticated plan which will include ranges
-      const ranges = [[0, 8]]
-      const plan = { ranges, feedID }
+      const plan = makePlan(feedID)
       await chainAPI.publishPlan({ plan, signer, nonce })
     }
     if (event.method === 'HostingStarted') {
       const [contractID, userID] = event.data
       const { plan: planID } = await chainAPI.getContractByID(contractID)
-      const { supporter: supporterID } = await chainAPI.getPlanByID(planID)
-      const supporterAddress = await chainAPI.getUserAddress(supporterID)
-      if (supporterAddress === myAddress) {
+      const { sponsor: sponsorID } = await chainAPI.getPlanByID(planID)
+      const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
+      if (sponsorAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
         const nonce = await account.getNonce()
         // @TODO:Request regular challenges
@@ -45,9 +43,9 @@ async function role ({ name, account }) {
       const [storageChallengeID] = event.data
       const { contract: contractID } = await chainAPI.getStorageChallengeByID(storageChallengeID)
       const { plan: planID } = await chainAPI.getContractByID(contractID)
-      const { supporter: supporterID } = await chainAPI.getPlanByID(planID)
-      const supporterAddress = await chainAPI.getUserAddress(supporterID)
-      if (supporterAddress === myAddress) {
+      const { sponsor: sponsorID } = await chainAPI.getPlanByID(planID)
+      const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
+      if (sponsorAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
       }
     }
@@ -55,11 +53,50 @@ async function role ({ name, account }) {
       const [performanceChallengeID] = event.data
       const { contract: contractID } = await chainAPI.getPerformanceChallengeByID(performanceChallengeID)
       const { plan: planID } = await chainAPI.getContractByID(contractID)
-      const { supporter: supporterID } = await chainAPI.getPlanByID(planID)
-      const supporterAddress = await chainAPI.getUserAddress(supporterID)
-      if (supporterAddress === myAddress) {
+      const { sponsor: sponsorID } = await chainAPI.getPlanByID(planID)
+      const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
+      if (sponsorAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
       }
+    }
+  }
+
+  // HELPERS
+
+  function makePlan (feedID) {
+    const config = { // at least 1 region is mandatory (e.g. global)
+      performance: {
+        availability: '', // percentage_decimal
+        bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
+        latency: { /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
+      },
+      regions: [{
+        region: '', // e.g. 'NORTH AMERICA', @TODO: see issue, e.g. latitude, longitude
+        performance: {
+          availability: '', // percentage_decimal
+          bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
+          latency: {  /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
+        }
+      }/*, ...*/]
+    }
+    return {
+      feeds: [{ id: feedID, ranges: [[0,8]] }/*, ...*/],
+      from       : '', // date
+      until: {
+        time     : '', // date
+        budget   : '',
+        traffic  : '',
+        price    : '',
+      },
+      importance : '', // 1-3? 1-10?
+      config, // general config
+      schedules  : [{
+        duration : '', // milliseconds
+        delay    : '', // milliseconds
+        interval : '', // milliseconds
+        repeat   : '', // number
+        config // specialized config for each schedule
+      }]
     }
   }
 }

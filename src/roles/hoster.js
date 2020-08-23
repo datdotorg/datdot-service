@@ -65,8 +65,7 @@ async function role ({ name, account }) {
     const ranges = contract.ranges
     const attestorID = contract.attestor
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
-    const planID = contract.plan
-    const { feed: feedID } = await chainAPI.getPlanByID(planID)
+    const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
     const objArr = ranges.map(range => ({ start: range[0], end: range[1] }))
     const plan = { ranges: objArr }
@@ -74,11 +73,11 @@ async function role ({ name, account }) {
   }
 
   async function getStorageChallengeData (storageChallenge, contract) {
-    const { feed: feedID } = await chainAPI.getPlanByID(contract.plan)
+    const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
     const attestorID = storageChallenge.attestor
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
-    const proofs = await serviceAPI.getStorageChallenge({ account, storageChallenge, feedKey })
-    return { storageChallengeID: storageChallenge.id, feedKey, attestorKey, proofs }
+    const proof = await serviceAPI.getStorageChallenge({ account, storageChallenge, feedKey })
+    return { storageChallengeID: storageChallenge.id, feedKey, attestorKey, proof }
   }
 }

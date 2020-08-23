@@ -21,7 +21,7 @@ module.exports = {
       registerEncoder,
       registerAttestor,
       registerHoster,
-      publishFeed,
+      publishFeeds,
       publishPlan,
       encodingDone,
       hostingStarts,
@@ -40,7 +40,7 @@ async function newUser (...args) { return { signAndSend: signAndSend.bind({ args
 async function registerEncoder (...args) { return { signAndSend: signAndSend.bind({ args, type: 'registerEncoder' }) } }
 async function registerAttestor (...args) { return { signAndSend: signAndSend.bind({ args, type: 'registerAttestor' }) } }
 async function registerHoster (...args) { return { signAndSend: signAndSend.bind({ args, type: 'registerHoster' }) } }
-async function publishFeed (...args) { return { signAndSend: signAndSend.bind({ args, type: 'publishFeed'}) } }
+async function publishFeeds (...args) { return { signAndSend: signAndSend.bind({ args, type: 'publishFeeds'}) } }
 async function publishPlan (...args) { return { signAndSend: signAndSend.bind({ args, type: 'publishPlan'}) } }
 async function encodingDone (...args) { return { signAndSend: signAndSend.bind({ args, type: 'encodingDone'}) } }
 async function hostingStarts (...args) { return { signAndSend: signAndSend.bind({ args, type: 'hostingStarts'}) } }
@@ -69,7 +69,7 @@ function signAndSend (signer, { nonce }, status) {
   const user = _newUser(signer.address, { nonce }, status)
   if (!user) return console.error('NO USER', user)
 
-  if (type === 'publishFeed') _publishFeed(user, { nonce }, status, args)
+  if (type === 'publishFeeds') _publishFeeds(user, { nonce }, status, args)
   else if (type === 'publishPlan') _publishPlan(user, { nonce }, status, args)
   else if (type === 'registerEncoder') _registerEncoder(user, { nonce }, status, args)
   else if (type === 'registerAttestor') _registerAttestor(user, { nonce }, status, args)
@@ -100,35 +100,37 @@ function _newUser (address, { nonce }, status) {
   }
   return user
 }
-async function _publishFeed (user, { nonce }, status, args) {
-  const [ merkleRoot ] = args
-  const [key, {hashType, children}, signature] = merkleRoot
-  // check if feed already exists
-  if (DB.feedByKey[key.toString('hex')]) return
-  const feed = { publickey: key.toString('hex'), meta: { signature, hashType, children } }
-  const feedID = DB.feeds.push(feed)
-  feed.id = feedID
-  // push to feedByKey lookup array
-  DB.feedByKey[key.toString('hex')] = feedID
-  const userID = user.id
-  feed.publisher = userID
-  // Emit event
-  const NewFeed = { event: { data: [feedID], method: 'FeedPublished' } }
-  handlers.forEach(handler => handler([NewFeed]))
+async function _publishFeeds (user, { nonce }, status, args) {
+  const [ feeds ] = args
+  feeds.forEach(data => {
+    const [key, {hashType, children}, signature] = data
+    // check if feed already exists
+    if (DB.feedByKey[key.toString('hex')]) return
+    const feed = { publickey: key.toString('hex'), meta: { signature, hashType, children } }
+    const feedID = DB.feeds.push(feed)
+    feed.id = feedID
+    // push to feedByKey lookup array
+    DB.feedByKey[key.toString('hex')] = feedID
+    const userID = user.id
+    feed.publisher = userID
+    // Emit event
+    const NewFeed = { event: { data: [feedID], method: 'FeedPublished' } }
+    handlers.forEach(handler => handler([NewFeed]))
+  })
 }
 async function _publishPlan (user, { nonce }, status, args) {
   const [ plan ] = args
-  const { feedID, ranges } =  plan
+  const { feeds, from, until, importance, config, schedules } =  plan
   const userID = user.id
-  plan.supporter = userID // or patron?
-  plan.feed = feedID
-  plan.ranges = ranges
+  plan.sponsor = userID // or patron?
   const planID = DB.plans.push(plan)
   plan.id = planID
   // Add planID to unhostedPlans
   DB.unhostedPlans.push(planID)
-  // Find hoster & encoder
-  makeNewContract({planID})
+  // Add feeds to unhosted
+  plan.unhostedFeeds = feeds
+  // Find hosters,encoders and attestors
+  makeNewContract(plan)
   // Emit event
   const NewPlan = { event: { data: [planID], method: 'NewPlan' } }
   handlers.forEach(handler => handler([NewPlan]))
@@ -257,13 +259,18 @@ function validateProof (proof, storageChallenge) {
   else return false
 }
 ////////////////////////////////////////////////////////////////////////////
-function makeNewContract (planID) {
+function makeNewContract (plan) {
+  let planID
+  if (plan) planID = plan.id
   // Find an unhosted plan
   const unhosted = DB.unhostedPlans
+
   if (!planID && unhosted.length) [planID, pos] = getRandom(unhosted)
   const selectedPlan = DB.plans[planID - 1]
   if (!selectedPlan) return console.log('current lack of demand for hosting plans')
   // Get hosters, encoders and attestors
+  const { unhostedFeeds, from, until, importance, config, schedules } =  selectedPlan
+  // @TODO select hosters and encoders who match the requirements
   const encoders  = DB.idleEncoders
   const hosters   = DB.idleHosters
   const attestors = DB.idleAttestors
@@ -272,21 +279,24 @@ function makeNewContract (planID) {
   if (!attestors.length) return console.log(`missing attestors`)
 
   // Make a new contract
+  const feed = unhostedFeeds.shift()
   const contract = {
     plan: planID,
-    ranges: selectedPlan.ranges,
+    feed: feed.id,
+    ranges: feed.ranges,
     encoders: encoders.splice(0,3),
     hosters: hosters.splice(0,3),
     attestor: attestors.shift()
   }
-  unhosted.forEach((id, i) => { if (id === planID) unhosted.splice(i, 1) })
-  // [idleEncoders, idleHosters, idleAttestors] = [ [], [], [] ]
+
+  // Check if this plan has any unhosted feeds left
+  if (!unhostedFeeds.length) {
+    unhosted.forEach((id, i) => { if (id === planID) unhosted.splice(i, 1) })
+  }
+
   console.log('New contract', contract)
   const contractID = DB.contracts.push(contract)
   contract.id = contractID
-  // remove planID from unhostedPlans
-  // when all contracts for certain plan are hosted => push planID to hostedPlans
-  DB.unhostedPlans.splice(planID, 1)
   const NewContract = { event: { data: [contractID], method: 'NewContract' } }
   handlers.forEach(handler => handler([NewContract]))
 }

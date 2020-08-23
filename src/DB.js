@@ -10,6 +10,7 @@ const users = []
 const feeds = []
 /*
 {
+  id: 1,
   publickey: 'key',
   meta: '{ signature, hashType, children }',
   status: 'unhosted'
@@ -19,7 +20,7 @@ const plans = []
 /*
 {
   feed: feedID,
-  supporter: 'userID',
+  sponsor: 'userID',
   ranges: [[0, 5], [7, 55]] // default [{0, feed.length}],
 }
 */

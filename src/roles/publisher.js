@@ -14,16 +14,23 @@ async function role ({ name, account }) {
   const chainAPI = await getChainAPI()
   chainAPI.listenToEvents(handleEvent)
 
-  // create or use existing data
-  // @TODO: seed hypercore in a separate process and just pass in the feed key and swarm key
-  const data = await getData(account)
-  log('Publishing data', data[0].toString('hex'))
+  const feedkey1 = '4a4f951ed9bd3a1893e5c6bc18becda04e9a31acbb079d0cac0f366ea4ee781b'
+  const swarmkey1= 'ed69eb1cdb5e7ad8fcf0fcb3ff74c83b22592721db8e8ab43b3f2e0ed665bc04'
+  const feed1 = await getData(feedkey1, swarmkey1)
+
+  const feedkey2 = '93d02ccda89fe76c9bdc70b30f273dc101345d65256dc22bc47b52464d55472d'
+  const swarmkey2 = 'febe6a9d42a6f46c9e13b47cd7a9db3502ebcf92156b6ff59efc6cf1f520eba0'
+  const feed2 = await getData(feedkey2, swarmkey2)
+
+  const feeds = [feed1, feed2]
+  log('Publishing feeds', feeds)
+
   const myAddress = account.chainKeypair.address
   const signer = account.chainKeypair
   const nonce = await account.getNonce()
   // @TODO later pass a more sofisticated plan which will include ranges
   // publish data and plan to chain (= request hosting)
-  await chainAPI.publishFeed({ merkleRoot: data, signer, nonce })
+  await chainAPI.publishFeeds({ feeds, signer, nonce })
 
   // EVENTS
   async function handleEvent (event) {

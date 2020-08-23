@@ -118,16 +118,19 @@ module.exports = class Attestor {
     for await (const message of resultStream) {
       const { type } = message
       if (type === 'StorageChallenge') {
-        const { storageChallengeID, proofs } = message
+        const { storageChallengeID, proof } = message
         if (id === storageChallengeID) {
+          // proof.encoded
           // @TODO: merkle verify each chunk (to see if it belongs to the feed) && verify the signature
           // @TODO: check the proof
           // @TODO: hash the data
-          if (proofs) {
+          if (proof) {
             confirmStream.write({
               type: 'StorageChallenge:verified',
               ok: true
             })
+            // return hash, challengeID, signature of the event
+            // does hoster send a hash or does attestor decode and then hash?
             return message
           }
         }
