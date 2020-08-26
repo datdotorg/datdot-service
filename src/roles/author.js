@@ -3,6 +3,8 @@ const reallyReady = require('hypercore-really-ready')
 const ram = require('random-access-memory')
 const hyperswarm = require('hyperswarm')
 const debug = require('debug')
+const getChatAPI = require('../../lab/scenarios/chatAPI')
+const crypto = require('crypto')
 
 /******************************************************************************
   ROLE: Author
@@ -13,9 +15,12 @@ module.exports = role
 
 // MAKE FEED and SEED IT
 
-async function role ({ name }) {
+async function role (profile, config) {
+  const { name } = profile
   const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
+  profile.log = log
   const feed = Hypercore(ram)
+  const chatAPI = await getChatAPI(profile, config.chat.join(':'))
 
   await feed.ready()
 
@@ -29,20 +34,20 @@ async function role ({ name }) {
   await feed.append('Здраво Свете!')
   await feed.append('Hai dunia!')
 
-  const feedkey = feed.key
-  const swarmkey = feed.discoveryKey
-
-  const swarm = hyperswarm()
-  swarm.join(swarmkey, { lookup: true, announce: true })
-
   await reallyReady(feed)
+  const feedkey = feed.key
+  const topic = feed.discoveryKey
+  const swarm = hyperswarm()
+  swarm.join(topic, { announce: true, lookup: false })
+
 
   swarm.on('connection', (socket, info) => {
-    console.log('new connection!')
-    // you can now use the socket as a stream, eg:
+    log('new connection!')
     socket.pipe(feed.replicate(info.client)).pipe(socket)
   })
-  log('Feedkey', feedkey.toString('hex'))
-  log('Swarmkey', swarmkey.toString('hex'))
-  return({ feedkey,swarmkey })
+
+  const keys = { feedkey, topic }
+  log('Send the keys', keys)
+  chatAPI.send(JSON.stringify(keys))
+  return keys
 }

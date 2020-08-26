@@ -8,6 +8,7 @@ const { seedKeygen } = require('noise-peer')
 const NAMESPACE = 'datdot-encoder'
 const IDENITY_NAME = 'signing'
 const NOISE_NAME = 'noise'
+const ANNOUNCE = { announce: true, lookup: false }
 
 module.exports = class Encoder {
   constructor ({
@@ -50,20 +51,26 @@ module.exports = class Encoder {
     this.communication = p2plex({ keyPair: noiseKeyPair })
   }
 
-  async encodeFor (attestorKey, feedKey, ranges) {
+  async encodeFor (attestorKey, encoderKey, feedKey, ranges) {
     if (!Array.isArray(ranges)) {
       const index = ranges
       ranges = [[index, index]]
     }
 
     // @TODO: Derive shared key
-    const topic = feedKey
+    // If you're using something fancy for generating a discovery key, try hashing the value to make it consistent
+    const arr = [encoderKey, feedKey, attestorKey]
+    const conc = Buffer.concat(arr)
+    const out = Buffer.alloc(32)
+    sodium.crypto_generichash(out, conc)
+    const topic = out
 
     const feed = this.Hypercore(feedKey)
 
     // @TODO: Add timeout for when we can't find the attestor
 
-    const peer = await this.communication.findByTopicAndPublicKey(topic, attestorKey, { announce: false, lookup: true })
+    const peer = await this.communication.findByTopicAndPublicKey(topic, attestorKey, { announce: true, lookup: false })
+    console.log('Encoder has a peer')
     const resultStream = ndjson.serialize()
     const confirmStream = ndjson.parse()
 
@@ -90,6 +97,7 @@ module.exports = class Encoder {
         // Sign the data with our signing secret key and write it to the proof buffer
         sodium.crypto_sign_detached(proof, toSign, this.signingSecretKey)
         // Send the encoded stuff over to the hoster so they can store it
+        console.log('Encoder sending data to attestor', encoded)
         resultStream.write({
           type: 'encoded',
           feed: feedKey,
@@ -104,7 +112,7 @@ module.exports = class Encoder {
         // Wait for the attestor to tell us they've handled the data
         // @TODO: Set up timeout for when peer doesn't respond to us
         const [response] = await once(confirmStream, 'data')
-
+        console.log('Encoder has a response')
         if (response.error) {
           throw new Error(response.error)
           // @TODO what do we do if one or multiple encoders fail to do their work

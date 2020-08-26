@@ -1,6 +1,7 @@
 const sub = require('subleveldown')
 const defer = require('promise-defer')
 const reallyReady = require('hypercore-really-ready')
+const sodium = require('sodium-universal')
 const ndjson = require('ndjson')
 const { PassThrough } = require('stream')
 const pump = require('pump')
@@ -37,22 +38,30 @@ module.exports = class Hoster {
     this.EncoderDecoder = EncoderDecoder
   }
 
-  async addFeed ({ feedKey, attestorKey, plan }) {
+  async addFeed ({ feedKey, hosterKey, attestorKey, plan }) {
     await this.setOpts(feedKey, plan)
     await this.addKey(feedKey, plan)
     await this.loadFeedData(feedKey)
-    await this.getEncodedDataFromAttestor(attestorKey, feedKey)
+    await this.getEncodedDataFromAttestor(hosterKey, attestorKey, feedKey)
   }
 
-  async getEncodedDataFromAttestor (attestorKey, key) {
+  async getEncodedDataFromAttestor (hosterKey, attestorKey, key) {
     // TODO: Derive key by combining our public keys and feed key
-    const topic = key
-    const peer = await this.communication.findByTopicAndPublicKey(topic, attestorKey, ANNOUNCE)
+    // const topic = key
+
+    const arrAttest1 = [attestorKey, key, hosterKey]
+    const conc1 = Buffer.concat(arrAttest1)
+    const out1 = Buffer.alloc(32)
+    sodium.crypto_generichash(out1, conc1)
+    const topicAttest1 = out1
+
+    const peer = await this.communication.findByTopicAndPublicKey(topicAttest1, attestorKey, { announce: true, lookup: false })
+    console.log('Hoster has a peer')
     const resultStream = new PassThrough({ objectMode: true })
     const rawResultStream = ndjson.parse()
     const confirmStream = ndjson.serialize()
 
-    const verifiedStream = peer.receiveStream(topic)
+    const verifiedStream = peer.receiveStream(topicAttest1)
 
     pump(confirmStream, verifiedStream, rawResultStream, resultStream)
 
@@ -61,6 +70,7 @@ module.exports = class Hoster {
       const { type } = message
       if (type === 'verified') {
         const { feed, index, encoded, proof, nodes, signature } = message
+        console.log('Hoster got a message', message)
 
         const key = Buffer.from(feed)
         const isExisting = await this.hasKey(key)
@@ -187,13 +197,20 @@ module.exports = class Hoster {
     return storage.getStorageChallenge(index)
   }
 
-  async sendStorageChallenge ({ storageChallengeID, feedKey, attestorKey, proof }) {
-    const topic = feedKey
-    const peer = await this.communication.findByTopicAndPublicKey(topic, attestorKey, { announce: false, lookup: true })
+  async sendStorageChallenge ({ storageChallengeID, hosterKey, feedKey, attestorKey, proof }) {
+    // const topic = feedKey
+
+    const arrAttest2 = [hosterKey, attestorKey]
+    const conc2 = Buffer.concat(arrAttest2)
+    const out2 = Buffer.alloc(32)
+    sodium.crypto_generichash(out2, conc2)
+    const topicAttest2 = out2
+
+    const peer = await this.communication.findByTopicAndPublicKey(topicAttest2, attestorKey, { announce: true, lookup: false })
     const resultStream = ndjson.serialize()
     const confirmStream = ndjson.parse()
 
-    const encodingStream = peer.createStream(topic)
+    const encodingStream = peer.createStream(topicAttest2)
     pump(resultStream, encodingStream, confirmStream)
     // @TODO add event signature in ext message after chunk x
 

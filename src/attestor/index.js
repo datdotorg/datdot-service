@@ -1,4 +1,5 @@
 const delay = require('delay')
+const sodium = require('sodium-universal')
 const p2plex = require('p2plex')
 const { seedKeygen } = require('noise-peer')
 const pump = require('pump')
@@ -10,7 +11,6 @@ const NOISE_NAME = 'noise'
 const { performance } = require('perf_hooks')
 
 const DEFAULT_TIMEOUT = 5000
-const ANNOUNCE = { announce: true, lookup: false }
 
 module.exports = class Attestor {
   constructor ({ sdk, timeout = DEFAULT_TIMEOUT }) {
@@ -34,27 +34,41 @@ module.exports = class Attestor {
   }
 
   async verifyEncoding (opts) {
-    const { encoderKey, hosterKey, feedKey: key, cb: compareEncodings } = opts
+    const { attestorKey, encoderKey, hosterKey, feedKey: key, cb: compareEncodings } = opts
     const attestor = this
 
     // TODO: Derive key by combining our public keys and feed key
-    const topic = key
-    const peer = await attestor.communication.findByTopicAndPublicKey(topic, encoderKey, ANNOUNCE)
+    // const topic = key
+    const arrEnc = [encoderKey, key, attestorKey]
+    const conc1 = Buffer.concat(arrEnc)
+    const out1 = Buffer.alloc(32)
+    sodium.crypto_generichash(out1, conc1)
+    const topicEnc = out1
+
+    const peer = await attestor.communication.findByTopicAndPublicKey(topicEnc, encoderKey, { announce: false, lookup: true })
+    console.log('Attestor has a peer')
     const resultStream = new PassThrough({ objectMode: true })
     const rawResultStream = ndjson.parse()
     const confirmStream = ndjson.serialize()
-    const encoderStream = peer.receiveStream(topic)
+    const encoderStream = peer.receiveStream(topicEnc)
     pump(confirmStream, encoderStream, rawResultStream, resultStream)
 
-    const hoster = await attestor.communication.findByTopicAndPublicKey(topic, hosterKey, { announce: false, lookup: true })
+    const arrHost1 = [attestorKey, key, hosterKey]
+    const conc2 = Buffer.concat(arrHost1)
+    const out2 = Buffer.alloc(32)
+    sodium.crypto_generichash(out2, conc2)
+    const topicHost1 = out2
+
+    const hoster = await attestor.communication.findByTopicAndPublicKey(topicHost1, hosterKey, { announce: false, lookup: true })
     const receiveStream = new PassThrough({ objectMode: true })
     const rawReceiveStream = ndjson.parse()
 
     const sendStream = ndjson.serialize()
-    const hosterStream = hoster.createStream(topic)
+    const hosterStream = hoster.createStream(topicHost1)
     pump(sendStream, hosterStream, rawReceiveStream, receiveStream)
 
     for await (const message of resultStream) {
+      console.log('Encoding message received')
       // @TODO: merkle verify each chunk
       const { type } = message
       if (type === 'encoded') {
@@ -91,6 +105,7 @@ module.exports = class Attestor {
         // Wait for the hoster to tell us they've handled the data
         // TODO: Set up timeout for when peer doesn't respond to us
         const [response] = await once(receiveStream, 'data')
+        console.log('Response from the hoster to attestor', response)
         if (response.error) throw new Error(response.error)
       }
     }
@@ -105,10 +120,18 @@ module.exports = class Attestor {
   }
 
   async verifyStorageChallenge (data) {
-    const { hosterKey, feedKey, storageChallengeID: id } = data
+    const { attestorKey, hosterKey, feedKey, storageChallengeID: id } = data
     // TODO: Derive topic by combining our public keys and feed key
-    const topic = feedKey
-    const peer = await this.communication.findByTopicAndPublicKey(topic, hosterKey, ANNOUNCE)
+    // const topic = feedKey
+
+    const arrHost2 = [attestorKey, hosterKey]
+    const conc3 = Buffer.concat(arrHost2)
+    const out3 = Buffer.alloc(32)
+    sodium.crypto_generichash(out3, conc3)
+    const topicHost2 = out3
+
+
+    const peer = await this.communication.findByTopicAndPublicKey(topicHost2, hosterKey, { announce: false, lookup: true })
     const resultStream = new PassThrough({ objectMode: true })
     const rawResultStream = ndjson.parse()
     const confirmStream = ndjson.serialize()

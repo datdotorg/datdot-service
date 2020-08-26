@@ -25,26 +25,26 @@ function datdotService () {
                  BEFORE HOSTING => ENCODING, VERIFYING, STORING
   ------------------------------------------------------------------ */
   function encode (data) {
-    const { account, attestorKey, feedKey: feedKeyBuffer, ranges } = data
+    const { account, attestorKey, encoderKey, feedKey: feedKeyBuffer, ranges } = data
     log('start encoding')
-    return account.encoder.encodeFor(attestorKey, feedKeyBuffer, ranges)
+    return account.encoder.encodeFor(attestorKey, encoderKey, feedKeyBuffer, ranges)
   }
 
   async function verifyEncoding (data) {
-    const { account, encoderKeys, hosterKeys, feedKey } = data
+    const { account, encoderKeys, hosterKeys, attestorKey, feedKey } = data
     const messages = []
     encoderKeys.forEach(async (encoderKey, i) => {
       const pos = i
       const hosterKey = hosterKeys[pos]
-      const opts = { encoderKey, hosterKey, feedKey, cb: (msg, cb) => compareEncodings(messages, msg, cb) }
+      const opts = { attestorKey, encoderKey, hosterKey, feedKey, cb: (msg, cb) => compareEncodings(messages, msg, cb) }
       await account.attestor.verifyEncoding(opts)
     })
   }
 
   function host (data) {
-    const { account, feedKey, attestorKey, plan } = data
+    const { account, hosterKey, feedKey, attestorKey, plan } = data
     log('start hosting')
-    return account.hoster.addFeed({ feedKey, attestorKey, plan })
+    return account.hoster.addFeed({ feedKey, hosterKey, attestorKey, plan })
   }
 
   /* ----------------------------------------------------------------
@@ -58,15 +58,15 @@ function datdotService () {
   }
 
   async function sendStorageChallengeToAttestor (data) {
-    const { account, storageChallengeID, feedKey, attestorKey, proof } = data
-    await account.hoster.sendStorageChallenge({ storageChallengeID, feedKey, attestorKey, proof })
+    const { account, hosterKey, storageChallengeID, feedKey, attestorKey, proof } = data
+    await account.hoster.sendStorageChallenge({ storageChallengeID, hosterKey, feedKey, attestorKey, proof })
     // hoster sends proof of data to the attestor
   }
 
   async function verifyStorageChallenge (data) {
-    const { account, hosterKey, feedKey, storageChallengeID } = data
+    const { account, attestorKey, hosterKey, feedKey, storageChallengeID } = data
     // @TODO prepare the response: hash, proof etc. instead of sending the full chunk
-    return await account.attestor.verifyStorageChallenge({ storageChallengeID, feedKey, hosterKey })
+    return await account.attestor.verifyStorageChallenge({ storageChallengeID, attestorKey, feedKey, hosterKey })
   }
 
   async function checkPerformance (data) {

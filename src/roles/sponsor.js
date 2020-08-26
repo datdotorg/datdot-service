@@ -1,5 +1,6 @@
 const debug = require('debug')
 const getChainAPI = require('../chainAPI')
+const getChatAPI = require('../../lab/scenarios/chatAPI')
 
 /******************************************************************************
   ROLE: sponsor
@@ -8,10 +9,13 @@ const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
 module.exports = role
 
-async function role ({ name, account }) {
+async function role (profile, config) {
+  const { name, account } = profile
   const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
+  profile.log = log
   log('I am a sponsor')
-  const chainAPI = await getChainAPI()
+  const chainAPI = await getChainAPI(profile, config.chain.join(':'))
+  const chatAPI = await getChatAPI(profile, config.chat.join(':'))
   chainAPI.listenToEvents(handleEvent)
 
   const myAddress = account.chainKeypair.address

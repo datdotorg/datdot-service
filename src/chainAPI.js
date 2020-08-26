@@ -1,8 +1,5 @@
 const ApiPromise = require('./simulate-substrate')
-const provider = {}
 // const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api')
-// const provider = new WsProvider('ws://127.0.0.1:9944')
-// const { WsProvider, Keyring } = require('@polkadot/api')
 // const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
 // const { hexToBn, u8aToBuffer, bufferToU8a } = require('@polkadot/util')
 const fs = require('fs')
@@ -13,14 +10,15 @@ const types = JSON.parse(fs.readFileSync(filename).toString())
 
 module.exports = datdotChain
 
-async function datdotChain () {
-  const API = await rerun(() => ApiPromise.create({ provider, types }))
+async function datdotChain ({ name }, provider) {
+  // provider = new WsProvider(`${address}:${port}`)
+  const API = await rerun(() => ApiPromise.create({ name, provider, types }))
   const chainAPI = {
     newUser,
     registerHoster,
     registerEncoder,
     registerAttestor,
-    publishFeeds,
+    publishFeed,
     publishPlan,
     encodingDone,
     hostingStarts,
@@ -78,12 +76,10 @@ async function datdotChain () {
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function publishFeeds (opts) {
-    const { feeds, signer, nonce } = opts
-    // feeds.forEach(merkleRoot => {
+  async function publishFeed (opts) {
+    const { merkleRoot, signer, nonce } = opts
     //   merkleRoot[0] = bufferToU8a(merkleRoot[0])
-    // })
-    const tx = await API.tx.datVerify.publishFeeds(feeds)
+    const tx = await API.tx.datVerify.publishFeed(merkleRoot)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
@@ -102,7 +98,6 @@ async function datdotChain () {
   async function getFeedByID (feedID) {
     // const feed = (await API.query.datVerify.getFeedByID(feedID)).unwrap()
     const feed = (await API.query.datVerify.getFeedByID(feedID))
-    console.log('HERE IS YOUR FEED', feed)
     return feed
   }
   async function getUserAddress (id) {

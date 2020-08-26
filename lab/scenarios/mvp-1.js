@@ -31,7 +31,7 @@ const author = require('../../src/roles/author.js')
 ******************************************************************************/
 const [alice, bob, charlie, dave, eve] = users
 
-log('start scenario')
+log(`start scenario`)
 
 alice([user, sponsor, publisher, attestor])
 bob([user, hoster, attestor, encoder])

@@ -1,6 +1,7 @@
 const debug = require('debug')
 const getChainAPI = require('../chainAPI')
 const getServiceAPI = require('../serviceAPI')
+const getChatAPI = require('../../lab/scenarios/chatAPI')
 
 /******************************************************************************
   ROLE: Attestor
@@ -9,11 +10,14 @@ const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
 module.exports = role
 
-async function role ({ name, account }) {
+async function role (profile, config) {
+  const { name, account } = profile
   const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
+  profile.log = log
   log('Register as attestor')
   const serviceAPI = getServiceAPI()
-  const chainAPI = await getChainAPI()
+  const chainAPI = await getChainAPI(profile, config.chain.join(':'))
+  const chatAPI = await getChatAPI(profile, config.chat.join(':'))
   chainAPI.listenToEvents(handleEvent)
 
   await account.initAttestor()
@@ -33,7 +37,7 @@ async function role ({ name, account }) {
       if (attestorAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
         const { feedKey, encoderKeys, hosterKeys } = await getContractData(contract)
-        const foo = serviceAPI.verifyEncoding({ account, hosterKeys, feedKey, encoderKeys })
+        const foo = serviceAPI.verifyEncoding({ account, hosterKeys, attestorKey, feedKey, encoderKeys })
         foo.then(async () => {
         })
       }
@@ -73,6 +77,7 @@ async function role ({ name, account }) {
         log('Event received:', event.method, event.data.toString())
         const data = await getStorageChallengeData(storageChallenge)
         data.account = account
+        data.attestorKey = attestorKey
         const { storageChallengeID, proof } = await serviceAPI.verifyStorageChallenge(data)
         if (proof) {
           const nonce = account.getNonce()

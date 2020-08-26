@@ -16,6 +16,7 @@
     "buffer": "^5.4.3",
     "colors": "^1.4.0",
     "cross-spawn": "^7.0.3",
+    "crypto": "^1.0.1",
     "dat-sdk": "^2.2.0",
     "debug": "^4.1.1",
     "delay": "^4.3.0",
@@ -40,6 +41,6 @@
     "youtube-dl": "^3.0.2"
   },
   "devDependencies": {
-    "ws": "^7.2.1"
+    "ws": "^7.3.1"
   }
 }

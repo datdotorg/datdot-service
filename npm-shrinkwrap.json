@@ -1015,6 +1015,11 @@
         "which": "^2.0.1"
       }
     },
+    "crypto": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/crypto/-/crypto-1.0.1.tgz",
+      "integrity": "sha512-VxBKmeNcqQdiUQUW2Tzq0t377b54N2bMtXO/qiLa+6eRRmmC4qT3D4OnTGoT/U6O9aklQ/jTwbOtRMTTY8G0Ig=="
+    },
     "cuid": {
       "version": "2.1.8",
       "resolved": "https://registry.npmjs.org/cuid/-/cuid-2.1.8.tgz",
