@@ -1,130 +1,152 @@
-const { once } = require('events')
 const sodium = require('sodium-universal')
 const varint = require('varint')
 const p2plex = require('p2plex')
-const pump = require('pump')
-const ndjson = require('ndjson')
 const { seedKeygen } = require('noise-peer')
+
+const peerConnect = require('../peer-connection')
+
 const NAMESPACE = 'datdot-encoder'
 const IDENITY_NAME = 'signing'
 const NOISE_NAME = 'noise'
-const ANNOUNCE = { announce: true, lookup: false }
+const DEFAULT_TIMEOUT = 5000
 
 module.exports = class Encoder {
-  constructor ({
-    sdk,
-    EncoderDecoder
-  }) {
+  constructor ({ sdk, EncoderDecoder }, log) {
     const { Hypercore } = sdk
     this.sdk = sdk
     this.Hypercore = Hypercore
     this.EncoderDecoder = EncoderDecoder
+    this.log = log
   }
 
-  static async load (opts) {
-    const encoder = new Encoder(opts)
-
+  static async load (opts, log) {
+    const encoder = new Encoder(opts, log)
     await encoder.init()
-
     return encoder
   }
 
   async init () {
     const { publicKey: replicationPublicKey } = await this.sdk.getIdentity()
-
     const signingSeed = await this.sdk.deriveSecret(NAMESPACE, IDENITY_NAME)
-
     const signingPublicKey = Buffer.alloc(sodium.crypto_sign_PUBLICKEYBYTES)
     const signingSecretKey = Buffer.alloc(sodium.crypto_sign_SECRETKEYBYTES)
-
     sodium.crypto_sign_seed_keypair(signingPublicKey, signingSecretKey, signingSeed)
-
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
-
     const noiseKeyPair = seedKeygen(noiseSeed)
-
+    this.noiseKeyPair = noiseKeyPair
     this.signingPublicKey = signingPublicKey
     this.signingSecretKey = signingSecretKey
     this.replicationPublicKey = replicationPublicKey
     this.publicKey = noiseKeyPair.publicKey
-
-    this.communication = p2plex({ keyPair: noiseKeyPair })
   }
 
-  async encodeFor (attestorKey, encoderKey, feedKey, ranges) {
-    if (!Array.isArray(ranges)) {
-      const index = ranges
-      ranges = [[index, index]]
-    }
+  async encodeFor (contractID, attestorKey, encoderKey, feedKey, ranges) {
+    const encoder = this
+    return new Promise(async (resolve, reject) => {
+      if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
+      const feed = encoder.Hypercore(feedKey)
 
-    // @TODO: Derive shared key
-    // If you're using something fancy for generating a discovery key, try hashing the value to make it consistent
-    const arr = [encoderKey, feedKey, attestorKey]
-    const conc = Buffer.concat(arr)
-    const out = Buffer.alloc(32)
-    sodium.crypto_generichash(out, conc)
-    const topic = out
-
-    const feed = this.Hypercore(feedKey)
-
-    // @TODO: Add timeout for when we can't find the attestor
-
-    const peer = await this.communication.findByTopicAndPublicKey(topic, attestorKey, { announce: true, lookup: false })
-    console.log('Encoder has a peer')
-    const resultStream = ndjson.serialize()
-    const confirmStream = ndjson.parse()
-
-    const encodingStream = peer.createStream(topic)
-    pump(resultStream, encodingStream, confirmStream)
-
-    for (const range of ranges) {
-      for (let index = range[0], len = range[1] + 1; index < len; index++) {
-        // TODO: Add timeout for when we can't get feed data
-        const data = await feed.get(index)
-
-        const encoded = await this.EncoderDecoder.encode(data)
-        const { nodes, signature } = await feed.proof(index)
-        // Allocate buffer for the proof
-        const proof = Buffer.alloc(sodium.crypto_sign_BYTES)
-        // Allocate buffer for the data that should be signed
-        const toSign = Buffer.alloc(encoded.length + varint.encodingLength(index))
-
-        // Write the index to the buffer that will be signed
-        varint.encode(index, toSign, 0)
-        // Copy the encoded data into the buffer that will be signed
-        encoded.copy(toSign, varint.encode.bytes)
-
-        // Sign the data with our signing secret key and write it to the proof buffer
-        sodium.crypto_sign_detached(proof, toSign, this.signingSecretKey)
-        // Send the encoded stuff over to the hoster so they can store it
-        console.log('Encoder sending data to attestor', encoded)
-        resultStream.write({
-          type: 'encoded',
-          feed: feedKey,
-          index,
-          encoded,
-          proof,
-          nodes,
-          signature
-        })
-        // --------------------------------------------------------------
-
-        // Wait for the attestor to tell us they've handled the data
-        // @TODO: Set up timeout for when peer doesn't respond to us
-        const [response] = await once(confirmStream, 'data')
-        console.log('Encoder has a response')
-        if (response.error) {
-          throw new Error(response.error)
-          // @TODO what do we do if one or multiple encoders fail to do their work
-          // do we have for example 5% tolerance for each encoder?
-          // do we create a new contract if one fails?
-        }
+      const opts = {
+        comm: p2plex({ keyPair: encoder.noiseKeyPair }),
+        senderKey: encoderKey,
+        feedKey,
+        receiverKey: attestorKey,
+        id: contractID,
+        myKey: encoderKey,
       }
-    }
-    encodingStream.end()
-  }
+      const streams = await peerConnect(opts, encoder.log.extend('->Attestor'))
+      const all = []
 
-  async close () {
-    return this.communication.destroy()
+      var total = 0
+      for (const range of ranges) total += (range[1] + 1) - range[0]
+
+      encoder.log('START ENCODING')
+      for (const range of ranges) {
+        const rangeRes = sendDataToAttestor({ encoder, range, feed, feedKey, streams })
+        all.push(...rangeRes)
+      }
+      try {
+        const results = await Promise.all(all)
+        encoder.log('ENCODER SENT ALL SUB RANGES + GOT CONFIRMS', all.length)
+        encoder.log('END COMM with ATTESTOR')
+        streams.end()
+        resolve(results)
+      } catch (e) {
+        console.log('ERROR', e)
+        reject(e)
+      }
+    })
   }
+}
+
+function sendDataToAttestor ({ encoder, range, feed, feedKey, streams }) {
+  const rengeRes = []
+  for (let index = range[0], len = range[1] + 1; index < len; index++) {
+    const message = encode(encoder, index, feed, feedKey)
+    const chunkRes = send(message, { encoder, range, feed, feedKey, streams })
+    rengeRes.push(chunkRes)
+  }
+  return rengeRes
+}
+async function send (msg, { encoder, range, feed, feedKey, streams }) {
+  const message = await msg
+  return new Promise(async (resolve, reject) => {
+    // encoder.log(message.index, 'SEND_MSG',streams.peerKey.toString('hex'))
+    streams.serialize$.write(message)
+    var timeout
+    const toID = setTimeout(async () => {
+      timeout = true
+      // streams.parse$.off('data', ondata)
+
+      const error = [message.index, 'FAIL_ACK_TIMEOUT',streams.peerKey.toString('hex')]
+      encoder.log(error)
+      reject(error)
+    }, DEFAULT_TIMEOUT)
+    // encoder.log(message.index, 'WANT_ACK',streams.peerKey.toString('hex'))
+    streams.parse$.once('data', ondata)
+
+    // streams.parse$.on('data', data => console.log('ON DATA', data))
+
+    function ondata (response) {
+      if (timeout) return encoder.log(message.index, 'UNWANTED',streams.peerKey.toString('hex'))
+      clearTimeout(toID)
+      // @TODO what do we do if one or multiple encoders fail to do their work
+      // do we have for example 5% tolerance for each encoder?
+      // do we create a new contract if one fails?
+      if (response.error) reject(new Error(response.error))
+      // encoder.log(message.index, response, 'RECV_ACK',streams.peerKey.toString('hex'))
+      resolve(response)
+    }
+    // const [response] = await once(streams.parse$, 'data')
+
+    // if (!streams.parse$.waitAck) {
+    //   streams.parse$.waitAck = 1
+    //   streams.parse$.on('data', onAck)
+    // } else {
+    //
+    // }
+    // function onAck (response) {
+    //   streams.parse$.waitAck
+    //   streams.parse$.off('data', onAck)
+    //   console.log('DATA', data)
+    // }
+
+
+  })
+}
+async function encode (encoder, index, feed, feedKey) {
+  const data = await feed.get(index)
+  const encoded = await encoder.EncoderDecoder.encode(data)
+  const { nodes, signature } = await feed.proof(index)
+  // Allocate buffer for the proof
+  const proof = Buffer.alloc(sodium.crypto_sign_BYTES)
+  // Allocate buffer for the data that should be signed
+  const toSign = Buffer.alloc(encoded.length + varint.encodingLength(index))
+  // Write the index to the buffer that will be signed
+  varint.encode(index, toSign, 0)
+  // Copy the encoded data into the buffer that will be signed
+  encoded.copy(toSign, varint.encode.bytes)
+  // Sign the data with our signing secret key and write it to the proof buffer
+  sodium.crypto_sign_detached(proof, toSign, encoder.signingSecretKey)
+  return { type: 'encoded', feed: feedKey, index, encoded, proof, nodes, signature }
 }

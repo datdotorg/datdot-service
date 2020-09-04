@@ -1,51 +1,42 @@
-const debug = require('debug')
-const getChainAPI = require('../chainAPI')
-const getServiceAPI = require('../serviceAPI')
-const getChatAPI = require('../../lab/scenarios/chatAPI')
-
 /******************************************************************************
   ROLE: Encoder
 ******************************************************************************/
-const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
 module.exports = role
 
-async function role (profile, config) {
-  const { name, account } = profile
-  const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
-  profile.log = log
+async function role (profile, APIS) {
+  const { name, account, log } = profile
+  const { serviceAPI, chainAPI, chatAPI } = APIS
 
-  const serviceAPI = getServiceAPI()
-  const chainAPI = await getChainAPI(profile, config.chain.join(':'))
-  const chatAPI = await getChatAPI(profile, config.chat.join(':'))
   log('Register as encoder')
-  await account.initEncoder()
+  await chainAPI.listenToEvents(handleEvent)
+  await account.initEncoder({}, log)
   const encoderKey = account.encoder.publicKey
   const myAddress = account.chainKeypair.address
   const signer = account.chainKeypair
-  chainAPI.listenToEvents(handleEvent)
   const nonce = await account.getNonce()
   await chainAPI.registerEncoder({ encoderKey, signer, nonce })
 
   // EVENTS
+  async function isForMe (peerids) {
+    for (var i = 0, len = peerids.length; i < len; i++) {
+      const id = peerids[i]
+      const peerAddress = await chainAPI.getUserAddress(id)
+      if (peerAddress === myAddress) return true
+    }
+  }
   async function handleEvent (event) {
     if (event.method === 'NewContract') {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)
       const encoders = contract.encoders
-      encoders.forEach(async (id) => {
-        const encoderAddress = await chainAPI.getUserAddress(id)
-        if (encoderAddress === myAddress) {
-          log('Event received:', event.method, event.data.toString())
-          const { attestorKey, feedKey, ranges } = await getHostingData(contract)
-          const encode = serviceAPI.encode({ account, attestorKey, encoderKey, feedKey, ranges })
-          encode.then(async () => {
-            const nonce = await account.getNonce()
-            // @TODO double check we notify chain only if encoding was checked
-            await chainAPI.encodingDone({ contractID, signer, nonce })
-          })
-        }
-      })
+      if (!await isForMe(encoders)) return
+      console.log('=====[NEW CONTRACT]=====')
+      log('Event received:', event.method, event.data.toString())
+      const { attestorKey, feedKey, ranges } = await getHostingData(contract)
+      await serviceAPI.encode({ contractID, account, attestorKey, encoderKey, feedKey, ranges })
+      // const nonce = await account.getNonce()
+      // await chainAPI.encodingDone({ contractID, signer, nonce })
     }
   }
 

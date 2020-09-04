@@ -1,11 +1,12 @@
 const WebSocket = require('ws')
 
 const handlers = []
-const chainserver = { requests: [] }
+const requests = []
+var instance = void 0
 
 module.exports = {
   create: async ({ name, provider }) => {
-    if (typeof provider !== 'string') throw new Error('no fake chain')
+    if (typeof provider !== 'string') throw new Error('provider is not a fake chain')
     const api = ({
       query: {
         system: { events: handler => handlers.push(handler) },
@@ -36,12 +37,13 @@ module.exports = {
         }
       }
     })
+    if (instance) throw new Error('only one fakechain API per process')
+    instance = true
     return new Promise(connectNode)
     function connectNode (resolve, reject) {
-      if (chainserver[name]) return resolve(api)
       var ws = new WebSocket(provider)
       ws.on('open', function open () {
-        chainserver[name] = { name, counter: 0, ws, requests: [] }
+        instance = { name, counter: 0, ws, api }
         resolve(api)
       })
       ws.on('error', function error (err) {
@@ -54,7 +56,7 @@ module.exports = {
         const { cite, type, body } = JSON.parse(message)
         if (!cite) return handlers.forEach(handle => handle(body))
         const [name, msgid] = cite[0]
-        const resolve = chainserver[name].requests[msgid]
+        const resolve = requests[msgid]
         resolve(body)
       })
     }
@@ -81,64 +83,64 @@ async function submitPerformanceChallenge (...args) { return { signAndSend: sign
 function getFeedByID (id) {
   const name = this
   return new Promise(resolve => {
-    const msgid = chainserver[name].counter++
-    const flow = [chainserver[name].name, msgid]
-    chainserver[name].requests[msgid] = resolve
-    chainserver[name].ws.send(JSON.stringify({ flow, type: 'getFeedByID', body: id }))
+    const msgid = instance.counter++
+    const flow = [instance.name, msgid]
+    requests[msgid] = resolve
+    instance.ws.send(JSON.stringify({ flow, type: 'getFeedByID', body: id }))
   })
 }
 function getFeedByKey (key) {
   const name = this
   return new Promise(resolve => {
-    const msgid = chainserver[name].counter++
-    const flow = [chainserver[name].name, msgid]
-    chainserver[name].requests[msgid] = resolve
-    chainserver[name].ws.send(JSON.stringify({ flow, type: 'getFeedByKey', body: key }))
+    const msgid = instance.counter++
+    const flow = [instance.name, msgid]
+    requests[msgid] = resolve
+    instance.ws.send(JSON.stringify({ flow, type: 'getFeedByKey', body: key }))
   })
 }
 function getUserByID (id) {
   const name = this
   return new Promise(resolve => {
-    const msgid = chainserver[name].counter++
-    const flow = [chainserver[name].name, msgid]
-    chainserver[name].requests[msgid] = resolve
-    chainserver[name].ws.send(JSON.stringify({ flow, type: 'getUserByID', body: id }))
+    const msgid = instance.counter++
+    const flow = [instance.name, msgid]
+    requests[msgid] = resolve
+    instance.ws.send(JSON.stringify({ flow, type: 'getUserByID', body: id }))
   })
 }
 function getPlanByID (id) {
   const name = this
   return new Promise(resolve => {
-    const msgid = chainserver[name].counter++
-    const flow = [chainserver[name].name, msgid]
-    chainserver[name].requests[msgid] = resolve
-    chainserver[name].ws.send(JSON.stringify({ flow, type: 'getPlanByID', body: id }))
+    const msgid = instance.counter++
+    const flow = [instance.name, msgid]
+    requests[msgid] = resolve
+    instance.ws.send(JSON.stringify({ flow, type: 'getPlanByID', body: id }))
   })
 }
 function getContractByID (id) {
   const name = this
   return new Promise(resolve => {
-    const msgid = chainserver[name].counter++
-    const flow = [chainserver[name].name, msgid]
-    chainserver[name].requests[msgid] = resolve
-    chainserver[name].ws.send(JSON.stringify({ flow, type: 'getContractByID', body: id }))
+    const msgid = instance.counter++
+    const flow = [instance.name, msgid]
+    requests[msgid] = resolve
+    instance.ws.send(JSON.stringify({ flow, type: 'getContractByID', body: id }))
   })
 }
 function getStorageChallengeByID (id) {
   const name = this
   return new Promise(resolve => {
-    const msgid = chainserver[name].counter++
-    const flow = [chainserver[name].name, msgid]
-    chainserver[name].requests[msgid] = resolve
-    chainserver[name].ws.send(JSON.stringify({ flow, type: 'getStorageChallengeByID', body: id }))
+    const msgid = instance.counter++
+    const flow = [instance.name, msgid]
+    requests[msgid] = resolve
+    instance.ws.send(JSON.stringify({ flow, type: 'getStorageChallengeByID', body: id }))
   })
 }
 function getPerformanceChallengeByID (id) {
   const name = this
   return new Promise(resolve => {
-    const msgid = chainserver[name].counter++
-    const flow = [chainserver[name].name, msgid]
-    chainserver[name].requests[msgid] = resolve
-    chainserver[name].ws.send(JSON.stringify({ flow, type: 'getPerformanceChallengeByID', body: id }))
+    const msgid = instance.counter++
+    const flow = [instance.name, msgid]
+    requests[msgid] = resolve
+    instance.ws.send(JSON.stringify({ flow, type: 'getPerformanceChallengeByID', body: id }))
   })
 }
 
@@ -148,10 +150,10 @@ function getPerformanceChallengeByID (id) {
 function signAndSend (signer, { nonce }, status) {
   const { name, type, args } = this
   status({ events: [], status: { isInBlock:1 } })
-  const msgid = chainserver[name].counter++
-  const flow = [chainserver[name].name, msgid]
-  chainserver[name].requests[msgid] = status
+  const msgid = instance.counter++
+  const flow = [instance.name, msgid]
+  requests[msgid] = status
   const address = signer.address
   const message = { flow, type, body: {type, args, nonce, address } }
-  chainserver[name].ws.send(JSON.stringify(message))
+  instance.ws.send(JSON.stringify(message))
 }

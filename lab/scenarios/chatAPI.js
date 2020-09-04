@@ -1,21 +1,22 @@
 const WebSocket = require('ws')
 
 module.exports = getChatAPI
-const connections = {}
+var instance = void 0
 
 async function getChatAPI (profile, provider) {
-  const { name = '<anonymous>' } = profile
-  var counter = 0
-  if (connections[name]) return new Promise(resolve => {
-    resolve(connections[name])
-  })
+  if (instance) throw new Error('only one chat API per process')
+  instance = true
+  const { name, log } = profile
+  if (!log) throw new Error('missing param `log`')
+  if (!name) throw new Error('missing param `name`')
+  var counter = 0 // message id counter
   return new Promise(connect)
   function connect (resolve, reject) {
     var ws = new WebSocket(provider)
-    connections[name] = {
+    instance = {
       on: callback => ws.on('message', json => {
         const body = JSON.parse(json)
-        profile.log('received', body)
+        log('received', body)
         callback(body)
       }),
       send: body => ws.send(JSON.stringify({
@@ -27,7 +28,10 @@ async function getChatAPI (profile, provider) {
     ws.on('open', function open () {
       const flow = [name, counter++]
       ws.send(JSON.stringify({ flow, type: 'join' }))
-      resolve(connections[name])
+      resolve(instance)
+    })
+    ws.on('close', function close () {
+      console.error('unexpected closing of chat connection for', name)
     })
     ws.on('error', function error (err) {
       setTimeout(() => connect(resolve, reject), 2000)

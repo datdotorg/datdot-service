@@ -18,7 +18,8 @@ const NAMESPACE = 'datdot-account'
 const IDENTITY_NAME = 'identity'
 
 module.exports = class Account {
-  constructor ({ sdk, EncoderDecoder, application, persist }) {
+  constructor ({ sdk, EncoderDecoder, application, persist }, log) {
+    this.log = log
     const { Hypercore, Hyperdrive } = sdk
 
     this.Hypercore = Hypercore
@@ -54,7 +55,7 @@ module.exports = class Account {
     this.chainKeypair = keyring.addFromUri(accountUri)
   }
 
-  static async load ({ persist = true, EncoderDecoder = DefaultEncoderDecoder, sdk, ...opts } = {}) {
+  static async load ({ persist = true, EncoderDecoder = DefaultEncoderDecoder, sdk, ...opts } = {}, log) {
     const sdkOpts = { application: DEFAULT_SDK_APPLICATION, ...opts }
 
     if (!persist) sdkOpts.storage = RAM
@@ -63,14 +64,14 @@ module.exports = class Account {
 
     const { application } = sdkOpts
 
-    const account = new Account({ sdk, ...opts, EncoderDecoder, application, persist })
+    const account = new Account({ sdk, ...opts, EncoderDecoder, application, persist }, log)
 
     await account.init()
 
     return account
   }
 
-  async initHoster ({ db, ...opts } = {}) {
+  async initHoster ({ db, ...opts } = {}, log) {
     const { sdk, EncoderDecoder } = this
 
     // if (!opts.onNeedsEncoding) throw new TypeError('Must specify onNeedsEncoding function')
@@ -80,23 +81,23 @@ module.exports = class Account {
       db = levelup(encode(storage, { valueEncoding: 'binary' }))
     }
 
-    this.hoster = await Hoster.load({ sdk, db, EncoderDecoder, ...opts })
+    this.hoster = await Hoster.load({ sdk, db, EncoderDecoder, ...opts }, log)
 
     return this.hoster
   }
 
-  async initEncoder (opts = {}) {
+  async initEncoder (opts = {}, log) {
     const { sdk, EncoderDecoder } = this
 
-    this.encoder = await Encoder.load({ sdk, EncoderDecoder, ...opts })
+    this.encoder = await Encoder.load({ sdk, EncoderDecoder, ...opts }, log)
 
     return this.encoder
   }
 
-  async initAttestor (opts = {}) {
+  async initAttestor (opts = {}, log) {
     const { sdk } = this
 
-    this.attestor = await Attestor.load({ sdk, ...opts })
+    this.attestor = await Attestor.load({ sdk, ...opts }, log)
 
     return this.attestor
   }

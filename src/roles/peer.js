@@ -1,6 +1,3 @@
-const debug = require('debug')
-const getChainAPI = require('../chainAPI')
-const getChatAPI = require('../../lab/scenarios/chatAPI')
 // const chainAPI = require('datdot-chain')
 // const serviceAPI = require('../..')
 // const vaultAPI = require('datdot-account')
@@ -11,16 +8,13 @@ const getChatAPI = require('../../lab/scenarios/chatAPI')
     1. create account
 
 ******************************************************************************/
-const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
 module.exports = role
 
-async function role (profile, config) {
-  const { name, account } = profile
-  const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
-  profile.log = log
-  const chainAPI = await getChainAPI(profile, config.chain.join(':'))
-  const chatAPI = await getChatAPI(profile, config.chat.join(':'))
+async function role (profile, APIS) {
+  const { name, account, log } = profile
+  const { chainAPI } = APIS
+
   const nonce = await account.getNonce()
   const myAddress = account.chainKeypair.address
   const signer = account.chainKeypair

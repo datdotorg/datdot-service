@@ -1,26 +1,16 @@
-const debug = require('debug')
-const getChainAPI = require('../chainAPI')
-const getServiceAPI = require('../serviceAPI')
-const getChatAPI = require('../../lab/scenarios/chatAPI')
-
 /******************************************************************************
   ROLE: Attestor
 ******************************************************************************/
-const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
 module.exports = role
 
-async function role (profile, config) {
-  const { name, account } = profile
-  const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
-  profile.log = log
-  log('Register as attestor')
-  const serviceAPI = getServiceAPI()
-  const chainAPI = await getChainAPI(profile, config.chain.join(':'))
-  const chatAPI = await getChatAPI(profile, config.chat.join(':'))
-  chainAPI.listenToEvents(handleEvent)
+async function role (profile, APIS) {
+  const { name, account, log } = profile
+  const { serviceAPI, chainAPI, chatAPI } = APIS
 
-  await account.initAttestor()
+  log('Register as attestor')
+  chainAPI.listenToEvents(handleEvent)
+  await account.initAttestor({}, log)
   const attestorKey = account.attestor.publicKey
   const myAddress = account.chainKeypair.address
   const signer = account.chainKeypair
@@ -34,13 +24,11 @@ async function role (profile, config) {
       const contract = await chainAPI.getContractByID(contractID)
       const attestorID = contract.attestor
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
-      if (attestorAddress === myAddress) {
-        log('Event received:', event.method, event.data.toString())
-        const { feedKey, encoderKeys, hosterKeys } = await getContractData(contract)
-        const foo = serviceAPI.verifyEncoding({ account, hosterKeys, attestorKey, feedKey, encoderKeys })
-        foo.then(async () => {
-        })
-      }
+      if (attestorAddress !== myAddress) return
+      console.log('=====[NEW CONTRACT]=====')
+      log('Event received:', event.method, event.data.toString())
+      const { feedKey, encoderKeys, hosterKeys } = await getContractData(contract)
+      await serviceAPI.verifyEncoding({ account, hosterKeys, attestorKey, feedKey, encoderKeys, contractID })
     }
     if (event.method === 'NewPerformanceChallenge') {
       const [performanceChallengeID] = event.data

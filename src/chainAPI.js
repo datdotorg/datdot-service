@@ -10,7 +10,9 @@ const types = JSON.parse(fs.readFileSync(filename).toString())
 
 module.exports = datdotChain
 
-async function datdotChain ({ name }, provider) {
+async function datdotChain (profile, provider) {
+  const { name } = profile
+  const log = profile.log.extend('chain')
   // provider = new WsProvider(`${address}:${port}`)
   const API = await rerun(() => ApiPromise.create({ name, provider, types }))
   const chainAPI = {
@@ -44,7 +46,7 @@ async function datdotChain ({ name }, provider) {
   async function status ({ events = [], status }) {
     if (status.isInBlock) {
       events.forEach(({ phase, event: { data, method, section } }) => {
-        console.log('\t', phase.toString(), `: ${section}.${method}`, data.toString())
+        log('\t', phase.toString(), `: ${section}.${method}`, data.toString())
       })
     }
   }
@@ -107,13 +109,10 @@ async function datdotChain ({ name }, provider) {
     return user.address
   }
   async function getHosterKey (id) {
-    // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
-    // return u8aToBuffer(user.noise_key.toU8a().slice(1))
     const user = (await API.query.datVerify.getUserByID(id))
     return Buffer.from(user.hosterKey, 'hex')
   }
   async function getEncoderKey (id) {
-    // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
     // return u8aToBuffer(user.noise_key.toU8a().slice(1))
     const user = (await API.query.datVerify.getUserByID(id))
     return Buffer.from(user.encoderKey, 'hex')
@@ -180,7 +179,7 @@ async function datdotChain ({ name }, provider) {
   async function listenToEvents (handleEvent) {
     return API.query.system.events((events) => {
       events.forEach(async (record) => {
-        // console.log(record.event.method, record.event.data.toString())
+        // log(record.event.method, record.event.data.toString())
         const event = record.event
         handleEvent(event)
       })

@@ -1,7 +1,7 @@
 const spawn = require('cross-spawn')
 const path = require('path')
 
-process.env.DEBUG = '*,-hypercore-protocol'
+process.env.DEBUG = '*,-fakechain:*,-hypercore-protocol,-chatserver'
 
 const all = [process]
 
@@ -22,11 +22,14 @@ captureFailures(chatserver)
 
 
 const users = [
-  { name: 'alice', roles: ['peer', 'sponsor', 'publisher', 'attestor'] },
-  { name: 'bob', roles: ['peer', 'hoster', 'attestor', 'encoder'] },
+  { name: 'alice', roles: ['peer', 'sponsor', 'publisher', 'attestor', 'hoster', 'encoder'] },
+  { name: 'bob', roles: ['peer', 'hoster', 'attestor', 'encoder', 'hoster'] },
   { name: 'charlie', roles: ['peer', 'encoder', 'hoster', 'attestor'] },
   { name: 'dave', roles: ['peer', 'encoder', 'hoster', 'attestor'] },
   { name: 'eve', roles: ['peer', 'author', 'encoder', 'hoster', 'attestor'] },
+  { name: 'ferdie', roles: ['peer', 'encoder', 'hoster', 'attestor'] },
+  { name: 'one', roles: ['peer', 'encoder', 'hoster', 'attestor'] },
+  { name: 'two', roles: ['peer', 'encoder', 'hoster', 'attestor'] },
 ]
 
 const file = path.join(__dirname, 'lab/scenarios/user.js')
@@ -45,6 +48,12 @@ function captureFailures (process) {
   })
   process.on('uncaughtException', (err, origin) => {
     console.log('uncaughtException', err, origin)
+    end()
+  })
+  process.on('warning', error => {
+    const stack = error.stack
+    console.log('warning', error)
+    console.log(stack)
     end()
   })
 }

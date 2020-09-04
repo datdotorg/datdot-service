@@ -4,11 +4,11 @@ const ready = cryptoWaitReady()
 
 module.exports = account
 
-async function account (name) {
+async function account ({name, log}) {
   await ready
   return await Account.load({
     persist: false,
     valueEncoding: 'binary',
     application: `datdot-account-${name}`
-  })
+  }, log)
 }

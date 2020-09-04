@@ -1,120 +1,108 @@
+const p2plex = require('p2plex')
 const sub = require('subleveldown')
 const defer = require('promise-defer')
 const reallyReady = require('hypercore-really-ready')
-const sodium = require('sodium-universal')
-const ndjson = require('ndjson')
-const { PassThrough } = require('stream')
-const pump = require('pump')
-const p2plex = require('p2plex')
-const { once } = require('events')
 const { seedKeygen } = require('noise-peer')
+
 const HosterStorage = require('../hoster-storage')
+const peerConnect = require('../peer-connection')
+
 const NAMESPACE = 'datdot-hoster'
 const NOISE_NAME = 'noise'
 const ALL_KEYS_KEY = 'all_keys'
-const DEFAULT_OPTS = {
-  ranges: [{ start: 0, end: Infinity }],
-  watch: true
-}
-const ANNOUNCE = { announce: true, lookup: false }
+const DEFAULT_OPTS = { ranges: [{ start: 0, end: Infinity }], watch: true }
+const DEFAULT_TIMEOUT = 5000
 
 module.exports = class Hoster {
-  constructor ({
-    db,
-    sdk,
-    EncoderDecoder
-  }) {
+  constructor ({ db, sdk, EncoderDecoder }, log) {
+    this.log = log
     this.storages = new Map()
     this.keyOptions = new Map()
     this.watchingFeeds = new Set()
     this.loaderCache = new Map()
-
     this.db = db
     this.hosterDB = sub(this.db, 'hoster')
-
     const { Hypercore } = sdk
     this.sdk = sdk
     this.Hypercore = Hypercore
     this.EncoderDecoder = EncoderDecoder
   }
 
-  async addFeed ({ feedKey, hosterKey, attestorKey, plan }) {
+  async hostFor ({ contractID, feedKey, hosterKey, attestorKey, plan }) {
     await this.setOpts(feedKey, plan)
     await this.addKey(feedKey, plan)
     await this.loadFeedData(feedKey)
-    await this.getEncodedDataFromAttestor(hosterKey, attestorKey, feedKey)
+    await this.getEncodedDataFromAttestor(contractID, hosterKey, attestorKey, feedKey)
+    this.log('-----------------------All done')
   }
 
-  async getEncodedDataFromAttestor (hosterKey, attestorKey, key) {
-    // TODO: Derive key by combining our public keys and feed key
-    // const topic = key
+  async getEncodedDataFromAttestor (contractID, hosterKey, attestorKey, feedKey) {
+    const hoster = this
+    return new Promise(async (resolve, reject) => {
 
-    const arrAttest1 = [attestorKey, key, hosterKey]
-    const conc1 = Buffer.concat(arrAttest1)
-    const out1 = Buffer.alloc(32)
-    sodium.crypto_generichash(out1, conc1)
-    const topicAttest1 = out1
-
-    const peer = await this.communication.findByTopicAndPublicKey(topicAttest1, attestorKey, { announce: true, lookup: false })
-    console.log('Hoster has a peer')
-    const resultStream = new PassThrough({ objectMode: true })
-    const rawResultStream = ndjson.parse()
-    const confirmStream = ndjson.serialize()
-
-    const verifiedStream = peer.receiveStream(topicAttest1)
-
-    pump(confirmStream, verifiedStream, rawResultStream, resultStream)
-
-    for await (const message of resultStream) {
-      // @TODO: decode and merkle verify each chunk (to see if it belongs to the feed) && verify the signature
-      const { type } = message
-      if (type === 'verified') {
-        const { feed, index, encoded, proof, nodes, signature } = message
-        console.log('Hoster got a message', message)
-
-        const key = Buffer.from(feed)
-        const isExisting = await this.hasKey(key)
-
-        // Fix up the JSON serialization by converting things to buffers
-        for (const node of nodes) {
-          node.hash = Buffer.from(node.hash)
-        }
-
-        if (!isExisting) return sendError('UNKNOWN_FEED', { key: key.toString('hex') })
-        try {
-          await this.storeEncoded(
-            key,
-            index,
-            Buffer.from(proof),
-            Buffer.from(encoded),
-            nodes,
-            Buffer.from(signature)
-          )
-
-          confirmStream.write({
-            type: 'encoded:stored',
-            ok: true
-          })
-
-          // this.emit('encoded', key, index)
-        } catch (e) {
-          // Uncomment for better stack traces
-          console.log(`ERROR_STORING: ${e.message}`)
-          sendError(`ERROR_STORING: ${e.message}`, { e })
-        }
-      } else {
-        console.log('UNKNOWN_MESSAGE', { messageType: type })
-        sendError('UNKNOWN_MESSAGE', { messageType: type })
+      const opts = {
+        comm: p2plex({ keyPair: hoster.noiseKeyPair }),
+        senderKey: attestorKey,
+        feedKey,
+        receiverKey: hosterKey,
+        id: contractID,
+        myKey: hosterKey,
       }
-    }
+      const log2attestor = hoster.log.extend('<-Attestor')
+      const streams = await peerConnect(opts, log2attestor)
 
-    function sendError (message, details = {}) {
-      confirmStream.end({
-        type: 'encoded:error',
-        error: message,
-        ...details
-      })
-    }
+      var counter = 0
+      log2attestor('START STORING')
+      for await (const message of streams.parse$) {
+        log2attestor(message.index, 'RECV_MSG',attestorKey.toString('hex'))
+        counter++
+        // @TODO: decode and merkle verify each chunk (to see if it belongs to the feed) && verify the signature
+        const { type } = message
+        if (type === 'verified') {
+          const { feed, index, encoded, proof, nodes, signature } = message
+          const key = Buffer.from(feed)
+          const isExisting = await this.hasKey(key)
+          // Fix up the JSON serialization by converting things to buffers
+          for (const node of nodes) node.hash = Buffer.from(node.hash)
+          if (!isExisting) {
+            const error = { type: 'encoded:error', error: 'UNKNOWN_FEED', ...{ key: key.toString('hex') } }
+            streams.serialize$.write(error)
+            streams.end()
+            return reject(error)
+          }
+          try {
+            log2attestor(index, ':store', index)
+            await this.storeEncoded(
+              key,
+              index,
+              Buffer.from(proof),
+              Buffer.from(encoded),
+              nodes,
+              Buffer.from(signature)
+            )
+            log2attestor(index, ':attestor:MSG',attestorKey.toString('hex'))
+            streams.serialize$.write({ type: 'encoded:stored', ok: true })
+            // this.emit('encoded', key, index)
+          } catch (e) {
+            // Uncomment for better stack traces
+            log2attestor(`ERROR_STORING: ${e.message}`)
+            const error = { type: 'encoded:error', error: `ERROR_STORING: ${e.message}`, ...{ e } }
+            streams.serialize$.write(error)
+            streams.end()
+            return reject(error)
+          }
+        } else {
+          log2attestor('UNKNOWN_MESSAGE', { messageType: type })
+          const error ={ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', ...{ messageType: type } }
+          streams.serialize$.write(error)
+          streams.end()
+          return reject(error)
+        }
+      }
+      console.log('HOSTER RECEIVED & STORED ALL', counter, 'END STREAMS + DESTROY COMM')
+      streams.end()
+      resolve()
+    })
   }
 
   async removeFeed (key) {
@@ -129,43 +117,30 @@ module.exports = class Hoster {
 
   async loadFeedData (key) {
     const stringKey = key.toString('hex')
-
     const deferred = defer()
-
     // If we're already loading this feed, queue up our promise after the current one
     if (this.loaderCache.has(stringKey)) {
       // Get the existing promise for the loader
       const existing = this.loaderCache.get(stringKey)
-
       // Create a new promise that will resolve after the previous one and
       this.loaderCache.set(stringKey, existing.then(() => deferred.promise))
-
       // Wait for the existing loader to resolve
       await existing
     } else {
       // If the feed isn't already being loaded, set this as the current loader
       this.loaderCache.set(stringKey, deferred.promise)
     }
-
     try {
       const { ranges, watch } = await this.getOpts(key)
       const storage = await this.getStorage(key)
-
       const { feed } = storage
-
       await feed.ready()
-
       const { length } = feed
       for (const { start, wantedEnd } of ranges) {
         const end = Math.min(wantedEnd, length)
-        feed.download({
-          start,
-          end
-        })
+        feed.download({ start, end })
       }
-
       if (watch) this.watchFeed(feed)
-
       this.loaderCache.delete(stringKey)
       deferred.resolve()
     } catch (e) {
@@ -175,13 +150,11 @@ module.exports = class Hoster {
   }
 
   async watchFeed (feed) {
-    console.warn('Watching is not supported since we cannot ask the chain for attestors')
+    this.warn('Watching is not supported since we cannot ask the chain for attestors')
     /* const stringKey = feed.key.toString('hex')
     if (this.watchingFeeds.has(stringKey)) return
     this.watchingFeeds.add(stringKey)
-
     feed.on('update', onUpdate)
-
     async function onUpdate () {
       await this.loadFeedData(feed.key)
     } */
@@ -198,38 +171,55 @@ module.exports = class Hoster {
   }
 
   async sendStorageChallenge ({ storageChallengeID, hosterKey, feedKey, attestorKey, proof }) {
-    // const topic = feedKey
+    const hoster = this
+    return new Promise(async (resolve, reject) => {
 
-    const arrAttest2 = [hosterKey, attestorKey]
-    const conc2 = Buffer.concat(arrAttest2)
-    const out2 = Buffer.alloc(32)
-    sodium.crypto_generichash(out2, conc2)
-    const topicAttest2 = out2
+      const opts = {
+        comm: p2plex({ keyPair: hoster.noiseKeyPair }),
+        senderKey: hosterKey,
+        feedKey,
+        receiverKey: attestorKey,
+        id: storageChallengeID,
+        myKey: hosterKey,
+      }
+      const log2attestor = hoster.log.extend('<-Attestor')
+      const streams = await peerConnect(opts, log2attestor)
 
-    const peer = await this.communication.findByTopicAndPublicKey(topicAttest2, attestorKey, { announce: true, lookup: false })
-    const resultStream = ndjson.serialize()
-    const confirmStream = ndjson.parse()
+      log2attestor('START STORAGE PROOF')
 
-    const encodingStream = peer.createStream(topicAttest2)
-    pump(resultStream, encodingStream, confirmStream)
-    // @TODO add event signature in ext message after chunk x
+      log2attestor(storageChallengeID, 'SEND_PROOF',attestorKey.peerKey.toString('hex'))
+      streams.serialize$.write({
+        type: 'StorageChallenge',
+        feedKey,
+        storageChallengeID,
+        proof
+      })
+      log2attestor(storageChallengeID, 'WAIT_ACK',attestorKey.peerKey.toString('hex'))
+      var timeout
+      const toID = setTimeout(async () => {
+        timeout = true
+        streams.parse$.off('data', ondata)
+        streams.end()
+        const error = [storageChallengeID, 'FAIL_ACK_TIMEOUT',attestorKey.peerKey.toString('hex')]
+        log2attestor(error)
+        reject(error)
+      }, DEFAULT_TIMEOUT)
 
-    resultStream.write({
-      type: 'StorageChallenge',
-      feedKey,
-      storageChallengeID,
-      proof
+      streams.parse$.once('data', ondata)
+
+      async function ondata (response) {
+        // const [response] = await once(confirmStream, 'data')
+        if (timeout) return
+        clearTimeout(toID)
+        // @TODO what happens if proof doesn't get verified due to an error? Try again?
+        if (response.error) reject(new Error(response.error))
+        log2attestor(storageChallengeID, 'RECV_ACK',attestorKey.peerKey.toString('hex'))
+        streams.end()
+        // await opts.comm.destroy()
+        resolve()
+      }
+
     })
-    // --------------------------------------------------------------
-
-    // Wait for the attestor to tell us they've handled the data
-    // TODO: Set up timeout for when peer doesn't respond to us
-    const [response] = await once(confirmStream, 'data')
-
-    if (response.error) {
-      throw new Error(response.error)
-      // @TODO what happens if proof doesn't get verified due to an error? Try again?
-    }
   }
 
   async hasKey (key) {
@@ -242,23 +232,17 @@ module.exports = class Hoster {
     if (this.storages.has(stringKey)) {
       return this.storages.get(stringKey)
     }
-
     const feed = this.Hypercore(key, { sparse: true })
     const db = sub(this.db, stringKey, { valueEncoding: 'binary' })
-
     await reallyReady(feed)
-
     const storage = new HosterStorage(this.EncoderDecoder, db, feed)
-
     this.storages.set(stringKey, storage)
-
     return storage
   }
 
   async listKeys () {
     try {
       const keys = await this.hosterDB.get(ALL_KEYS_KEY)
-
       return keys
     } catch {
       // Must not have any keys yet
@@ -281,9 +265,7 @@ module.exports = class Hoster {
   async removeKey (key) {
     const stringKey = key.toString('hex')
     const existing = await this.listKeys()
-
     const final = existing.filter((data) => data.key !== stringKey)
-
     await this.saveKeys(final)
   }
 
@@ -300,13 +282,10 @@ module.exports = class Hoster {
   async init () {
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
     const noiseKeyPair = seedKeygen(noiseSeed)
-
+    this.noiseKeyPair = noiseKeyPair
     this.publicKey = noiseKeyPair.publicKey
-
-    this.communication = p2plex({ keyPair: noiseKeyPair })
-
+    // this.communication = p2plex({ keyPair: noiseKeyPair })
     const keys = await this.listKeys()
-
     for (const { key, options } of keys) {
       await this.setOpts(key, options)
       await this.getStorage(key)
@@ -314,16 +293,15 @@ module.exports = class Hoster {
     }
   }
 
-  static async load (opts) {
-    const hoster = new Hoster(opts)
-
+  static async load (opts, log) {
+    const hoster = new Hoster(opts, log)
     await hoster.init()
-
     return hoster
   }
 
   async close () {
-    await this.communication.destroy()
+    console.log('HOSTER CLOSE')
+    // await this.communication.destroy()
     // Close the DB and hypercores
     for (const storage of this.storages.values()) {
       await storage.close()

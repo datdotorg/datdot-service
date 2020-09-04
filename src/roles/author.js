@@ -3,24 +3,24 @@ const reallyReady = require('hypercore-really-ready')
 const ram = require('random-access-memory')
 const hyperswarm = require('hyperswarm')
 const debug = require('debug')
-const getChatAPI = require('../../lab/scenarios/chatAPI')
 const crypto = require('crypto')
 
 /******************************************************************************
   ROLE: Author
 ******************************************************************************/
-const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
 module.exports = role
 
 // MAKE FEED and SEED IT
 
-async function role (profile, config) {
-  const { name } = profile
-  const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
-  profile.log = log
+async function role (profile, APIS) {
+  const { log } = profile
+  const { chatAPI } = APIS
+
+  log('Make a feed and share it')
+
+
   const feed = Hypercore(ram)
-  const chatAPI = await getChatAPI(profile, config.chat.join(':'))
 
   await feed.ready()
 

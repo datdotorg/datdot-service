@@ -10,41 +10,41 @@ const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
 
 module.exports = role
 
-async function role (profile, config) {
-  const { name, account } = profile
-  const log = debug(`[${name.toLowerCase()}:${ROLE}]`)
-  profile.log = log
-  log('Register as hoster')
-  const serviceAPI = getServiceAPI()
-  const chainAPI = await getChainAPI(profile, config.chain.join(':'))
-  const chatAPI = await getChatAPI(profile, config.chat.join(':'))
+async function role (profile, APIS) {
+  const { name, account, log } = profile
+  const { serviceAPI, chainAPI, chatAPI } = APIS
 
-  await account.initHoster()
+  log('Register as hoster')
+  await chainAPI.listenToEvents(handleEvent)
+  await account.initHoster({}, log)
   const hosterKey = account.hoster.publicKey
   const myAddress = account.chainKeypair.address
   const signer = account.chainKeypair
-  chainAPI.listenToEvents(handleEvent)
   const nonce = account.getNonce()
   await chainAPI.registerHoster({ hosterKey, signer, nonce })
 
   // EVENTS
+  async function isForMe (peerids) {
+    for (var i = 0, len = peerids.length; i < len; i++) {
+      const id = peerids[i]
+      const peerAddress = await chainAPI.getUserAddress(id)
+      if (peerAddress === myAddress) return true
+    }
+  }
   async function handleEvent (event) {
     if (event.method === 'NewContract') {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)
       const hosters = contract.hosters
-      hosters.forEach(async (id) => {
-        const hosterAddress = await chainAPI.getUserAddress(id)
-        if (hosterAddress === myAddress) {
-          log('Event received:', event.method, event.data.toString())
-          const { feedKey, attestorKey, plan } = await getHostingData(contract)
-          const host = serviceAPI.host({ account, hosterKey, feedKey, attestorKey, plan })
-          host.then(async () => {
-            const nonce = account.getNonce()
-            await chainAPI.hostingStarts({ contractID, signer, nonce })
-          })
-        }
-      })
+      log('contract.hosters', hosters)
+      if (!await isForMe(hosters)) return
+      console.log('=====[NEW CONTRACT]=====')
+      log('Event received:', event.method, event.data.toString())
+      const { feedKey, attestorKey, plan } = await getHostingData(contract)
+      console.log('@TODO: hoster')
+      // await serviceAPI.host({ contractID, account, hosterKey, feedKey, attestorKey, plan })
+      // const nonce = account.getNonce()
+      // await chainAPI.hostingStarts({ contractID, signer, nonce })
     }
 
     if (event.method === 'NewStorageChallenge') {
@@ -54,12 +54,13 @@ async function role (profile, config) {
       const hosterID = storageChallenge.hoster
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
+        console.log('=====[NEW STORAGE CHALLENGE]=====')
         log('Event received:', event.method, event.data.toString())
-        const data = await getStorageChallengeData(storageChallenge, contract)
-        data.account = account
-        data.hosterKey = hosterKey
-        // log('sendStorageChallengeToAttestor - DATA', data)
-        await serviceAPI.sendStorageChallengeToAttestor(data)
+        // const data = await getStorageChallengeData(storageChallenge, contract)
+        // data.account = account
+        // data.hosterKey = hosterKey
+        // // log('sendStorageChallengeToAttestor - DATA', data)
+        // await serviceAPI.sendStorageChallengeToAttestor(data)
       }
     }
   }
