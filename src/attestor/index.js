@@ -54,13 +54,13 @@ module.exports = class Attestor {
         id: contractID,
         myKey: attestorKey,
       }
-      console.log('@TODO: hoster')
+      // console.log('@TODO: hoster')
       // const log2hoster = attestor.log.extend('->Hoster')
       // const hosterComm = await peerConnect(opts2, log2hoster)
 
       // check the encoded data and if ok, send them to the hosters
       const comparisons = []
-      log2encoder('START COMPARING')
+      log2encoder('Start receiving data from the encoder')
       for await (const message of encoderComm.parse$) {
         // log2encoder(message.index, 'RECV_MSG',encoderKey.toString('hex'))
         // @TODO: merkle verify each chunk
@@ -74,14 +74,10 @@ module.exports = class Attestor {
         }
       }
       const results = await Promise.all(comparisons)
-      attestor.log(results)
-      attestor.log('COMPARED ENCODINGS for ALL', comparisons.length, ' RANGES:', encoderKey.toString('hex'))
+      // attestor.log(results)
+      // attestor.log('COMPARED ENCODINGS for ALL', comparisons.length, ' RANGES:', encoderKey.toString('hex'))
+      resolve('All data verified ' + encoderKey.toString('hex'))
 
-      attestor.log('END COMM with ENCODER & HOSTER')
-      // hosterComm.end()
-      // encoderComm.end()
-
-      resolve('YAY ' + encoderKey.toString('hex'))
 
       function compareEncodings (message) {
         return new Promise((resolve, reject) => {

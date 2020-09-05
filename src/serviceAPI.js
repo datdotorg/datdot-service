@@ -25,7 +25,7 @@ function datdotService (profile) {
   ------------------------------------------------------------------ */
   async function encode (data) {
     const { contractID, account, attestorKey, encoderKey, feedKey: feedKeyBuffer, ranges } = data
-    log('----------------------Encode!')
+    log('Encode!')
     return account.encoder.encodeFor(contractID, attestorKey, encoderKey, feedKeyBuffer, ranges)
   }
 
@@ -37,18 +37,19 @@ function datdotService (profile) {
       const encoderKey = encoderKeys[i]
       const hosterKey = hosterKeys[i]
       const opts = { contractID, attestorKey, encoderKey, hosterKey, feedKey, cb: (msg, cb) => compareEncodings(messages, msg, cb) }
+      log('Verify encodings!')
       jobs.push(account.attestor.verifyEncodingFor(opts))
     }
-    jobs.map(j => j.then(x => console.log('===== JOB RESOLVED =====', x)))
+    // jobs.map(j => j.then(x => log('=====', x)))
     const results = await Promise.all(jobs)
-    log('ALL RESOLVED============================', results)
+    log('=== Verify encoding done: ===', results)
     // await account.attestor.communication.destroy()
   }
 
   async function host (data) {
     const { account, contractID, feedKey, hosterKey, attestorKey, plan } = data
     const opts = { contractID, feedKey, hosterKey, attestorKey, plan }
-    log('---------------Host!')
+    log('Host!')
     return await account.hoster.hostFor(opts)
   }
 

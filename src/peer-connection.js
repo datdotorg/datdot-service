@@ -36,15 +36,18 @@ async function peerConnect ({ comm, feedKey, senderKey, receiverKey, myKey, id }
   //   peerKey: peerKey.toString('hex'),
   //   myKey: myKey.toString('hex'),
   // })
-  pump(serialize$, duplex$, ...(myKey === receiverKey) ? [parse$, obj$] : [parse$], function (err) {
-    log('pipe finished', err)
+  pump(serialize$, duplex$, ...(myKey === receiverKey) ? [parse$, obj$] : [parse$], (err) => {
+    log('Streams closed and destroyed')
+    // log('All streams in the pump closed and destroyed', err)
+    // @NOTE no need to destroy streams as pump already takes care of this
+
     // serialize$.destroy()
     // duplex$.destroy()
     // if (myKey === receiverKey) obj$.destroy()
     // parse$.destroy()
 
-    if (myKey === receiverKey) obj$.destroy() // when LAST is closed pump will destroy source
-    else parse$.destroy() // when LAST is closed pump will destroy source
+    // if (myKey === receiverKey) obj$.destroy() // when LAST is closed pump will destroy source
+    // else parse$.destroy() // when LAST is closed pump will destroy source
     // log('destroy comm')
     // comm.destroy()
   })
@@ -54,10 +57,12 @@ async function peerConnect ({ comm, feedKey, senderKey, receiverKey, myKey, id }
   parse$.on('error', e => { e.type = 'parse$' })
   obj$.on('error', e => { e.type = 'obj$' })
 
-  // serialize$.on('close', () => log('serialize$ close'))
-  // duplex$.on('close', () => log('duplex$ close'))
-  // parse$.on('close', () => log('parse$ close'))
-  // obj$.on('close', () => log('obj$ close'))
+  // serialize$.on('close', e => { log('serialize$ close') })
+  // duplex$.on('close', e => { log('duplex$ close') })
+  // parse$.on('close', e => { log('parse$ close') })
+  // obj$.on('close', e => { log('obj$ close') })
+
+  // if attestor (receiver)
 
   // serialize$.setMaxListeners(100)
   // duplex$.setMaxListeners(100)
@@ -68,7 +73,6 @@ async function peerConnect ({ comm, feedKey, senderKey, receiverKey, myKey, id }
     // duplex$.end()
     // if (myKey === receiverKey) obj$.end()
     // parse$.end()
-    log('END PEER CONNECT STREAM')
     const lastStream = (myKey === receiverKey) ? obj$ : parse$
     lastStream.end()
   }

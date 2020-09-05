@@ -35,6 +35,7 @@ async function role (profile, APIS) {
       log('Event received:', event.method, event.data.toString())
       const { attestorKey, feedKey, ranges } = await getHostingData(contract)
       await serviceAPI.encode({ contractID, account, attestorKey, encoderKey, feedKey, ranges })
+      log(' === Encoding done ===')
       // const nonce = await account.getNonce()
       // await chainAPI.encodingDone({ contractID, signer, nonce })
     }

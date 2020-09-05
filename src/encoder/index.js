@@ -60,15 +60,15 @@ module.exports = class Encoder {
       var total = 0
       for (const range of ranges) total += (range[1] + 1) - range[0]
 
-      encoder.log('START ENCODING')
+      encoder.log('Start encoding and sending data to attestor')
       for (const range of ranges) {
         const rangeRes = sendDataToAttestor({ encoder, range, feed, feedKey, streams })
         all.push(...rangeRes)
       }
       try {
         const results = await Promise.all(all)
-        encoder.log('ENCODER SENT ALL SUB RANGES + GOT CONFIRMS', all.length)
-        encoder.log('END COMM with ATTESTOR')
+        encoder.log(`${all.length} confirmations received from the attestor`)
+        encoder.log('Destroying communication with the attestor')
         streams.end()
         resolve(results)
       } catch (e) {
@@ -80,13 +80,13 @@ module.exports = class Encoder {
 }
 
 function sendDataToAttestor ({ encoder, range, feed, feedKey, streams }) {
-  const rengeRes = []
+  const rangeRes = []
   for (let index = range[0], len = range[1] + 1; index < len; index++) {
     const message = encode(encoder, index, feed, feedKey)
     const chunkRes = send(message, { encoder, range, feed, feedKey, streams })
-    rengeRes.push(chunkRes)
+    rangeRes.push(chunkRes)
   }
-  return rengeRes
+  return rangeRes
 }
 async function send (msg, { encoder, range, feed, feedKey, streams }) {
   const message = await msg
@@ -108,6 +108,7 @@ async function send (msg, { encoder, range, feed, feedKey, streams }) {
     // streams.parse$.on('data', data => console.log('ON DATA', data))
 
     function ondata (response) {
+      encoder.log(response)
       if (timeout) return encoder.log(message.index, 'UNWANTED',streams.peerKey.toString('hex'))
       clearTimeout(toID)
       // @TODO what do we do if one or multiple encoders fail to do their work
