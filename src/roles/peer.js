@@ -12,12 +12,12 @@
 module.exports = role
 
 async function role (profile, APIS) {
-  const { name, account, log } = profile
-  const { chainAPI } = APIS
+  const { name, log } = profile
+  const { chainAPI, vaultAPI } = APIS
 
-  const nonce = await account.getNonce()
-  const myAddress = account.chainKeypair.address
-  const signer = account.chainKeypair
+  const nonce = await vaultAPI.getNonce()
+  const myAddress = vaultAPI.chainKeypair.address
+  const signer = vaultAPI.chainKeypair
   log(`New account created => ${myAddress}`)
   await chainAPI.newUser({ signer, nonce })
 }

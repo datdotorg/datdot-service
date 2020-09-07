@@ -40,10 +40,7 @@ function datdotService (profile) {
       log('Verify encodings!')
       jobs.push(account.attestor.verifyEncodingFor(opts))
     }
-    // jobs.map(j => j.then(x => log('=====', x)))
-    const results = await Promise.all(jobs)
-    log('=== Verify encoding done: ===', results)
-    // await account.attestor.communication.destroy()
+    return Promise.all(jobs)
   }
 
   async function host (data) {
@@ -65,15 +62,13 @@ function datdotService (profile) {
 
   async function sendStorageChallengeToAttestor (data) {
     const { account, hosterKey, storageChallengeID, feedKey, attestorKey, proof } = data
-    await account.hoster.sendStorageChallenge({ storageChallengeID, hosterKey, feedKey, attestorKey, proof })
-    // hoster sends proof of data to the attestor
+    return account.hoster.sendStorageChallenge({ storageChallengeID, hosterKey, feedKey, attestorKey, proof })
   }
 
   async function verifyStorageChallenge (data) {
     const { account, attestorKey, hosterKey, feedKey, storageChallengeID } = data
     // @TODO prepare the response: hash, proof etc. instead of sending the full chunk
-    const proof = await account.attestor.verifyStorageChallenge({ storageChallengeID, attestorKey, feedKey, hosterKey })
-    return { storageChallengeID, proof }
+    return await account.attestor.verifyStorageChallenge({ storageChallengeID, attestorKey, feedKey, hosterKey })
   }
 
   async function checkPerformance (data) {

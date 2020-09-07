@@ -2,9 +2,6 @@ const Hypercore = require('hypercore')
 const reallyReady = require('hypercore-really-ready')
 const ram = require('random-access-memory')
 const hyperswarm = require('hyperswarm')
-const debug = require('debug')
-const crypto = require('crypto')
-
 /******************************************************************************
   ROLE: Author
 ******************************************************************************/

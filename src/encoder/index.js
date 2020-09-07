@@ -3,7 +3,7 @@ const varint = require('varint')
 const p2plex = require('p2plex')
 const { seedKeygen } = require('noise-peer')
 
-const peerConnect = require('../peer-connection')
+const peerConnect = require('../p2plex-connection')
 
 const NAMESPACE = 'datdot-encoder'
 const IDENITY_NAME = 'signing'
@@ -33,7 +33,7 @@ module.exports = class Encoder {
     sodium.crypto_sign_seed_keypair(signingPublicKey, signingSecretKey, signingSeed)
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
     const noiseKeyPair = seedKeygen(noiseSeed)
-    this.noiseKeyPair = noiseKeyPair
+    this.communication = p2plex({ keyPair: noiseKeyPair })
     this.signingPublicKey = signingPublicKey
     this.signingSecretKey = signingSecretKey
     this.replicationPublicKey = replicationPublicKey
@@ -47,7 +47,7 @@ module.exports = class Encoder {
       const feed = encoder.Hypercore(feedKey)
 
       const opts = {
-        comm: p2plex({ keyPair: encoder.noiseKeyPair }),
+        plex: this.communication,
         senderKey: encoderKey,
         feedKey,
         receiverKey: attestorKey,
@@ -66,7 +66,7 @@ module.exports = class Encoder {
         all.push(...rangeRes)
       }
       try {
-        const results = await Promise.all(all)
+        const results = await Promise.all(all).catch((error) => encoder.log(error))
         encoder.log(`${all.length} confirmations received from the attestor`)
         encoder.log('Destroying communication with the attestor')
         streams.end()
@@ -94,21 +94,22 @@ async function send (msg, { encoder, range, feed, feedKey, streams }) {
     // encoder.log(message.index, 'SEND_MSG',streams.peerKey.toString('hex'))
     streams.serialize$.write(message)
     var timeout
-    const toID = setTimeout(async () => {
+    const toID = setTimeout(() => {
       timeout = true
-      // streams.parse$.off('data', ondata)
-
+      streams.parse$.off('data', ondata)
       const error = [message.index, 'FAIL_ACK_TIMEOUT',streams.peerKey.toString('hex')]
-      encoder.log(error)
+      // encoder.log(error)
       reject(error)
     }, DEFAULT_TIMEOUT)
-    // encoder.log(message.index, 'WANT_ACK',streams.peerKey.toString('hex'))
-    streams.parse$.once('data', ondata)
 
-    // streams.parse$.on('data', data => console.log('ON DATA', data))
+    streams.parse$.on('data', ondata)
+    // encoder.log(message.index, 'WANT_ACK',streams.peerKey.toString('hex'))
 
     function ondata (response) {
-      encoder.log(response)
+      if (response.index !== message.index) return
+      encoder.log(`received ACK for right message ${message.index}`)
+      streams.parse$.off('data', ondata)
+      // encoder.log(response)
       if (timeout) return encoder.log(message.index, 'UNWANTED',streams.peerKey.toString('hex'))
       clearTimeout(toID)
       // @TODO what do we do if one or multiple encoders fail to do their work

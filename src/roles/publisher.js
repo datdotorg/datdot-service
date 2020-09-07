@@ -6,8 +6,8 @@ const getData = require('../getFeed')
 module.exports = role
 
 async function role (profile, APIS) {
-  const { name, account, log } = profile
-  const { serviceAPI, chainAPI, chatAPI } = APIS
+  const { name, log } = profile
+  const { serviceAPI, chainAPI, chatAPI, vaultAPI } = APIS
 
   await chainAPI.listenToEvents(handleEvent)
 
@@ -21,9 +21,9 @@ async function role (profile, APIS) {
     const topic = keys.topic
     const data = await getData(log, feedkey, topic)
     log('Got the data', data)
-    const myAddress = account.chainKeypair.address
-    const signer = account.chainKeypair
-    const nonce = await account.getNonce()
+    const myAddress = vaultAPI.chainKeypair.address
+    const signer = vaultAPI.chainKeypair
+    const nonce = await vaultAPI.getNonce()
     await chainAPI.publishFeed({ merkleRoot: data, signer, nonce })
   }
 

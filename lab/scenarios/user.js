@@ -1,7 +1,7 @@
 const debug = require('debug')
 const getChainAPI = require('../../src/chainAPI')
 const getServiceAPI = require('../../src/serviceAPI')
-const makeAccount = require('../../src/wallet.js')
+const getVaultAPI = require('../../src/wallet.js')
 const getChatAPI = require('./chatAPI')
 /******************************************************************************
   ROLES
@@ -20,17 +20,16 @@ const ROLES = {
 ******************************************************************************/
 async function user ({name, roles}, config, log) {
   const profile = { name, log }
-  const account = await makeAccount(profile)
-  profile.account = account
   const APIS = {
     serviceAPI: getServiceAPI(profile),
     chainAPI: await getChainAPI(profile, config.chain.join(':')),
     chatAPI: await getChatAPI(profile, config.chat.join(':')),
+    vaultAPI: await getVaultAPI(profile),
   }
   roles = [...new Set(roles)]
   for (var i = 0, len = roles.length; i < len; i++) {
     const rolename = roles[i]
-    const profile = { name, account, log: log.extend(rolename) }
+    const profile = { name, log: log.extend(rolename) }
     const role = ROLES[rolename]
     await role(profile, APIS)
   }

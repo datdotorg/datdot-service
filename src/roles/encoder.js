@@ -5,16 +5,16 @@
 module.exports = role
 
 async function role (profile, APIS) {
-  const { name, account, log } = profile
-  const { serviceAPI, chainAPI, chatAPI } = APIS
+  const { name, log } = profile
+  const { serviceAPI, chainAPI, chatAPI, vaultAPI } = APIS
 
   log('Register as encoder')
   await chainAPI.listenToEvents(handleEvent)
-  await account.initEncoder({}, log)
-  const encoderKey = account.encoder.publicKey
-  const myAddress = account.chainKeypair.address
-  const signer = account.chainKeypair
-  const nonce = await account.getNonce()
+  await vaultAPI.initEncoder({}, log)
+  const encoderKey = vaultAPI.encoder.publicKey
+  const myAddress = vaultAPI.chainKeypair.address
+  const signer = vaultAPI.chainKeypair
+  const nonce = await vaultAPI.getNonce()
   await chainAPI.registerEncoder({ encoderKey, signer, nonce })
 
   // EVENTS
@@ -34,9 +34,9 @@ async function role (profile, APIS) {
       console.log('=====[NEW CONTRACT]=====')
       log('Event received:', event.method, event.data.toString())
       const { attestorKey, feedKey, ranges } = await getHostingData(contract)
-      await serviceAPI.encode({ contractID, account, attestorKey, encoderKey, feedKey, ranges })
-      log(' === Encoding done ===')
-      // const nonce = await account.getNonce()
+      await serviceAPI.encode({ contractID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges }).catch((error) => log(error))
+      log(' ========================== Encoding done ===========================')
+      // const nonce = await vaultAPI.getNonce()
       // await chainAPI.encodingDone({ contractID, signer, nonce })
     }
   }

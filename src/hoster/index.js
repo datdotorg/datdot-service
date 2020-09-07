@@ -4,8 +4,8 @@ const defer = require('promise-defer')
 const reallyReady = require('hypercore-really-ready')
 const { seedKeygen } = require('noise-peer')
 
-const HosterStorage = require('../hoster-storage')
-const peerConnect = require('../peer-connection')
+const HosterStorage = require('./hoster-storage')
+const peerConnect = require('../p2plex-connection')
 
 const NAMESPACE = 'datdot-hoster'
 const NOISE_NAME = 'noise'
@@ -15,6 +15,7 @@ const DEFAULT_TIMEOUT = 5000
 
 module.exports = class Hoster {
   constructor ({ db, sdk, EncoderDecoder }, log) {
+    const { Hypercore } = sdk
     this.log = log
     this.storages = new Map()
     this.keyOptions = new Map()
@@ -22,10 +23,29 @@ module.exports = class Hoster {
     this.loaderCache = new Map()
     this.db = db
     this.hosterDB = sub(this.db, 'hoster')
-    const { Hypercore } = sdk
     this.sdk = sdk
     this.Hypercore = Hypercore
     this.EncoderDecoder = EncoderDecoder
+  }
+
+  async init () {
+    const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
+    const noiseKeyPair = seedKeygen(noiseSeed)
+    this.communication = p2plex({ keyPair: noiseKeyPair })
+    this.publicKey = noiseKeyPair.publicKey
+    // this.communication = p2plex({ keyPair: noiseKeyPair })
+    const keys = await this.listKeys()
+    for (const { key, options } of keys) {
+      await this.setOpts(key, options)
+      await this.getStorage(key)
+      await this.loadFeedData(key)
+    }
+  }
+
+  static async load (opts, log) {
+    const hoster = new Hoster(opts, log)
+    await hoster.init()
+    return hoster
   }
 
   async hostFor ({ contractID, feedKey, hosterKey, attestorKey, plan }) {
@@ -39,22 +59,20 @@ module.exports = class Hoster {
   async getEncodedDataFromAttestor (contractID, hosterKey, attestorKey, feedKey) {
     const hoster = this
     return new Promise(async (resolve, reject) => {
-
       const opts = {
-        comm: p2plex({ keyPair: hoster.noiseKeyPair }),
+        plex: this.communication,
         senderKey: attestorKey,
         feedKey,
         receiverKey: hosterKey,
         id: contractID,
         myKey: hosterKey,
       }
+      var counter = 0
       const log2attestor = hoster.log.extend('<-Attestor')
       const streams = await peerConnect(opts, log2attestor)
 
-      var counter = 0
-      log2attestor('START STORING')
       for await (const message of streams.parse$) {
-        log2attestor(message.index, 'RECV_MSG',attestorKey.toString('hex'))
+        // log2attestor(message.index, 'RECV_MSG',attestorKey.toString('hex'))
         counter++
         // @TODO: decode and merkle verify each chunk (to see if it belongs to the feed) && verify the signature
         const { type } = message
@@ -71,7 +89,6 @@ module.exports = class Hoster {
             return reject(error)
           }
           try {
-            log2attestor(index, ':store', index)
             await this.storeEncoded(
               key,
               index,
@@ -80,9 +97,9 @@ module.exports = class Hoster {
               nodes,
               Buffer.from(signature)
             )
-            log2attestor(index, ':attestor:MSG',attestorKey.toString('hex'))
-            streams.serialize$.write({ type: 'encoded:stored', ok: true })
-            // this.emit('encoded', key, index)
+            log2attestor(index, ':stored', index)
+            // log2attestor(index, ':attestor:MSG',attestorKey.toString('hex'))
+            streams.serialize$.write({ type: 'encoded:stored', ok: true, index: message.index })
           } catch (e) {
             // Uncomment for better stack traces
             log2attestor(`ERROR_STORING: ${e.message}`)
@@ -99,7 +116,7 @@ module.exports = class Hoster {
           return reject(error)
         }
       }
-      console.log('HOSTER RECEIVED & STORED ALL', counter, 'END STREAMS + DESTROY COMM')
+      console.log('HOSTER RECEIVED & STORED ALL', counter)
       streams.end()
       resolve()
     })
@@ -175,7 +192,7 @@ module.exports = class Hoster {
     return new Promise(async (resolve, reject) => {
 
       const opts = {
-        comm: p2plex({ keyPair: hoster.noiseKeyPair }),
+        plex: this.communication,
         senderKey: hosterKey,
         feedKey,
         receiverKey: attestorKey,
@@ -185,38 +202,57 @@ module.exports = class Hoster {
       const log2attestor = hoster.log.extend('<-Attestor')
       const streams = await peerConnect(opts, log2attestor)
 
+      const all = []
+
       log2attestor('START STORAGE PROOF')
 
-      log2attestor(storageChallengeID, 'SEND_PROOF',attestorKey.peerKey.toString('hex'))
-      streams.serialize$.write({
-        type: 'StorageChallenge',
-        feedKey,
-        storageChallengeID,
-        proof
-      })
-      log2attestor(storageChallengeID, 'WAIT_ACK',attestorKey.peerKey.toString('hex'))
-      var timeout
-      const toID = setTimeout(async () => {
-        timeout = true
-        streams.parse$.off('data', ondata)
-        streams.end()
-        const error = [storageChallengeID, 'FAIL_ACK_TIMEOUT',attestorKey.peerKey.toString('hex')]
-        log2attestor(error)
-        reject(error)
-      }, DEFAULT_TIMEOUT)
+      const proofSent = sendProof()
+      all.push(proofSent)
 
-      streams.parse$.once('data', ondata)
+      try {
+        const results = await Promise.all(all).catch((error) => log2attestor(error))
+        log2attestor(`${all.length} confirmations received from the attestor`)
+        log2attestor('Destroying communication with the attestor')
+        resolve(results)
+      } catch (e) {
+        console.log('ERROR', e)
+        reject(e)
+      }
 
-      async function ondata (response) {
-        // const [response] = await once(confirmStream, 'data')
-        if (timeout) return
-        clearTimeout(toID)
-        // @TODO what happens if proof doesn't get verified due to an error? Try again?
-        if (response.error) reject(new Error(response.error))
-        log2attestor(storageChallengeID, 'RECV_ACK',attestorKey.peerKey.toString('hex'))
-        streams.end()
-        // await opts.comm.destroy()
-        resolve()
+      function sendProof () {
+        return new Promise((resolve, reject) => {
+          log2attestor(storageChallengeID, 'SEND_PROOF',streams.peerKey.toString('hex'))
+          streams.serialize$.write({
+            type: 'StorageChallenge',
+            feedKey,
+            storageChallengeID,
+            proof
+          })
+          log2attestor(storageChallengeID, 'WAIT_ACK',streams.peerKey.toString('hex'))
+          var timeout
+          const toID = setTimeout(async () => {
+            timeout = true
+            streams.parse$.off('data', ondata)
+            streams.end()
+            const error = [storageChallengeID, 'FAIL_ACK_TIMEOUT',streams.peerKey.toString('hex')]
+            // log2attestor(error)
+            reject(error)
+          }, DEFAULT_TIMEOUT)
+        })
+        streams.parse$.on('data', ondata)
+
+        async function ondata (response) {
+          if (response.index !== message.index) return
+          log2attestor(`received ACK for right message ${message.index}`)
+          streams.parse$.off('data', ondata)
+          resolve()
+          // if (timeout) return log2attestor(message.index, 'UNWANTED',streams.peerKey.toString('hex'))
+          clearTimeout(toID)
+          // @TODO what happens if proof doesn't get verified due to an error? Try again?
+          if (response.error) reject(new Error(response.error))
+          // log2attestor(storageChallengeID, 'RECV_ACK',streams.peerKey.toString('hex'))
+          resolve()
+        }
       }
 
     })
@@ -277,26 +313,6 @@ module.exports = class Hoster {
   async getOpts (key) {
     const stringKey = key.toString('hex')
     return this.keyOptions.get(stringKey) || DEFAULT_OPTS
-  }
-
-  async init () {
-    const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
-    const noiseKeyPair = seedKeygen(noiseSeed)
-    this.noiseKeyPair = noiseKeyPair
-    this.publicKey = noiseKeyPair.publicKey
-    // this.communication = p2plex({ keyPair: noiseKeyPair })
-    const keys = await this.listKeys()
-    for (const { key, options } of keys) {
-      await this.setOpts(key, options)
-      await this.getStorage(key)
-      await this.loadFeedData(key)
-    }
-  }
-
-  static async load (opts, log) {
-    const hoster = new Hoster(opts, log)
-    await hoster.init()
-    return hoster
   }
 
   async close () {

@@ -5,19 +5,27 @@
 module.exports = role
 
 async function role (profile, APIS) {
-  const { name, account, log } = profile
-  const { serviceAPI, chainAPI, chatAPI } = APIS
+  const { name, log } = profile
+  const { serviceAPI, chainAPI, chatAPI, vaultAPI } = APIS
 
   log('Register as attestor')
   chainAPI.listenToEvents(handleEvent)
-  await account.initAttestor({}, log)
-  const attestorKey = account.attestor.publicKey
-  const myAddress = account.chainKeypair.address
-  const signer = account.chainKeypair
-  const nonce = await account.getNonce()
+  await vaultAPI.initAttestor({}, log)
+  const attestorKey = vaultAPI.attestor.publicKey
+  const myAddress = vaultAPI.chainKeypair.address
+  const signer = vaultAPI.chainKeypair
+  const nonce = await vaultAPI.getNonce()
   await chainAPI.registerAttestor({ attestorKey, signer, nonce })
 
   // EVENTS
+  // async function isForMe (peerids) {
+  //   peerids = [].concat(peerids)
+  //   for (var i = 0, len = peerids.length; i < len; i++) {
+  //     const id = peerids[i]
+  //     const peerAddress = await chainAPI.getUserAddress(id)
+  //     if (peerAddress === myAddress) return true
+  //   }
+  // }
   async function handleEvent (event) {
     if (event.method === 'NewContract') {
       const [contractID] = event.data
@@ -28,7 +36,12 @@ async function role (profile, APIS) {
       console.log('=====[NEW CONTRACT]=====')
       log('Event received:', event.method, event.data.toString())
       const { feedKey, encoderKeys, hosterKeys } = await getContractData(contract)
-      await serviceAPI.verifyEncoding({ account, hosterKeys, attestorKey, feedKey, encoderKeys, contractID })
+      const results = await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, contractID }).catch((error) => log(error))
+      log('=== Verify encoding done: ===', results)
+      // const contract = await getContractData(event.data, isForMe)
+      // if (!contract) return
+      // const { feedKey, encoderKeys, hosterKeys } = contract
+      // await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, contractID })
     }
     if (event.method === 'NewPerformanceChallenge') {
       const [performanceChallengeID] = event.data
@@ -49,9 +62,9 @@ async function role (profile, APIS) {
           // @TODO: add time of execution for each attestor
           // @TODO: select a reporter
           // const meeting = await serviceAPI.meetAttestors(feedKey)
-          const data = { account, randomChunks, feedKey }
-          const report = await serviceAPI.checkPerformance(data)
-          const nonce = await account.getNonce()
+          const data = { account: vaultAPI, randomChunks, feedKey }
+          const report = await serviceAPI.checkPerformance(data).catch((error) => log(error))
+          const nonce = await vaultAPI.getNonce()
           await chainAPI.submitPerformanceChallenge({ performanceChallengeID, report, signer, nonce })
         }
       })
@@ -64,11 +77,11 @@ async function role (profile, APIS) {
       if (attestorAddress === myAddress) {
         log('Event received:', event.method, event.data.toString())
         const data = await getStorageChallengeData(storageChallenge)
-        data.account = account
+        data.account = vaultAPI
         data.attestorKey = attestorKey
-        const { storageChallengeID, proof } = await serviceAPI.verifyStorageChallenge(data)
+        const proof = await serviceAPI.verifyStorageChallenge(data).catch((error) => log(error))
         if (proof) {
-          const nonce = account.getNonce()
+          const nonce = vaultAPI.getNonce()
           const opts = { storageChallengeID, proof, signer, nonce }
           await chainAPI.submitStorageChallenge(opts)
         }

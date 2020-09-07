@@ -1,26 +1,19 @@
-const debug = require('debug')
-const getChainAPI = require('../chainAPI')
-const getServiceAPI = require('../serviceAPI')
-const getChatAPI = require('../../lab/scenarios/chatAPI')
-
 /******************************************************************************
   ROLE: Hoster
 ******************************************************************************/
-const ROLE = __filename.split('/').pop().split('.')[0].toLowerCase()
-
 module.exports = role
 
 async function role (profile, APIS) {
-  const { name, account, log } = profile
-  const { serviceAPI, chainAPI, chatAPI } = APIS
+  const { name, log } = profile
+  const { serviceAPI, chainAPI, chatAPI, vaultAPI: vaultAPI } = APIS
 
   log('Register as hoster')
   await chainAPI.listenToEvents(handleEvent)
-  await account.initHoster({}, log)
-  const hosterKey = account.hoster.publicKey
-  const myAddress = account.chainKeypair.address
-  const signer = account.chainKeypair
-  const nonce = account.getNonce()
+  await vaultAPI.initHoster({}, log)
+  const hosterKey = vaultAPI.hoster.publicKey
+  const myAddress = vaultAPI.chainKeypair.address
+  const signer = vaultAPI.chainKeypair
+  const nonce = vaultAPI.getNonce()
   await chainAPI.registerHoster({ hosterKey, signer, nonce })
 
   // EVENTS
@@ -42,9 +35,9 @@ async function role (profile, APIS) {
       log('Event received:', event.method, event.data.toString())
       const { feedKey, attestorKey, plan } = await getHostingData(contract)
       console.log('@TODO: hoster')
-      // await serviceAPI.host({ contractID, account, hosterKey, feedKey, attestorKey, plan })
-      // const nonce = account.getNonce()
-      // await chainAPI.hostingStarts({ contractID, signer, nonce })
+      await serviceAPI.host({ contractID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan }).catch((error) => log(error))
+      const nonce = vaultAPI.getNonce()
+      await chainAPI.hostingStarts({ contractID, signer, nonce })
     }
 
     if (event.method === 'NewStorageChallenge') {
@@ -54,13 +47,13 @@ async function role (profile, APIS) {
       const hosterID = storageChallenge.hoster
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
-        console.log('=====[NEW STORAGE CHALLENGE]=====')
         log('Event received:', event.method, event.data.toString())
-        // const data = await getStorageChallengeData(storageChallenge, contract)
-        // data.account = account
-        // data.hosterKey = hosterKey
-        // // log('sendStorageChallengeToAttestor - DATA', data)
-        // await serviceAPI.sendStorageChallengeToAttestor(data)
+        const data = await getStorageChallengeData(storageChallenge, contract)
+        data.account = vaultAPI
+        data.hosterKey = hosterKey
+        // log('sendStorageChallengeToAttestor - DATA', data)
+        await serviceAPI.sendStorageChallengeToAttestor(data).catch((error) => log(error))
+        log('=== sendStorageChallengeToAttestor completed ===')
       }
     }
   }
@@ -83,7 +76,7 @@ async function role (profile, APIS) {
     const feedKey = await chainAPI.getFeedKey(feedID)
     const attestorID = storageChallenge.attestor
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
-    const proof = await serviceAPI.getStorageChallenge({ account, storageChallenge, feedKey })
+    const proof = await serviceAPI.getStorageChallenge({ account: vaultAPI, storageChallenge, feedKey }).catch((error) => log(error))
     return { storageChallengeID: storageChallenge.id, feedKey, attestorKey, proof }
   }
 }

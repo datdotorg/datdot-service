@@ -417,6 +417,7 @@ function getSelectedAttestor (attestors, selectedEncoders, selectedHosters) {
 }
 ////////////////////////////////////////////////////////////////////////////
 function emitPerformanceChallenge (performanceChallenge) {
+  // select 5 attestors
   performanceChallenge.attestors = DB.idleAttestors.splice(0, 5)
   const performanceChallengeID = performanceChallenge.id
   const challenge = { event: { data: [performanceChallengeID], method: 'NewPerformanceChallenge' } }
