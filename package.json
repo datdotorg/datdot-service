@@ -4,6 +4,7 @@
   "description": "service interact with the substrate chain",
   "main": "index.js",
   "scripts": {
+    "start": "node ./example",
     "cli": "node cli.js"
   },
   "author": "@ninabreznik",
