@@ -60,7 +60,7 @@ module.exports = class Hoster {
     const hoster = this
     return new Promise(async (resolve, reject) => {
       const opts = {
-        plex: this.communication,
+        plex: hoster.communication,
         senderKey: attestorKey,
         feedKey,
         receiverKey: hosterKey,
@@ -68,7 +68,7 @@ module.exports = class Hoster {
         myKey: hosterKey,
       }
       var counter = 0
-      const log2attestor = hoster.log.extend('<-Attestor')
+      const log2attestor = hoster.log.extend(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
       const streams = await peerConnect(opts, log2attestor)
 
       for await (const message of streams.parse$) {
@@ -79,7 +79,7 @@ module.exports = class Hoster {
         if (type === 'verified') {
           const { feed, index, encoded, proof, nodes, signature } = message
           const key = Buffer.from(feed)
-          const isExisting = await this.hasKey(key)
+          const isExisting = await hoster.hasKey(key)
           // Fix up the JSON serialization by converting things to buffers
           for (const node of nodes) node.hash = Buffer.from(node.hash)
           if (!isExisting) {
@@ -89,22 +89,23 @@ module.exports = class Hoster {
             return reject(error)
           }
           try {
-            await this.storeEncoded(
+            const data = {
               key,
               index,
-              Buffer.from(proof),
-              Buffer.from(encoded),
+              proof: Buffer.from(proof),
+              encoded: Buffer.from(encoded),
               nodes,
-              Buffer.from(signature)
-            )
-            log2attestor(index, ':stored', index)
+              signature: Buffer.from(signature)
+            }
+            await hoster.storeEncoded(data)
+            // log2attestor(index, ':stored', index)
             // log2attestor(index, ':attestor:MSG',attestorKey.toString('hex'))
             streams.serialize$.write({ type: 'encoded:stored', ok: true, index: message.index })
           } catch (e) {
             // Uncomment for better stack traces
-            log2attestor(`ERROR_STORING: ${e.message}`)
-            const error = { type: 'encoded:error', error: `ERROR_STORING: ${e.message}`, ...{ e } }
+            const error = { type: 'encoded:error', error: `ERROR_STORING: ${e.message}`, ...{ e }, data }
             streams.serialize$.write(error)
+            log2attestor(error)
             streams.end()
             return reject(error)
           }
@@ -117,7 +118,6 @@ module.exports = class Hoster {
         }
       }
       console.log('HOSTER RECEIVED & STORED ALL', counter)
-      streams.end()
       resolve()
     })
   }
@@ -177,7 +177,7 @@ module.exports = class Hoster {
     } */
   }
 
-  async storeEncoded (key, index, proof, encoded, nodes, signature) {
+  async storeEncoded ({ key, index, proof, encoded, nodes, signature }) {
     const storage = await this.getStorage(key)
     return storage.storeEncoded(index, proof, encoded, nodes, signature)
   }
@@ -187,72 +187,37 @@ module.exports = class Hoster {
     return storage.getStorageChallenge(index)
   }
 
-  async sendStorageChallenge ({ storageChallengeID, hosterKey, feedKey, attestorKey, proof }) {
+  async sendStorageChallenge ({ storageChallengeID, hosterKey, feedKey, attestorKey, proofs }) {
     const hoster = this
     return new Promise(async (resolve, reject) => {
 
       const opts = {
-        plex: this.communication,
+        plex: hoster.communication,
         senderKey: hosterKey,
         feedKey,
         receiverKey: attestorKey,
         id: storageChallengeID,
         myKey: hosterKey,
       }
-      const log2attestor = hoster.log.extend('<-Attestor')
+      const log2attestor = hoster.log.extend(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
       const streams = await peerConnect(opts, log2attestor)
-
-      const all = []
 
       log2attestor('START STORAGE PROOF')
 
-      const proofSent = sendProof()
+      const all = []
+      const message = { type: 'StorageChallenge', feedKey, storageChallengeID, proofs}
+      const proofSent = requestResponse({ message, sendStream: streams.serialize$, receiveStream: streams.parse$, log: log2attestor })
       all.push(proofSent)
 
       try {
         const results = await Promise.all(all).catch((error) => log2attestor(error))
         log2attestor(`${all.length} confirmations received from the attestor`)
         log2attestor('Destroying communication with the attestor')
+        streams.end()
         resolve(results)
       } catch (e) {
         console.log('ERROR', e)
         reject(e)
-      }
-
-      function sendProof () {
-        return new Promise((resolve, reject) => {
-          log2attestor(storageChallengeID, 'SEND_PROOF',streams.peerKey.toString('hex'))
-          streams.serialize$.write({
-            type: 'StorageChallenge',
-            feedKey,
-            storageChallengeID,
-            proof
-          })
-          log2attestor(storageChallengeID, 'WAIT_ACK',streams.peerKey.toString('hex'))
-          var timeout
-          const toID = setTimeout(async () => {
-            timeout = true
-            streams.parse$.off('data', ondata)
-            streams.end()
-            const error = [storageChallengeID, 'FAIL_ACK_TIMEOUT',streams.peerKey.toString('hex')]
-            // log2attestor(error)
-            reject(error)
-          }, DEFAULT_TIMEOUT)
-        })
-        streams.parse$.on('data', ondata)
-
-        async function ondata (response) {
-          if (response.index !== message.index) return
-          log2attestor(`received ACK for right message ${message.index}`)
-          streams.parse$.off('data', ondata)
-          resolve()
-          // if (timeout) return log2attestor(message.index, 'UNWANTED',streams.peerKey.toString('hex'))
-          clearTimeout(toID)
-          // @TODO what happens if proof doesn't get verified due to an error? Try again?
-          if (response.error) reject(new Error(response.error))
-          // log2attestor(storageChallengeID, 'RECV_ACK',streams.peerKey.toString('hex'))
-          resolve()
-        }
       }
 
     })

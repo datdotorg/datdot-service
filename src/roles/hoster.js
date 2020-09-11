@@ -34,7 +34,6 @@ async function role (profile, APIS) {
       console.log('=====[NEW CONTRACT]=====')
       log('Event received:', event.method, event.data.toString())
       const { feedKey, attestorKey, plan } = await getHostingData(contract)
-      console.log('@TODO: hoster')
       await serviceAPI.host({ contractID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan }).catch((error) => log(error))
       const nonce = vaultAPI.getNonce()
       await chainAPI.hostingStarts({ contractID, signer, nonce })
@@ -76,7 +75,7 @@ async function role (profile, APIS) {
     const feedKey = await chainAPI.getFeedKey(feedID)
     const attestorID = storageChallenge.attestor
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
-    const proof = await serviceAPI.getStorageChallenge({ account: vaultAPI, storageChallenge, feedKey }).catch((error) => log(error))
-    return { storageChallengeID: storageChallenge.id, feedKey, attestorKey, proof }
+    const proofs = await serviceAPI.getStorageChallenge({ account: vaultAPI, storageChallenge, feedKey }).catch((error) => log(error))
+    return { storageChallengeID: storageChallenge.id, feedKey, attestorKey, proofs }
   }
 }

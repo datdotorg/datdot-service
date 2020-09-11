@@ -6,7 +6,6 @@ const { PassThrough } = require('stream')
 const p2plex = require('p2plex')
 const ANNOUNCE = { announce: true, lookup: false }
 const LOOKUP = { announce: false, lookup: true }
-var counter = 0
 
 function deriveTopicKey (arr) {
   const [id, keySender, feedKey, keyReceiver] = arr
@@ -23,7 +22,6 @@ peerConnect.deriveTopicKey = deriveTopicKey
 async function peerConnect ({ plex, feedKey, senderKey, receiverKey, myKey, id }, log) {
   // p2plex connect me to peer
   const [peerKey, SWARM_OPTS] = myKey === senderKey ? [receiverKey, LOOKUP] : [senderKey, ANNOUNCE]
-  log = log.extend(`=${counter++}`)
 
   // Derive a shared swarm topic key to connect sender to the receiver (to receive encoded data)
   const topic = deriveTopicKey([id, senderKey, feedKey, receiverKey])
@@ -32,6 +30,7 @@ async function peerConnect ({ plex, feedKey, senderKey, receiverKey, myKey, id }
   for (var peer; !peer;) {
     try {
       peer = await plex.findByTopicAndPublicKey(topic, peerKey, SWARM_OPTS)
+      peer.peerKey = peerKey
     } catch (error) {
       log('timeout `findByTopicAndPublicKey`', error)
     }
@@ -48,18 +47,15 @@ async function peerConnect ({ plex, feedKey, senderKey, receiverKey, myKey, id }
     // @NOTE no need to destroy each stream manually as pump already takes care of this
     // log('Streams closed and destroyed', err)
     log('Streams closed and destroyed')
-    // log('_____________my key', myKey.toString('hex'))
-    const peers = [...plex.peers]
-    for (var i = 0;  i < peers.length; i++) {
-      log(`=== DISCONNECTING: pubkey: ${peers[i].publicKey.toString('hex')}, peer.incoming:  ${peers[i].incoming}`)
-      // if (!peers[i].incoming) await peers[i].disconnect()
-      // if (!peers[i].publicKey === peerKey) peers[i].disconnect()
-      peers[i].disconnect()
-    }
+    peer.disconnect()
   })
 
   // listen
-  peer.on('disconnected', () => { log('Peer disconnected')})
+  peer.on('disconnected', function () {
+    const peerKey = this.peerKey
+    if (myKey === receiverKey) log('Peer disconnected', peerKey.toString('hex').substring(0,5), myKey.toString('hex').substring(0,5))
+    else log('Peer disconnected', myKey.toString('hex').substring(0,5), peerKey.toString('hex').substring(0,5))
+  })
   serialize$.on('error', e => { e.type = 'serialize$' })
   duplex$.on('error', e => { e.type = 'duplex$' })
   parse$.on('error', e => { e.type = 'parse$' })
@@ -78,6 +74,5 @@ async function peerConnect ({ plex, feedKey, senderKey, receiverKey, myKey, id }
   }
 
   const streams = { serialize$, duplex$, parse$: (myKey === receiverKey) ? obj$ : parse$, end, peerKey }
-  log('New plex created')
   return streams
 }

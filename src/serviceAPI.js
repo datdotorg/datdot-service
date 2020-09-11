@@ -54,15 +54,15 @@ function datdotService (profile) {
                      WHILE HOSTING => proof
 ------------------------------------------------------------------ */
   async function getStorageChallenge ({ account, storageChallenge, feedKey }) {
-    const data = await Promise.all(storageChallenge.chunks.map(async (chunk) => {
-      return await account.hoster.getStorageChallenge(feedKey, chunk)
+    const data = await Promise.all(storageChallenge.chunks.map(async (index) => {
+      return await account.hoster.getStorageChallenge(feedKey, index)
     }))
     return data
   }
 
   async function sendStorageChallengeToAttestor (data) {
-    const { account, hosterKey, storageChallengeID, feedKey, attestorKey, proof } = data
-    return account.hoster.sendStorageChallenge({ storageChallengeID, hosterKey, feedKey, attestorKey, proof })
+    const { account, hosterKey, storageChallengeID, feedKey, attestorKey, proofs } = data
+    return account.hoster.sendStorageChallenge({ storageChallengeID, hosterKey, feedKey, attestorKey, proofs })
   }
 
   async function verifyStorageChallenge (data) {

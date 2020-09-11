@@ -31,8 +31,8 @@ async function role (profile, APIS) {
         log('Event received:', event.method, event.data.toString())
         const nonce = await vaultAPI.getNonce()
         // @TODO:Request regular challenges
-        await chainAPI.requestStorageChallenge({ contractID, hosterID: userID, signer, nonce })
-        await chainAPI.requestPerformanceChallenge({ contractID, signer, nonce })
+        // await chainAPI.requestStorageChallenge({ contractID, hosterID: userID, signer, nonce })
+        // await chainAPI.requestPerformanceChallenge({ contractID, signer, nonce })
       }
     }
     if (event.method === 'StorageChallengeConfirmed') {

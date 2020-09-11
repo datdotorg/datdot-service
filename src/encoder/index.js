@@ -4,6 +4,7 @@ const p2plex = require('p2plex')
 const { seedKeygen } = require('noise-peer')
 
 const peerConnect = require('../p2plex-connection')
+const requestResponse = require('../requestResponse')
 
 const NAMESPACE = 'datdot-encoder'
 const IDENITY_NAME = 'signing'
@@ -54,21 +55,22 @@ module.exports = class Encoder {
         id: contractID,
         myKey: encoderKey,
       }
-      const streams = await peerConnect(opts, encoder.log.extend('->Attestor'))
+      const log2Attestor = encoder.log.extend(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
+      const streams = await peerConnect(opts, log2Attestor)
       const all = []
 
       var total = 0
       for (const range of ranges) total += (range[1] + 1) - range[0]
 
-      encoder.log('Start encoding and sending data to attestor')
+      log2Attestor('Start encoding and sending data to attestor')
       for (const range of ranges) {
-        const rangeRes = sendDataToAttestor({ encoder, range, feed, feedKey, streams })
+        const rangeRes = sendDataToAttestor({ encoder, range, feed, feedKey, streams, log: log2Attestor })
         all.push(...rangeRes)
       }
       try {
-        const results = await Promise.all(all).catch((error) => encoder.log(error))
-        encoder.log(`${all.length} confirmations received from the attestor`)
-        encoder.log('Destroying communication with the attestor')
+        const results = await Promise.all(all).catch((error) => log2Attestor(error))
+        log2Attestor(`${all.length} confirmations received from the attestor`)
+        log2Attestor('Destroying communication with the attestor')
         streams.end()
         resolve(results)
       } catch (e) {
@@ -79,62 +81,18 @@ module.exports = class Encoder {
   }
 }
 
-function sendDataToAttestor ({ encoder, range, feed, feedKey, streams }) {
+function sendDataToAttestor ({ encoder, range, feed, feedKey, streams, log }) {
   const rangeRes = []
   for (let index = range[0], len = range[1] + 1; index < len; index++) {
     const message = encode(encoder, index, feed, feedKey)
-    const chunkRes = send(message, { encoder, range, feed, feedKey, streams })
+    const chunkRes = send(message, { encoder, range, feed, feedKey, streams, log })
     rangeRes.push(chunkRes)
   }
   return rangeRes
 }
-async function send (msg, { encoder, range, feed, feedKey, streams }) {
+async function send (msg, { encoder, range, feed, feedKey, streams, log }) {
   const message = await msg
-  return new Promise(async (resolve, reject) => {
-    // encoder.log(message.index, 'SEND_MSG',streams.peerKey.toString('hex'))
-    streams.serialize$.write(message)
-    var timeout
-    const toID = setTimeout(() => {
-      timeout = true
-      streams.parse$.off('data', ondata)
-      const error = [message.index, 'FAIL_ACK_TIMEOUT',streams.peerKey.toString('hex')]
-      // encoder.log(error)
-      reject(error)
-    }, DEFAULT_TIMEOUT)
-
-    streams.parse$.on('data', ondata)
-    // encoder.log(message.index, 'WANT_ACK',streams.peerKey.toString('hex'))
-
-    function ondata (response) {
-      if (response.index !== message.index) return
-      encoder.log(`received ACK for right message ${message.index}`)
-      streams.parse$.off('data', ondata)
-      // encoder.log(response)
-      if (timeout) return encoder.log(message.index, 'UNWANTED',streams.peerKey.toString('hex'))
-      clearTimeout(toID)
-      // @TODO what do we do if one or multiple encoders fail to do their work
-      // do we have for example 5% tolerance for each encoder?
-      // do we create a new contract if one fails?
-      if (response.error) reject(new Error(response.error))
-      // encoder.log(message.index, response, 'RECV_ACK',streams.peerKey.toString('hex'))
-      resolve(response)
-    }
-    // const [response] = await once(streams.parse$, 'data')
-
-    // if (!streams.parse$.waitAck) {
-    //   streams.parse$.waitAck = 1
-    //   streams.parse$.on('data', onAck)
-    // } else {
-    //
-    // }
-    // function onAck (response) {
-    //   streams.parse$.waitAck
-    //   streams.parse$.off('data', onAck)
-    //   console.log('DATA', data)
-    // }
-
-
-  })
+  return requestResponse({ message, sendStream: streams.serialize$, receiveStream: streams.parse$, log })
 }
 async function encode (encoder, index, feed, feedKey) {
   const data = await feed.get(index)

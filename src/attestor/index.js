@@ -4,6 +4,7 @@ const { seedKeygen } = require('noise-peer')
 const { performance } = require('perf_hooks')
 
 const peerConnect = require('../p2plex-connection')
+const requestResponse = require('../requestResponse')
 
 const NAMESPACE = 'datdot-attestor'
 const NOISE_NAME = 'noise'
@@ -46,7 +47,7 @@ module.exports = class Attestor {
         id: contractID,
         myKey: attestorKey,
       }
-      const log2encoder = attestor.log.extend('<-Encoder')
+      const log2encoder = attestor.log.extend(`<-Encoder ${encoderKey.toString('hex').substring(0,5)}`)
       const encoderComm = await peerConnect(opts1, log2encoder)
       const opts2 = {
         plex: this.communication,
@@ -57,12 +58,13 @@ module.exports = class Attestor {
         myKey: attestorKey,
       }
       // console.log('@TODO: hoster')
-      const log2hoster = attestor.log.extend('->Hoster')
+      const log2hoster = attestor.log.extend(`->Hoster ${hosterKey.toString('hex').substring(0,5)}`)
       const streams = await peerConnect(opts2, log2hoster)
 
       // check the encoded data and if ok, send them to the hosters
       const verifiedAndStored = []
       log2encoder('Start receiving data from the encoder')
+
       for await (const message of encoderComm.parse$) {
         // log2encoder(message.index, 'RECV_MSG',encoderKey.toString('hex'))
         // @TODO: merkle verify each chunk
@@ -75,7 +77,7 @@ module.exports = class Attestor {
           encoderComm.serialize$.end({ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', ...{ messageType: type } })
         }
       }
-      const results = await Promise.all(verifiedAndStored).catch((error) => log2encoder(error))
+      const results = await Promise.all(verifiedAndStored).catch((error) => attestor.log(error))
       // console.log('@TODO: hoster')
       streams.end()
       resolve(`All data from encoder: ${encoderKey.toString('hex')} verified and sent to the hoster: ${hosterKey.toString('hex')}`)
@@ -105,45 +107,10 @@ module.exports = class Attestor {
         })
       }
       async function sendToHoster (message, log2hoster) {
-        return new Promise(async (resolve, reject) => {
-          const { type, feed, index, encoded, proof, nodes, signature } = message
-          if (type === 'encoded') {
-            // log2hoster(message.index, 'SEND_MSG',streams.peerKey.toString('hex'))
-            streams.serialize$.write({
-              type: 'verified',
-              feed,
-              index,
-              encoded,
-              proof,
-              nodes,
-              signature
-            })
-            var timeout
-            const toID = setTimeout(() => {
-              timeout = true
-              encoderComm.parse$.off('data', ondata)
-              const error = [message.index, 'FAIL_ACK_TIMEOUT',streams.peerKey.toString('hex')]
-              // log2hoster(error)
-              reject(error)
-            }, DEFAULT_TIMEOUT)
-            // encoderComm.parse$.once('data', ondata)
-            encoderComm.parse$.on('data', ondata)
-
-            function ondata (response) {
-              if (response.index !== message.index) return // attestor.log(`ACK for wrong message ${message.index}`)
-              attestor.log(`ACK for right message ${message.index}`)
-              streams.parse$.off('data', ondata)
-              // const [response] = await once(streams.parse$, 'data')
-              log2hoster('Got a response')
-              if (timeout) return
-              clearTimeout(toID)
-              // log2hoster(message.index, 'RECV_ACK',streams.peerKey.toString('hex'))
-              if (response.error) return reject(new Error(response.error))
-              resolve(response)
-            }
-
-          }
-        })
+        const { type, feed, index, encoded, proof, nodes, signature } = message
+        if (type !== 'encoded') return log('Type not encoded, not sending to the hoster')
+        const msg = { type: 'verified', feed, index, encoded, proof, nodes, signature }
+        return requestResponse({ message: msg, sendStream: streams.serialize$, receiveStream: streams.parse$, log: log2hoster })
       }
 
     })
@@ -166,7 +133,7 @@ module.exports = class Attestor {
         id: storageChallengeID,
         myKey: attestorKey,
       }
-      const log2hosterChallenge = attestor.log.extend('<-HosterChallenge')
+      const log2hosterChallenge = attestor.log.extend(`<-HosterChallenge ${hosterKey.toString('hex').substring(0,5)}`)
       const streams = await peerConnect(opts3, log2hosterChallenge)
 
       for await (const message of streams.parse$) {
