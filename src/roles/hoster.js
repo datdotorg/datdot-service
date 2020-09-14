@@ -31,7 +31,7 @@ async function role (profile, APIS) {
       const hosters = contract.hosters
       log('contract.hosters', hosters)
       if (!await isForMe(hosters)) return
-      console.log('=====[NEW CONTRACT]=====')
+      log('=====[NEW CONTRACT]=====')
       log('Event received:', event.method, event.data.toString())
       const { feedKey, attestorKey, plan } = await getHostingData(contract)
       await serviceAPI.host({ contractID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan }).catch((error) => log(error))

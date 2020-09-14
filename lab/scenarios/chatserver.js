@@ -1,18 +1,15 @@
 const WebSocket = require('ws')
-const getLogAPI = require('./logAPI')
-// const debug = require('debug')
+const logkeeper = require('./logkeeper')
 
 init()
 
 async function init () {
-  const [json] = process.argv.slice(2)
+  const [json, logport] = process.argv.slice(2)
   const config = JSON.parse(json)
-  const logurl = config.log.join(':')
   const [host, PORT] = config.chat
 
   const name = `chatserver`
-  const log = await getLogAPI(name, logurl)
-  // const log = debug(`chatserver`)
+  const log = await logkeeper(name, logport)
 
   const wss = new WebSocket.Server({ port: PORT }, after)
 

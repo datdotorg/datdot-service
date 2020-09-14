@@ -119,7 +119,7 @@ module.exports = class Hoster {
           return reject(error)
         }
       }
-      console.log('HOSTER RECEIVED & STORED ALL', counter)
+      log2attestor('HOSTER RECEIVED & STORED ALL', counter)
       resolve()
     })
   }

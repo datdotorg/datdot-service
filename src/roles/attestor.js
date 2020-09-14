@@ -33,7 +33,7 @@ async function role (profile, APIS) {
       const attestorID = contract.attestor
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress !== myAddress) return
-      console.log('=====[NEW CONTRACT]=====')
+      log('=====[NEW CONTRACT]=====')
       log('Event received:', event.method, event.data.toString())
       const { feedKey, encoderKeys, hosterKeys } = await getContractData(contract)
       const results = await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, contractID }).catch((error) => log(error))

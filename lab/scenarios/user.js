@@ -1,6 +1,6 @@
 const debug = require('debug')
 const getChainAPI = require('../../src/chainAPI')
-const getLogAPI = require('./logAPI')
+const logkeeper = require('./logkeeper')
 const getServiceAPI = require('../../src/serviceAPI')
 const getVaultAPI = require('../../src/wallet.js')
 // const getChatAPI = require('./chatAPI')
@@ -20,8 +20,8 @@ const ROLES = {
 /******************************************************************************
   USER
 ******************************************************************************/
-async function user ({name, roles}, config) {
-  const log = await getLogAPI(name, config.log.join(':'))
+async function user ({name, roles}, config, logport) {
+  const log = await logkeeper(name, logport)
   const profile = { name, log }
   const serviceAPI = getServiceAPI(profile)
   const chainAPI = await getChainAPI(profile, config.chain.join(':'))
@@ -39,5 +39,5 @@ async function user ({name, roles}, config) {
 /******************************************************************************
   SCENARIO
 ******************************************************************************/
-const [scenario, config] = process.argv.slice(2)
-user(JSON.parse(scenario), JSON.parse(config))
+const [scenario, config, logport] = process.argv.slice(2)
+user(JSON.parse(scenario), JSON.parse(config), logport)

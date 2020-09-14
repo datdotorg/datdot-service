@@ -31,7 +31,7 @@ async function role (profile, APIS) {
       const contract = await chainAPI.getContractByID(contractID)
       const encoders = contract.encoders
       if (!await isForMe(encoders)) return
-      console.log('=====[NEW CONTRACT]=====')
+      log('=====[NEW CONTRACT]=====')
       log('Event received:', event.method, event.data.toString())
       const { attestorKey, feedKey, ranges } = await getHostingData(contract)
       const encoding = await serviceAPI.encode({ contractID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges }).catch((error) => log('Error', error))

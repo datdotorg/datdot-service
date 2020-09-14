@@ -2,32 +2,38 @@ const spawn = require('cross-spawn')
 const path = require('path')
 const scenario = require('./lab/scenarios/scenario_2')
 
-process.env.DEBUG = '*,-chain:*,-hypercore-protocol,-chatserver'
-// process.env.DEBUG = '*,-hypercore-protocol'
+process.env.DEBUG = '*,-hypercore-protocol'
 
-// const [flag] = process.argv.slice(2)
+const [flag] = process.argv.slice(2)
+
 const all = [process]
-const server = 'ws://localhost'
-const config = JSON.stringify({ chain: [server, '8080'], chat: [server, '8000'], log: [server, '8888'] })
-// const command1 = path.join(__dirname, '../datdot-substrate/target/release/datdot-node')
-// const child = spawn(command1, ['--dev'], { stdio: 'inherit' })
-const args2 = [path.join(__dirname, 'lab/scenarios/chain.js'), config]
-const chain = spawn('node', args2, { stdio: 'inherit' })
-// captureFailures(chain)
-const args3 = [path.join(__dirname, 'lab/scenarios/chatserver.js'), config]
-const chatserver = spawn('node', args3, { stdio: 'inherit' })
-// captureFailures(chatserver)
-const args4 = [path.join(__dirname, 'lab/scenarios/logserver.js'), config]
-const logserver = spawn('node', args4, { stdio: 'inherit' })
-// captureFailures(chatserver)
+const url = 'ws://localhost'
+const config = JSON.stringify({ chain: [url, '8080'], chat: [url, '8000'] })
+
+if (flag === '--production') {
+  const command1 = path.join(__dirname, '../datdot-substrate/target/release/datdot-node')
+  const child = spawn(command1, ['--dev'], { stdio: 'inherit' })
+} else {
+  const args1 = [path.join(__dirname, 'lab/scenarios/chain.js'), config, 9001]
+  const chain = spawn('node', args1, { stdio: 'inherit' })
+}
+
+const args2 = [path.join(__dirname, 'lab/scenarios/chatserver.js'), config, 9002]
+const chatserver = spawn('node', args2, { stdio: 'inherit' })
 
 const users = scenario
+const PORTS = [9001, 9002]
 const file = path.join(__dirname, 'lab/scenarios/user.js')
 for (var i = 0, len = users.length; i < len; i++) {
   const scenario = JSON.stringify(users[i])
-  const child = spawn('node', [file, scenario, config], { stdio: 'inherit' })
-  // captureFailures(child)
+  const port = 9003 + i
+  PORTS.push(port)
+  const child = spawn('node', [file, scenario, config, port], { stdio: 'inherit' })
 }
+
+const args3 = [path.join(__dirname, 'lab/scenarios/datdot-explorer.js'), JSON.stringify(PORTS), 9000]
+const logkeeper = spawn('node', args3, { stdio: 'inherit' })
+
 
 // function captureFailures (process) {
 //   all.push(process)
