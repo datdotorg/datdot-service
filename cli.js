@@ -1,33 +1,31 @@
 const spawn = require('cross-spawn')
 const path = require('path')
+const scenario = require('./lab/scenarios/scenario_2')
 
-process.env.DEBUG = '*,-fakechain:*,-hypercore-protocol,-chatserver'
+process.env.DEBUG = '*,-chain:*,-hypercore-protocol,-chatserver'
+// process.env.DEBUG = '*,-hypercore-protocol'
 
+// const [flag] = process.argv.slice(2)
 const all = [process]
-const config = { chain: ['ws://localhost', '8080'], chat: ['ws://localhost', '8000'] }
+const server = 'ws://localhost'
+const config = JSON.stringify({ chain: [server, '8080'], chat: [server, '8000'], log: [server, '8888'] })
 // const command1 = path.join(__dirname, '../datdot-substrate/target/release/datdot-node')
 // const child = spawn(command1, ['--dev'], { stdio: 'inherit' })
-const args2 = [path.join(__dirname, 'lab/scenarios/fakechain.js'), config.chain.join(':')]
-const fakechain = spawn('node', args2, { stdio: 'inherit' })
-// captureFailures(fakechain)
-const args3 = [path.join(__dirname, 'lab/scenarios/chatserver.js'), config.chat.join(':')]
+const args2 = [path.join(__dirname, 'lab/scenarios/chain.js'), config]
+const chain = spawn('node', args2, { stdio: 'inherit' })
+// captureFailures(chain)
+const args3 = [path.join(__dirname, 'lab/scenarios/chatserver.js'), config]
 const chatserver = spawn('node', args3, { stdio: 'inherit' })
 // captureFailures(chatserver)
-const users = [
-  { name: 'alice', roles: ['peer', 'sponsor', 'publisher', 'attestor', 'hoster', 'encoder'] },
-  { name: 'bob', roles: ['peer', 'hoster', 'attestor', 'encoder', 'hoster'] },
-  { name: 'charlie', roles: ['peer', 'encoder', 'hoster', 'attestor'] },
-  { name: 'dave', roles: ['peer', 'encoder', 'hoster', 'attestor'] },
-  { name: 'eve', roles: ['peer', 'author', 'encoder', 'hoster', 'attestor'] },
-  { name: 'ferdie', roles: ['peer', 'encoder', 'hoster', 'attestor'] },
-  { name: 'one', roles: ['peer', 'encoder', 'hoster', 'attestor'] },
-  { name: 'two', roles: ['peer', 'encoder', 'hoster', 'attestor'] },
-]
+const args4 = [path.join(__dirname, 'lab/scenarios/logserver.js'), config]
+const logserver = spawn('node', args4, { stdio: 'inherit' })
+// captureFailures(chatserver)
+
+const users = scenario
 const file = path.join(__dirname, 'lab/scenarios/user.js')
 for (var i = 0, len = users.length; i < len; i++) {
   const scenario = JSON.stringify(users[i])
-  const args = [file, scenario, JSON.stringify(config)]
-  const child = spawn('node', args, { stdio: 'inherit' })
+  const child = spawn('node', [file, scenario, config], { stdio: 'inherit' })
   // captureFailures(child)
 }
 

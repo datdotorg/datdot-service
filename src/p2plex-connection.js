@@ -20,7 +20,6 @@ module.exports = peerConnect
 peerConnect.deriveTopicKey = deriveTopicKey
 
 async function peerConnect ({ plex, feedKey, senderKey, receiverKey, myKey, id }, log) {
-  // p2plex connect me to peer
   const [peerKey, SWARM_OPTS] = myKey === senderKey ? [receiverKey, LOOKUP] : [senderKey, ANNOUNCE]
 
   // Derive a shared swarm topic key to connect sender to the receiver (to receive encoded data)
@@ -30,6 +29,7 @@ async function peerConnect ({ plex, feedKey, senderKey, receiverKey, myKey, id }
   for (var peer; !peer;) {
     try {
       peer = await plex.findByTopicAndPublicKey(topic, peerKey, SWARM_OPTS)
+      log('Got a peer')
       peer.peerKey = peerKey
     } catch (error) {
       log('timeout `findByTopicAndPublicKey`', error)
@@ -56,15 +56,17 @@ async function peerConnect ({ plex, feedKey, senderKey, receiverKey, myKey, id }
     if (myKey === receiverKey) log('Peer disconnected', peerKey.toString('hex').substring(0,5), myKey.toString('hex').substring(0,5))
     else log('Peer disconnected', myKey.toString('hex').substring(0,5), peerKey.toString('hex').substring(0,5))
   })
+  peer.on('error', (err) => { 'p2plex error', err })
+
   serialize$.on('error', e => { e.type = 'serialize$' })
   duplex$.on('error', e => { e.type = 'duplex$' })
   parse$.on('error', e => { e.type = 'parse$' })
   obj$.on('error', e => { e.type = 'obj$' })
 
-  // serialize$.on('close', e => { log('serialize$ close') })
-  // duplex$.on('close', e => { log('duplex$ close') })
-  // parse$.on('close', e => { log('parse$ close') })
-  // obj$.on('close', e => { log('obj$ close') })
+  serialize$.on('close', e => { log('serialize$ close') })
+  duplex$.on('close', e => { log('duplex$ close') })
+  parse$.on('close', e => { log('parse$ close') })
+  obj$.on('close', e => { log('obj$ close') })
 
   async function end () {
     log('--------------------------peer-connect end')

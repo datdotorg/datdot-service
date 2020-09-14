@@ -6,7 +6,7 @@ module.exports = role
 
 async function role (profile, APIS) {
   const { name, log } = profile
-  const { serviceAPI, chainAPI, chatAPI, vaultAPI } = APIS
+  const { serviceAPI, chainAPI, vaultAPI } = APIS
 
   log('Register as encoder')
   await chainAPI.listenToEvents(handleEvent)
@@ -34,7 +34,8 @@ async function role (profile, APIS) {
       console.log('=====[NEW CONTRACT]=====')
       log('Event received:', event.method, event.data.toString())
       const { attestorKey, feedKey, ranges } = await getHostingData(contract)
-      await serviceAPI.encode({ contractID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges }).catch((error) => log(error))
+      const encoding = await serviceAPI.encode({ contractID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges }).catch((error) => log('Error', error))
+      if (!encoding) { return log('Encoding job could not be finished') }
       log(' ========================== Encoding done ===========================')
       // const nonce = await vaultAPI.getNonce()
       // await chainAPI.encodingDone({ contractID, signer, nonce })

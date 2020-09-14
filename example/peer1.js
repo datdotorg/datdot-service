@@ -17,7 +17,7 @@ const ram = require('random-access-memory')
 async function peer (name) {
   const [chaturi] = process.argv.slice(2)
   const log = debug(`${name}`)
-  const TODO = log.extend('@TODO:')
+  const TODO = log.sub('@TODO:')
   const profile = { name, log }
   const chatAPI = await getChatAPI(profile, chaturi)
 

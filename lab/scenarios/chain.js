@@ -1,47 +1,58 @@
 const DB = require('../../src/DB')
+const getLogAPI = require('./logAPI')
 const WebSocket = require('ws')
-const debug = require('debug')
+// const debug = require('debug')
 
-const log = debug(`fakechain`)
-
-const [url] = process.argv.slice(2)
-const PORT = url.split(':').pop()
-
-const wss = new WebSocket.Server({ port: PORT }, after)
-
-function after () {
-  log(`running on http://localhost:${wss.address().port}`)
-}
 
 const connections = {}
 const handlers = []
-wss.on('connection', function connection (ws) {
-  ws.on('message', async function incoming (message) {
-    const { flow, type, body } = JSON.parse(message)
-    const [from, id] = flow
-    if (id === 0) {
-      if (!connections[from]) {
-        connections[from] = { name: from, counter: id, ws, log: log.extend(from) }
-        handlers.push([from, body => ws.send(JSON.stringify({ body }))])
+
+init()
+
+async function init () {
+  const [json] = process.argv.slice(2)
+  const config = JSON.parse(json)
+  const logurl = config.log.join(':')
+  const [host, PORT] = config.chain
+
+  const name = `chain`
+  const log = await getLogAPI(name, logurl)
+  // const log = debug(`chain`)
+
+  const wss = new WebSocket.Server({ port: PORT }, after)
+
+  function after () {
+    log(`running on http://localhost:${wss.address().port}`)
+  }
+
+  wss.on('connection', function connection (ws) {
+    ws.on('message', async function incoming (message) {
+      const { flow, type, body } = JSON.parse(message)
+      const [from, id] = flow
+      if (id === 0) {
+        if (!connections[from]) {
+          connections[from] = { name: from, counter: id, ws, log: log.sub(from) }
+          handlers.push([from, body => ws.send(JSON.stringify({ body }))])
+        }
+        else return ws.send(JSON.stringify({
+          cite: [flow], type: 'error', body: 'name is already taken'
+        }))
       }
-      else return ws.send(JSON.stringify({
-        cite: [flow], type: 'error', body: 'name is already taken'
-      }))
-    }
-    const _log = connections[from].log
-    _log(type, flow)
-    const method = queries[type] || signAndSend
-    if (!method) return ws.send({ cite: [flow], type: 'error', body: 'unknown type' })
-    const result = await method(body, from, body => {
-      _log(`send data after "${type}" to:`, from)
-      ws.send(JSON.stringify({ cite: [flow], type: 'data', body }))
+      const _log = connections[from].log
+      _log(type, flow)
+      const method = queries[type] || signAndSend
+      if (!method) return ws.send({ cite: [flow], type: 'error', body: 'unknown type' })
+      const result = await method(body, from, body => {
+        _log(`send data after "${type}" to:`, from)
+        ws.send(JSON.stringify({ cite: [flow], type: 'data', body }))
+      })
+      if (!result) return
+      const msg = { cite: [flow], type: 'done', body: result }
+      _log(`send after finishing "${type}" to:`, from)
+      ws.send(JSON.stringify(msg))
     })
-    if (!result) return
-    const msg = { cite: [flow], type: 'done', body: result }
-    _log(`send after finishing "${type}" to:`, from)
-    ws.send(JSON.stringify(msg))
   })
-})
+}
 /******************************************************************************
   QUERIES
 ******************************************************************************/
@@ -142,7 +153,7 @@ async function _publishPlan (user, { name, nonce }, status, args) {
   // Add feeds to unhosted
   plan.unhostedFeeds = feeds
   // Find hosters,encoders and attestors
-  makeNewContract(plan, log)
+  tryNewContract({ plan, log })
   // Emit event
   const NewPlan = { event: { data: [planID], method: 'NewPlan' } }
   const names = handlers.map(([name]) => name)
@@ -161,7 +172,8 @@ async function _registerHoster(user, { name, nonce }, status, args) {
   DB.users[userID - 1].hosterKey = keyBuf.toString('hex')
   DB.users[userID - 1].hoster = true
   DB.idleHosters.push(userID)
-  makeNewContract(undefined, log)
+  log('Will call tryNewContract now')
+  tryNewContract({ log })
 }
 async function _registerEncoder (user, { name, nonce }, status, args) {
   const log = connections[name].log
@@ -173,7 +185,8 @@ async function _registerEncoder (user, { name, nonce }, status, args) {
   DB.users[userID - 1].encoderKey = keyBuf.toString('hex')
   DB.users[userID - 1].encoder = true
   DB.idleEncoders.push(userID)
-  makeNewContract(undefined, log)
+  log('Will call tryNewContract now')
+  tryNewContract({ log })
 }
 async function _registerAttestor (user, { name, nonce }, status, args) {
   const log = connections[name].log
@@ -186,7 +199,8 @@ async function _registerAttestor (user, { name, nonce }, status, args) {
   DB.users[userID - 1].attestor = true
   DB.idleAttestors.push(userID)
   checkAttestorJobs()
-  makeNewContract(undefined, log)
+  log('Will call tryNewContract now')
+  tryNewContract({ log })
 }
 async function _encodingDone (user, { name, nonce }, status, args) {
   const log = connections[name].log
@@ -313,13 +327,14 @@ function validateProof (proof, storageChallenge) {
   else return false
 }
 ////////////////////////////////////////////////////////////////////////////
-function makeNewContract (plan, log) {
+function tryNewContract ({ plan, log }) {
+  log('Trying to make a new contract')
   let planID
   if (plan) planID = plan.id
   // Find an unhosted plan
-  const unhosted = DB.unhostedPlans
+  const unhostedPlans = DB.unhostedPlans
 
-  if (!planID && unhosted.length) [planID, pos] = getRandom(unhosted)
+  if (!planID && unhostedPlans.length) [planID, pos] = getRandom(unhostedPlans)
   const selectedPlan = DB.plans[planID - 1]
   if (!selectedPlan) return log('current lack of demand for hosting plans')
 
@@ -346,13 +361,15 @@ function makeNewContract (plan, log) {
     hosters.unshift(selectedHosters)
     return log('missing unique attestors')
   }
+  const opts = { planID, selectedEncoders, selectedHosters, selectedAttestor, unhostedPlans, unhostedFeeds }
+  makeContract (opts, log)
+}
 
+function makeContract (opts, log) {
+  const { planID, selectedEncoders, selectedHosters, selectedAttestor, unhostedPlans, unhostedFeeds } = opts
   const feed = unhostedFeeds.shift()
-  // Check if this plan has any unhosted feeds left, if not, remove plan from unhosted
-  if (!unhostedFeeds.length) {
-    unhosted.forEach((id, i) => { if (id === planID) unhosted.splice(i, 1) })
-  }
-
+  // If no unhosted feeds left, remove selected plan ID from unhostedPlans
+  if (!unhostedFeeds.length) removeFromUnhosted(planID, unhostedPlans)
   // Make a new contract
   // @TODO check that same user isn't taking more than 1 role in the contract
   const contract = {
@@ -372,8 +389,8 @@ function makeNewContract (plan, log) {
   const event = [NewContract]
   handlers.forEach(([name, handler]) => handler(event))
   log('emit chain event', names, event)
-
 }
+
 ////////////////////////////////////////////////////////////////////////////
 function checkAttestorJobs () {
   if (DB.attestorJobs.length) {
@@ -386,6 +403,12 @@ function checkAttestorJobs () {
 }
 
 ////////////////////////////////////////////////////////////////////////////
+function removeFromUnhosted (planID, unhostedPlans) {
+  for (var i = 0; i < unhostedPlans.length; i++) {
+    if (unhostedPlans[i] === planID) unhostedPlans.splice(i, 1)
+  }
+}
+
 function getSelectedEncoders (encoders) {
   return encoders.splice(0,3)
 }

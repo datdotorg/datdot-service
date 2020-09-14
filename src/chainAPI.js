@@ -12,7 +12,7 @@ module.exports = datdotChain
 
 async function datdotChain (profile, provider) {
   const { name } = profile
-  const log = profile.log.extend('chain')
+  const log = profile.log.sub('chain')
   // provider = new WsProvider(`${address}:${port}`)
   const API = await rerun(() => ApiPromise.create({ name, provider, types }))
   const chainAPI = {

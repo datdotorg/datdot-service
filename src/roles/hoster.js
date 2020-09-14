@@ -5,7 +5,7 @@ module.exports = role
 
 async function role (profile, APIS) {
   const { name, log } = profile
-  const { serviceAPI, chainAPI, chatAPI, vaultAPI: vaultAPI } = APIS
+  const { serviceAPI, chainAPI, vaultAPI } = APIS
 
   log('Register as hoster')
   await chainAPI.listenToEvents(handleEvent)

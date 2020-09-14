@@ -27,6 +27,7 @@ module.exports = class Attestor {
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
     const noiseKeyPair = seedKeygen(noiseSeed)
     this.communication = p2plex({ keyPair: noiseKeyPair })
+    this.communication.on('connection', (peer) => { this.log('New connection') })
     this.publicKey = noiseKeyPair.publicKey
   }
 
@@ -47,7 +48,7 @@ module.exports = class Attestor {
         id: contractID,
         myKey: attestorKey,
       }
-      const log2encoder = attestor.log.extend(`<-Encoder ${encoderKey.toString('hex').substring(0,5)}`)
+      const log2encoder = attestor.log.sub(`<-Encoder ${encoderKey.toString('hex').substring(0,5)}`)
       const encoderComm = await peerConnect(opts1, log2encoder)
       const opts2 = {
         plex: this.communication,
@@ -58,7 +59,7 @@ module.exports = class Attestor {
         myKey: attestorKey,
       }
       // console.log('@TODO: hoster')
-      const log2hoster = attestor.log.extend(`->Hoster ${hosterKey.toString('hex').substring(0,5)}`)
+      const log2hoster = attestor.log.sub(`->Hoster ${hosterKey.toString('hex').substring(0,5)}`)
       const streams = await peerConnect(opts2, log2hoster)
 
       // check the encoded data and if ok, send them to the hosters
@@ -66,9 +67,10 @@ module.exports = class Attestor {
       log2encoder('Start receiving data from the encoder')
 
       for await (const message of encoderComm.parse$) {
-        // log2encoder(message.index, 'RECV_MSG',encoderKey.toString('hex'))
+        log2encoder(message.index, 'RECV_MSG', encoderKey.toString('hex'))
         // @TODO: merkle verify each chunk
         const { type } = message
+        if (type === 'ping') continue
         if (type === 'encoded') {
           // verify if all encodings are same size
           verifiedAndStored.push(compareEncodings(message))
@@ -84,10 +86,9 @@ module.exports = class Attestor {
 
       function compareEncodings (message) {
         return new Promise((resolve, reject) => {
-          // log2encoder(message.index, 'COMPARE',encoderKey.toString('hex'))
           compare(message, async (err, res) => {
             if (!err) {
-              // log2encoder(message.index, 'SEND_ACK',encoderKey.toString('hex'))
+              log2encoder(message.index, 'SEND_ACK',encoderKey.toString('hex'))
               encoderComm.serialize$.write({ type: 'encoded:checked', ok: true, index: message.index })
               // console.log('@TODO: hoster')
               try {
@@ -133,7 +134,7 @@ module.exports = class Attestor {
         id: storageChallengeID,
         myKey: attestorKey,
       }
-      const log2hosterChallenge = attestor.log.extend(`<-HosterChallenge ${hosterKey.toString('hex').substring(0,5)}`)
+      const log2hosterChallenge = attestor.log.sub(`<-HosterChallenge ${hosterKey.toString('hex').substring(0,5)}`)
       const streams = await peerConnect(opts3, log2hosterChallenge)
 
       for await (const message of streams.parse$) {

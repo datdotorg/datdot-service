@@ -3,7 +3,7 @@ const debug = require('debug')
 module.exports = datdotService
 
 function datdotService (profile) {
-  const log = profile.log.extend('service')
+  const log = profile.log.sub('service')
 
   const serviceAPI = {
     host,
@@ -87,9 +87,11 @@ function datdotService (profile) {
   function compareEncodings (messages, msg, cb) {
     const { index } = msg
     // get all three chunks from different encoders, compare and then respond to each
+    log(`comparing encoding for index: ${index} (${messages[index] ? messages[index].length : 'none'}/3)`)
     if (messages[index]) messages[index].push({ msg, cb })
     else messages[index] = [{ msg, cb }]
     if (messages[index].length === 3) {
+      log('Have 3 encodings, comparing them now!')
       const sizes = messages[index].map(message => {
         return Buffer.from(message.msg.encoded).length
       })

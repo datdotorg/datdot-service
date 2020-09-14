@@ -7,7 +7,9 @@ module.exports = role
 
 async function role (profile, APIS) {
   const { name, log } = profile
-  const { serviceAPI, chainAPI, chatAPI, vaultAPI } = APIS
+  const { serviceAPI, chainAPI, vaultAPI } = APIS
+  const getChatAPI = require('../../lab/scenarios/chatAPI')
+  const chatAPI = await getChatAPI(profile, ['ws://localhost', '8000'].join(':'))
 
   await chainAPI.listenToEvents(handleEvent)
 

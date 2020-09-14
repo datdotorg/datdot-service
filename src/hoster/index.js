@@ -32,6 +32,7 @@ module.exports = class Hoster {
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
     const noiseKeyPair = seedKeygen(noiseSeed)
     this.communication = p2plex({ keyPair: noiseKeyPair })
+    this.communication.on('connection', (peer) => { this.log('New connection') })
     this.publicKey = noiseKeyPair.publicKey
     // this.communication = p2plex({ keyPair: noiseKeyPair })
     const keys = await this.listKeys()
@@ -68,7 +69,7 @@ module.exports = class Hoster {
         myKey: hosterKey,
       }
       var counter = 0
-      const log2attestor = hoster.log.extend(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
+      const log2attestor = hoster.log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
       const streams = await peerConnect(opts, log2attestor)
 
       for await (const message of streams.parse$) {
@@ -76,6 +77,7 @@ module.exports = class Hoster {
         counter++
         // @TODO: decode and merkle verify each chunk (to see if it belongs to the feed) && verify the signature
         const { type } = message
+        if (type === 'ping') continue
         if (type === 'verified') {
           const { feed, index, encoded, proof, nodes, signature } = message
           const key = Buffer.from(feed)
@@ -199,7 +201,7 @@ module.exports = class Hoster {
         id: storageChallengeID,
         myKey: hosterKey,
       }
-      const log2attestor = hoster.log.extend(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
+      const log2attestor = hoster.log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
       const streams = await peerConnect(opts, log2attestor)
 
       log2attestor('START STORAGE PROOF')

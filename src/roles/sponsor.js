@@ -6,7 +6,7 @@ module.exports = role
 
 async function role (profile, APIS) {
   const { name, log } = profile
-  const { serviceAPI, chainAPI, chatAPI, vaultAPI } = APIS
+  const { serviceAPI, chainAPI, vaultAPI } = APIS
 
   log('I am a sponsor')
   await chainAPI.listenToEvents(handleEvent)
