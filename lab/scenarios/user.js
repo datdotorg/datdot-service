@@ -26,7 +26,7 @@ async function user ({name, roles}, config, logport) {
   const serviceAPI = getServiceAPI(profile)
   const chainAPI = await getChainAPI(profile, config.chain.join(':'))
   const vaultAPI = await getVaultAPI(profile)
-  log(`start:`, scenario, config)
+  log({ type: 'user', body: [`start ${scenario}`] })
   const APIS = { serviceAPI, chainAPI, vaultAPI }
   roles = [...new Set(roles)]
   for (var i = 0, len = roles.length; i < len; i++) {

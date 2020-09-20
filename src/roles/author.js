@@ -15,8 +15,7 @@ async function role (profile, APIS) {
   const getChatAPI = require('../../lab/scenarios/chatAPI')
   const chatAPI = await getChatAPI(profile, ['ws://localhost', '8000'].join(':'))
 
-  log('Make a feed and share it')
-
+  log({ type: 'author', body: [`Make a feed and share it`] })
 
   const feed = Hypercore(ram)
 
@@ -40,12 +39,12 @@ async function role (profile, APIS) {
 
 
   swarm.on('connection', (socket, info) => {
-    log('new connection!')
+    log({ type: 'author', body: [`new connection!`] })
     socket.pipe(feed.replicate(info.client)).pipe(socket)
   })
 
   const keys = { feedkey, topic }
-  log('Send the keys', keys)
+  log({ type: 'author', body: [`Send the keys ${keys}`] })
   chatAPI.send(JSON.stringify(keys))
   return keys
 }

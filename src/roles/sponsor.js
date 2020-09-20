@@ -8,7 +8,7 @@ async function role (profile, APIS) {
   const { name, log } = profile
   const { serviceAPI, chainAPI, vaultAPI } = APIS
 
-  log('I am a sponsor')
+  log({ type: 'sponsor', body: [`I am a sponsor`] })
   await chainAPI.listenToEvents(handleEvent)
   const myAddress = vaultAPI.chainKeypair.address
   const signer = vaultAPI.chainKeypair
@@ -17,7 +17,9 @@ async function role (profile, APIS) {
   async function handleEvent (event) {
     if (event.method === 'FeedPublished') {
       const [feedID] = event.data
-      log('Event received:', event.method, event.data.toString())
+      // log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+      log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+
       const nonce = await vaultAPI.getNonce()
       const plan = makePlan(feedID)
       await chainAPI.publishPlan({ plan, signer, nonce })
@@ -28,11 +30,12 @@ async function role (profile, APIS) {
       const { sponsor: sponsorID } = await chainAPI.getPlanByID(planID)
       const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
       if (sponsorAddress === myAddress) {
-        log('Event received:', event.method, event.data.toString())
+        // log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
         const nonce = await vaultAPI.getNonce()
         // @TODO:Request regular challenges
-        // await chainAPI.requestStorageChallenge({ contractID, hosterID: userID, signer, nonce })
-        // await chainAPI.requestPerformanceChallenge({ contractID, signer, nonce })
+        await chainAPI.requestStorageChallenge({ contractID, hosterID: userID, signer, nonce })
+        await chainAPI.requestPerformanceChallenge({ contractID, signer, nonce })
       }
     }
     if (event.method === 'StorageChallengeConfirmed') {
@@ -42,7 +45,9 @@ async function role (profile, APIS) {
       const { sponsor: sponsorID } = await chainAPI.getPlanByID(planID)
       const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
       if (sponsorAddress === myAddress) {
-        log('Event received:', event.method, event.data.toString())
+        // log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+
       }
     }
     if (event.method === 'PerformanceChallengeConfirmed') {
@@ -52,7 +57,9 @@ async function role (profile, APIS) {
       const { sponsor: sponsorID } = await chainAPI.getPlanByID(planID)
       const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
       if (sponsorAddress === myAddress) {
-        log('Event received:', event.method, event.data.toString())
+        // log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+
       }
     }
   }

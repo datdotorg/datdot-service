@@ -35,7 +35,6 @@ module.exports = class Encoder {
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
     const noiseKeyPair = seedKeygen(noiseSeed)
     this.communication = p2plex({ keyPair: noiseKeyPair })
-    this.communication.on('connection', (peer) => { this.log('New connection') })
     this.signingPublicKey = signingPublicKey
     this.signingSecretKey = signingSecretKey
     this.replicationPublicKey = replicationPublicKey
@@ -63,20 +62,20 @@ module.exports = class Encoder {
       var total = 0
       for (const range of ranges) total += (range[1] + 1) - range[0]
 
-      log2Attestor('Start encoding and sending data to attestor')
+      log2Attestor({ type: 'encoder', body: [`Start encoding and sending data to attestor`] })
       for (const range of ranges) {
         const rangeRes = sendDataToAttestor({ encoder, range, feed, feedKey, streams, log: log2Attestor })
         allChunks.push(...rangeRes)
       }
       try {
-        const results = await Promise.all(allChunks).catch((error) => log2Attestor('Error', error))
+        const results = await Promise.all(allChunks).catch((error) => log2Attestor({ type: 'error', body: [`Error: ${error}`] }))
         if (!results) return reject('Encoder has not received all the confirmations')
-        log2Attestor(`${allChunks.length} confirmations received from the attestor`)
-        log2Attestor('Destroying communication with the attestor')
+        log2Attestor({ type: 'encoder', body: [`${allChunks.length} confirmations received from the attestor`] })
+        log2Attestor({ type: 'encoder', body: [`Destroying communication with the attestor`] })
         streams.end()
         resolve(results)
       } catch (e) {
-        console.log('ERROR', e)
+        log2Attestor({ type: 'encoder', body: [`Error: ${e}`] })
         reject(e)
       }
     })

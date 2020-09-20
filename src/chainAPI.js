@@ -46,7 +46,7 @@ async function datdotChain (profile, provider) {
   async function status ({ events = [], status }) {
     if (status.isInBlock) {
       events.forEach(({ phase, event: { data, method, section } }) => {
-        log('\t', phase.toString(), `: ${section}.${method}`, data.toString())
+        log({ type: 'chainAPI', body: ['\t', phase.toString(), `: ${section}.${method}`, data.toString()] })
       })
     }
   }
@@ -158,8 +158,8 @@ async function datdotChain (profile, provider) {
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function submitStorageChallenge (opts) {
-    const { storageChallengeID, proof, signer, nonce } = opts
-    const tx = await API.tx.datVerify.submitStorageChallenge(storageChallengeID, proof)
+    const { storageChallengeID, proofs, signer, nonce } = opts
+    const tx = await API.tx.datVerify.submitStorageChallenge(storageChallengeID, proofs)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }

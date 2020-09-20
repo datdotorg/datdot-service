@@ -27,7 +27,7 @@ module.exports = class Attestor {
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
     const noiseKeyPair = seedKeygen(noiseSeed)
     this.communication = p2plex({ keyPair: noiseKeyPair })
-    this.communication.on('connection', (peer) => { this.log('New connection') })
+    this.communication.on('connection', (peer) => { this.log({ type: 'attestor', body: [`new connection`]}) })
     this.publicKey = noiseKeyPair.publicKey
   }
 
@@ -64,10 +64,10 @@ module.exports = class Attestor {
 
       // check the encoded data and if ok, send them to the hosters
       const verifiedAndStored = []
-      log2encoder('Start receiving data from the encoder')
+      log2encoder({ type: 'attestor', body: ['Start receiving data from the encoder'] })
 
       for await (const message of encoderComm.parse$) {
-        log2encoder(message.index, 'RECV_MSG', encoderKey.toString('hex'))
+        log2encoder({ type: 'attestor', body: [`${message.index} RECV_MSG ${encoderKey.toString('hex')}`] })
         // @TODO: merkle verify each chunk
         const { type } = message
         if (type === 'ping') continue
@@ -75,11 +75,11 @@ module.exports = class Attestor {
           // verify if all encodings are same size
           verifiedAndStored.push(compareEncodings(message))
         } else {
-          log2encoder('encoded checking unknown message', 'UNKNOWN_MESSAGE', { messageType: type })
+          log2encoder({ type: 'attestor', body: [`encoded checking UNKNOWN_MESSAGE MESSAGE TYPE ${type} `] })
           encoderComm.serialize$.end({ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', ...{ messageType: type } })
         }
       }
-      const results = await Promise.all(verifiedAndStored).catch((error) => attestor.log(error))
+      const results = await Promise.all(verifiedAndStored).catch((error) => attestor.log({ type: 'error', body: [`Error: ${error}`] }))
       // console.log('@TODO: hoster')
       streams.end()
       resolve(`All data from encoder: ${encoderKey.toString('hex')} verified and sent to the hoster: ${hosterKey.toString('hex')}`)
@@ -88,7 +88,7 @@ module.exports = class Attestor {
         return new Promise((resolve, reject) => {
           compare(message, async (err, res) => {
             if (!err) {
-              log2encoder(message.index, 'SEND_ACK',encoderKey.toString('hex'))
+              log2encoder({ type: 'attestor', body: [`${message.index} SEND_ACK ${encoderKey.toString('hex')}`] })
               encoderComm.serialize$.write({ type: 'encoded:checked', ok: true, index: message.index })
               // console.log('@TODO: hoster')
               try {
@@ -100,7 +100,7 @@ module.exports = class Attestor {
               }
               resolve([message.index, encoderKey.toString('hex')])
             } else if (err) {
-              log2encoder('encoded checking error')
+              log2encoder({ type: 'attestor', body: ['encoded checking error'] })
               encoderComm.serialize$.end({ type: 'encoded:error', error: 'INVALID_COMPRESSION', ...{ messageIndex: message.index } })
               return reject(err)
             }
@@ -109,7 +109,8 @@ module.exports = class Attestor {
       }
       async function sendToHoster (message, log2hoster) {
         const { type, feed, index, encoded, proof, nodes, signature } = message
-        if (type !== 'encoded') return log('Type not encoded, not sending to the hoster')
+        if (type !== 'encoded') return log({ type: 'attestor', body: [`Type not encoded, not sending to the hoster`] })
+
         const msg = { type: 'verified', feed, index, encoded, proof, nodes, signature }
         return requestResponse({ message: msg, sendStream: streams.serialize$, receiveStream: streams.parse$, log: log2hoster })
       }
@@ -124,23 +125,27 @@ module.exports = class Attestor {
   async verifyStorageChallenge (data) {
     const attestor = this
     return new Promise(async (resolve, reject) => {
-      const { storageChallengeID, attestorKey, hosterKey, feedKey, storageChallengeID: id } = data
+      const { storageChallenge, attestorKey, hosterKey, feedKey } = data
+      const id = storageChallenge.id
+      attestor.log({ type: 'attestor', body: [`Starting verifyStorageChallenge}`] })
 
       const opts3 = {
         plex: this.communication,
         senderKey: hosterKey,
         feedKey,
         receiverKey: attestorKey,
-        id: storageChallengeID,
+        id,
         myKey: attestorKey,
       }
       const log2hosterChallenge = attestor.log.sub(`<-HosterChallenge ${hosterKey.toString('hex').substring(0,5)}`)
       const streams = await peerConnect(opts3, log2hosterChallenge)
 
+      const all = []
       for await (const message of streams.parse$) {
+        log2hosterChallenge({ type: 'attestor', body: [`MSG received, ${message.index}`]})
         const { type } = message
         if (type === 'StorageChallenge') {
-          const { storageChallengeID, proof } = message
+          const { storageChallengeID, proof, index } = message
           if (id === storageChallengeID) {
             // proof.encoded
             // @TODO: merkle verify each chunk (to see if it belongs to the feed) && verify the signature
@@ -151,13 +156,16 @@ module.exports = class Attestor {
                 type: 'StorageChallenge:verified',
                 ok: true
               })
-              resolve(proof)
+              log2hosterChallenge({ type: 'attestor', body: [`Storage verified for chunk ${message.index}`]})
+              all.push(proof)
+              if (all.length === storageChallenge.chunks.length) resolve(all)
+              // resolve(proof)
               // return hash, challengeID, signature of the event
               // does hoster send a hash or does attestor decode and then hash?
             }
           }
         } else {
-          attestor.log('UNKNOWN_MESSAGE', { messageType: type })
+          log2hosterChallenge({ type: 'attestor', body: [`UNKNOWN_MESSAGE messageType: ${type}`] })
           sendError('UNKNOWN_MESSAGE', { messageType: type })
           reject()
         }

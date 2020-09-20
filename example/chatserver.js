@@ -9,7 +9,7 @@ const PORT = url.split(':').pop()
 const wss = new WebSocket.Server({ port: PORT }, after)
 
 function after () {
-  log(`running on http://localhost:${wss.address().port}`)
+  log({ type: 'chat', body: [`running on http://localhost:${wss.address().port}`] })
 }
 
 const connections = {}
@@ -24,22 +24,22 @@ wss.on('connection', function connection (ws) {
       if (!connections[name]) {
         connections[name] = { name, counter: id, ws }
         history.forEach(message => {
-          log(`[to   ${name}]:`, message)
+          log({ type: 'chat', body: [`to   ${name}]: ${message}`] })
           ws.send(JSON.stringify(message))
         })
-        return log(`[join ${name}]`)
+        return log({ type: 'chat', body: [`[join ${name}]`] })
       } else {
-        log(`[FAIL ${name}]:`, message)
+        log({ type: 'chat', body: [`[FAIL ${name}]: ${message}`] })
         return ws.send(JSON.stringify({
           cite: [flow], type: 'error', body: 'name is already taken'
         }))
       }
     }
-    log(`[from ${name}]:`, message)
+    log({ type: 'chat', body: [`[from ${name}]: ${message}`] })
     history.push(message)
     Object.values(connections).map(({ ws, name: peer }) => {
       if (name === peer) return
-      log(`[to   ${peer}]:`, message)
+      log({ type: 'chat', body: [`[to   ${peer}]: ${message}`] })
       ws.send(JSON.stringify(message))
     })
   })

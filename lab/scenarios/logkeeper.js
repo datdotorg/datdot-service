@@ -1,4 +1,5 @@
 const WebSocket = require('ws')
+const { performance } = require('perf_hooks')
 const debug = require('debug')
 
 const docs = {
@@ -8,7 +9,7 @@ const docs = {
 function codec (from, into, counter = 0) {
   function decode (json) { return JSON.parse(json) }
   function encode (type, body, cite) {
-    const flow = [from, into, counter++]
+    const flow = [from, into, counter++, performance.now()]
     const message = { flow, cite, type, body }
     return JSON.stringify(message)
   }
@@ -40,7 +41,16 @@ async function logkeeper (name, PORT) {
       }
       const { encode, decode } = codec(path, '*')
       function log (...args) {
+        if (args.length > 1 || args.length === 0 || (args.length === 1 && !args[0])) {
+          console.log(name, args.length, args)
+          throw new Error('invalid logs')
+        }
+        if (!args[0].type) {
+          console.log(name, args[0])
+          throw new Error('invalid type')
+        }
         const message = encode('log', args)
+        console.log('New logkeeper message: ${message}', args)
         history.push(message)
         for (var i = 0, len = connections.length; i < len; i++) {
           const client = connections[i]

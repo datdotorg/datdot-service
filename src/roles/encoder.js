@@ -8,7 +8,7 @@ async function role (profile, APIS) {
   const { name, log } = profile
   const { serviceAPI, chainAPI, vaultAPI } = APIS
 
-  log('Register as encoder')
+  log({ type: 'encoder', body: [`Register as encoder`] })
   await chainAPI.listenToEvents(handleEvent)
   await vaultAPI.initEncoder({}, log)
   const encoderKey = vaultAPI.encoder.publicKey
@@ -31,12 +31,11 @@ async function role (profile, APIS) {
       const contract = await chainAPI.getContractByID(contractID)
       const encoders = contract.encoders
       if (!await isForMe(encoders)) return
-      log('=====[NEW CONTRACT]=====')
-      log('Event received:', event.method, event.data.toString())
+      log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       const { attestorKey, feedKey, ranges } = await getHostingData(contract)
-      const encoding = await serviceAPI.encode({ contractID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges }).catch((error) => log('Error', error))
-      if (!encoding) { return log('Encoding job could not be finished') }
-      log(' ========================== Encoding done ===========================')
+      const encoding = await serviceAPI.encode({ contractID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges }).catch((error) => log({ type: 'error', body: [`error: ${error}`] }))
+      if (!encoding) { return log({ type: 'encoder', body: [`Encoding job could not be finished`] }) }
+      log({ type: 'encoder', body: [`Encoding done`] })
       // const nonce = await vaultAPI.getNonce()
       // await chainAPI.encodingDone({ contractID, signer, nonce })
     }

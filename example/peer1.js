@@ -93,7 +93,7 @@ async function peer (name) {
                 timeout = true
                 parse$.off('data', ondata)
                 const error = ['FAIL_ACK_TIMEOUT']
-                log(error)
+                log({ type: 'error', body: [`Error: ${error}`] })
                 reject()
               }, 5000)
 

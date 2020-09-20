@@ -14,7 +14,7 @@ async function role (profile, APIS) {
   await chainAPI.listenToEvents(handleEvent)
 
   chatAPI.on(keys => {
-    log('Got the keys, publishing data now', keys)
+    log({ type: 'publisher', body: [`Got the keys, publishing data now => ${keys}`] })
     publishFeed(JSON.parse(keys))
   })
 
@@ -22,7 +22,7 @@ async function role (profile, APIS) {
     const feedkey = keys.feedkey
     const topic = keys.topic
     const data = await getData(log, feedkey, topic)
-    log('Got the data', data)
+    log({ type: 'publisher', body: [`Got the data => ${data}`] })
     const myAddress = vaultAPI.chainKeypair.address
     const signer = vaultAPI.chainKeypair
     const nonce = await vaultAPI.getNonce()

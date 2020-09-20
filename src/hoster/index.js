@@ -6,6 +6,7 @@ const { seedKeygen } = require('noise-peer')
 
 const HosterStorage = require('./hoster-storage')
 const peerConnect = require('../p2plex-connection')
+const requestResponse = require('../requestResponse')
 
 const NAMESPACE = 'datdot-hoster'
 const NOISE_NAME = 'noise'
@@ -32,7 +33,6 @@ module.exports = class Hoster {
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
     const noiseKeyPair = seedKeygen(noiseSeed)
     this.communication = p2plex({ keyPair: noiseKeyPair })
-    this.communication.on('connection', (peer) => { this.log('New connection') })
     this.publicKey = noiseKeyPair.publicKey
     // this.communication = p2plex({ keyPair: noiseKeyPair })
     const keys = await this.listKeys()
@@ -54,7 +54,7 @@ module.exports = class Hoster {
     await this.addKey(feedKey, plan)
     await this.loadFeedData(feedKey)
     await this.getEncodedDataFromAttestor(contractID, hosterKey, attestorKey, feedKey)
-    this.log('-----------------------All done')
+    this.log({ type: 'hoster', body: ['All done'] })
   }
 
   async getEncodedDataFromAttestor (contractID, hosterKey, attestorKey, feedKey) {
@@ -107,19 +107,19 @@ module.exports = class Hoster {
             // Uncomment for better stack traces
             const error = { type: 'encoded:error', error: `ERROR_STORING: ${e.message}`, ...{ e }, data }
             streams.serialize$.write(error)
-            log2attestor(error)
+            log2attestor({ type: 'error', body: [`Error: ${error}`] })
             streams.end()
             return reject(error)
           }
         } else {
-          log2attestor('UNKNOWN_MESSAGE', { messageType: type })
+          log2attestor({ type: 'error', body: [`UNKNOWN_MESSAGE messageType: ${type}`] })
           const error ={ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', ...{ messageType: type } }
           streams.serialize$.write(error)
           streams.end()
           return reject(error)
         }
       }
-      log2attestor('HOSTER RECEIVED & STORED ALL', counter)
+      log2attestor({ type: 'hoster', body: [`Hoster received & stored all: ${counter}`] })
       resolve()
     })
   }
@@ -189,8 +189,11 @@ module.exports = class Hoster {
     return storage.getStorageChallenge(index)
   }
 
-  async sendStorageChallenge ({ storageChallengeID, hosterKey, feedKey, attestorKey, proofs }) {
+  async sendStorageChallenge ({ storageChallenge, hosterKey, feedKey, attestorKey }) {
     const hoster = this
+    hoster.log({ type: 'hoster', body: [`Starting sendStorageChallenge`] })
+    const storageChallengeID = storageChallenge.id
+    const chunks = storageChallenge.chunks
     return new Promise(async (resolve, reject) => {
 
       const opts = {
@@ -201,24 +204,28 @@ module.exports = class Hoster {
         id: storageChallengeID,
         myKey: hosterKey,
       }
-      const log2attestor = hoster.log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
-      const streams = await peerConnect(opts, log2attestor)
+      const log2attestor4Challenge = hoster.log.sub(`<-Attestor4challenge ${attestorKey.toString('hex').substring(0,5)}`)
+      const streams = await peerConnect(opts, log2attestor4Challenge)
 
-      log2attestor('START STORAGE PROOF')
 
       const all = []
-      const message = { type: 'StorageChallenge', feedKey, storageChallengeID, proofs}
-      const proofSent = requestResponse({ message, sendStream: streams.serialize$, receiveStream: streams.parse$, log: log2attestor })
-      all.push(proofSent)
-
+      for (var i = 0; i < chunks.length; i++) {
+        const index = chunks[i]
+        const proof = await hoster.getStorageChallenge(feedKey, index)
+        const message = { type: 'StorageChallenge', feedKey, storageChallengeID, proof}
+        message.index = i
+        log2attestor4Challenge({ type: 'hoster', body: [`Send proof of storage chunk ${chunks[i]}, message index: ${message.index}`] })
+        const proofSent = requestResponse({ message, sendStream: streams.serialize$, receiveStream: streams.parse$, log: log2attestor4Challenge })
+        all.push(proofSent)
+      }
       try {
-        const results = await Promise.all(all).catch((error) => log2attestor(error))
-        log2attestor(`${all.length} confirmations received from the attestor`)
-        log2attestor('Destroying communication with the attestor')
+        const results = await Promise.all(all).catch((error) => log2attestor4Challenge({ type: 'error', body: [`error: ${error}`] }))
+        log2attestor4Challenge({ type: 'hoster', body: [`${all.length} confirmations received from the attestor`] })
+        log2attestor4Challenge({ type: 'hoster', body: [`Destroying communication with the attestor`] })
         streams.end()
         resolve(results)
       } catch (e) {
-        console.log('ERROR', e)
+        log2attestor4Challenge({ type: 'error', body: [`Error: ${e}`] })
         reject(e)
       }
 
@@ -283,7 +290,6 @@ module.exports = class Hoster {
   }
 
   async close () {
-    console.log('HOSTER CLOSE')
     // await this.communication.destroy()
     // Close the DB and hypercores
     for (const storage of this.storages.values()) {

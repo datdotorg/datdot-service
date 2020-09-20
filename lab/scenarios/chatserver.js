@@ -14,7 +14,7 @@ async function init () {
   const wss = new WebSocket.Server({ port: PORT }, after)
 
   function after () {
-    log(`running on http://localhost:${wss.address().port}`)
+    log({ type: 'chat', body: [`running on http://localhost:${wss.address().port}`] })
   }
 
   const connections = {}
@@ -28,23 +28,22 @@ async function init () {
       if (type === 'join') {
         if (!connections[name]) {
           connections[name] = { name, counter: id, ws }
-          log('history', history)
+          log({ type: 'chat', body: [`history: ${history}`] })
           history.forEach(body => {
-            log(`tell to [${name}]`, body)
+            log({ type: 'chat', body: [`tell to [${name}] ${body}`] })
             ws.send(JSON.stringify(body))
           })
-          return log(type, flow)
+          return log({ type: 'chat', body: [`${type} ${flow}`] })
         } else {
-          log('ERROR', type, flow)
+          log({ type: 'error', body: [`${type} ${flow}`] })
           return ws.send(JSON.stringify({
             cite: [flow], type: 'error', body: 'name is already taken'
           }))
         }
       }
-      log(`[${name}] says:`, body)
+      log({ type: 'chat', body: [`[${name}] says: ${body}`] })
       history.push(body)
       Object.values(connections).map(({ ws, name }) => {
-        // log(`tell to [${name}]`, body)
         ws.send(JSON.stringify(body))
       })
     })

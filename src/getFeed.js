@@ -17,18 +17,20 @@ async function getData (log, feedkey, topic) {
     swarm.join(topicBuf, { lookup: true })
 
     swarm.on('connection', async (socket, info) => {
-      log('Connected to the author, getting the data')
+      log({ type: 'feed', body: [`Connected to the author, getting the data`] })
       socket.pipe(feed.replicate(info.client)).pipe(socket)
 
       const data = []
       const feedPubkey = feed.key
       feed.rootHashes(feed.length - 1, (err, res) => {
-        if (err) return log(err) && reject(err)
+        if (err) return log({ type: 'error', body: [`Error: ${err}`] }) && reject(err)
+
+
         const children = res.map(renameProperties)
         feed.signature((err, { signature }) => {
-          if (err) log(err) && reject(err)
+          if (err) log({ type: 'error', body: [`Error: ${err}`] }) && reject(err)
           data.push(feedPubkey)
-          log('New data feed created', feedPubkey, feedPubkey.toString('hex'))
+          log({ type: 'feed', body: [`New data feed created ${feedPubkey} ${feedPubkey.toString('hex')}`] })
           data.push({ hashType: 2, children }) // push TreeHashPayload
           data.push(signature)
           swarm.leave(topicBuf)
@@ -37,9 +39,6 @@ async function getData (log, feedkey, topic) {
       })
     })
 
-    swarm.on('peer', (peer) => {
-
-    })
   })
 
   function renameProperties (root) {

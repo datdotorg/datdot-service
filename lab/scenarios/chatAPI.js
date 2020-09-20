@@ -16,7 +16,7 @@ async function getChatAPI (profile, provider) {
     instance = {
       on: callback => ws.on('message', json => {
         const body = JSON.parse(json)
-        log('received', body)
+        log({ type: 'chat', body: [`received ${body}`]})
         callback(body)
       }),
       send: body => ws.send(JSON.stringify({

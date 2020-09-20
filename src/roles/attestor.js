@@ -8,7 +8,7 @@ async function role (profile, APIS) {
   const { name, log } = profile
   const { serviceAPI, chainAPI, vaultAPI } = APIS
 
-  log('Register as attestor')
+  log({ type: 'attestor', body: [`Register as attestor`] })
   chainAPI.listenToEvents(handleEvent)
   await vaultAPI.initAttestor({}, log)
   const attestorKey = vaultAPI.attestor.publicKey
@@ -33,11 +33,10 @@ async function role (profile, APIS) {
       const attestorID = contract.attestor
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress !== myAddress) return
-      log('=====[NEW CONTRACT]=====')
-      log('Event received:', event.method, event.data.toString())
+      log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       const { feedKey, encoderKeys, hosterKeys } = await getContractData(contract)
-      const results = await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, contractID }).catch((error) => log(error))
-      log('=== Verify encoding done: ===', results)
+      const results = await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, contractID }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+      log({ type: 'attestor', body: [`Verify encoding done: ${results}`] })
       // const contract = await getContractData(event.data, isForMe)
       // if (!contract) return
       // const { feedKey, encoderKeys, hosterKeys } = contract
@@ -50,7 +49,7 @@ async function role (profile, APIS) {
       attestors.forEach(async (attestorID) => {
         const attestorAddress = await chainAPI.getUserAddress(attestorID)
         if (attestorAddress === myAddress) {
-          log('Event received:', event.method, event.data.toString())
+          log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
           const contractID = performanceChallenge.contract
           const contract = await chainAPI.getContractByID(contractID)
           const feedID = contract.feed
@@ -63,7 +62,7 @@ async function role (profile, APIS) {
           // @TODO: select a reporter
           // const meeting = await serviceAPI.meetAttestors(feedKey)
           const data = { account: vaultAPI, randomChunks, feedKey }
-          const report = await serviceAPI.checkPerformance(data).catch((error) => log(error))
+          const report = await serviceAPI.checkPerformance(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
           const nonce = await vaultAPI.getNonce()
           await chainAPI.submitPerformanceChallenge({ performanceChallengeID, report, signer, nonce })
         }
@@ -75,14 +74,15 @@ async function role (profile, APIS) {
       const attestorID = storageChallenge.attestor
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress === myAddress) {
-        log('Event received:', event.method, event.data.toString())
+        log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
         const data = await getStorageChallengeData(storageChallenge)
         data.account = vaultAPI
         data.attestorKey = attestorKey
-        const proof = await serviceAPI.verifyStorageChallenge(data).catch((error) => log(error))
-        if (proof) {
+        const proofs = await serviceAPI.verifyStorageChallenge(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+        log({ type: 'attestor', body: [`Got all the proofs`] })
+        if (proofs) {
           const nonce = vaultAPI.getNonce()
-          const opts = { storageChallengeID, proof, signer, nonce }
+          const opts = { storageChallengeID, proofs, signer, nonce }
           await chainAPI.submitStorageChallenge(opts)
         }
       }
@@ -97,7 +97,7 @@ async function role (profile, APIS) {
     const contract = await chainAPI.getContractByID(storageChallenge.contract)
     const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
-    return { hosterKey, feedKey, storageChallengeID: storageChallenge.id }
+    return { hosterKey, feedKey, storageChallenge }
   }
 
   async function getContractData (contract) {

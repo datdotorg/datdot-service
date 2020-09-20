@@ -9,7 +9,7 @@ function datdotService (profile) {
     host,
     encode,
     verifyEncoding,
-    getStorageChallenge,
+    // getStorageChallenge,
     sendStorageChallengeToAttestor,
     verifyStorageChallenge,
     checkPerformance
@@ -25,7 +25,8 @@ function datdotService (profile) {
   ------------------------------------------------------------------ */
   async function encode (data) {
     const { contractID, account, attestorKey, encoderKey, feedKey: feedKeyBuffer, ranges } = data
-    log('Encode!')
+    log({ type: 'serviceAPI', body: [`Encode`] })
+
     return account.encoder.encodeFor(contractID, attestorKey, encoderKey, feedKeyBuffer, ranges)
   }
 
@@ -37,7 +38,7 @@ function datdotService (profile) {
       const encoderKey = encoderKeys[i]
       const hosterKey = hosterKeys[i]
       const opts = { contractID, attestorKey, encoderKey, hosterKey, feedKey, cb: (msg, cb) => compareEncodings(messages, msg, cb) }
-      log('Verify encodings!')
+      log({ type: 'serviceAPI', body: [`Verify encodings!`] })
       jobs.push(account.attestor.verifyEncodingFor(opts))
     }
     return Promise.all(jobs)
@@ -46,34 +47,36 @@ function datdotService (profile) {
   async function host (data) {
     const { account, contractID, feedKey, hosterKey, attestorKey, plan } = data
     const opts = { contractID, feedKey, hosterKey, attestorKey, plan }
-    log('Host!')
+    log({ type: 'serviceAPI', body: [`Host!`] })
+
     return await account.hoster.hostFor(opts)
   }
 
   /* ----------------------------------------------------------------
                      WHILE HOSTING => proof
 ------------------------------------------------------------------ */
-  async function getStorageChallenge ({ account, storageChallenge, feedKey }) {
-    const data = await Promise.all(storageChallenge.chunks.map(async (index) => {
-      return await account.hoster.getStorageChallenge(feedKey, index)
-    }))
-    return data
-  }
+  // async function getStorageChallenge ({ account, storageChallenge, feedKey }) {
+  //   const data = await Promise.all(storageChallenge.chunks.map(async (index) => {
+  //     return await account.hoster.getStorageChallenge(feedKey, index)
+  //   }))
+  //   return data
+  // }
 
   async function sendStorageChallengeToAttestor (data) {
-    const { account, hosterKey, storageChallengeID, feedKey, attestorKey, proofs } = data
-    return account.hoster.sendStorageChallenge({ storageChallengeID, hosterKey, feedKey, attestorKey, proofs })
+    const { account, hosterKey, storageChallenge, feedKey, attestorKey } = data
+    return account.hoster.sendStorageChallenge({ storageChallenge, hosterKey, feedKey, attestorKey })
   }
 
   async function verifyStorageChallenge (data) {
-    const { account, attestorKey, hosterKey, feedKey, storageChallengeID } = data
+    const { account, attestorKey, hosterKey, feedKey, storageChallenge } = data
     // @TODO prepare the response: hash, proof etc. instead of sending the full chunk
-    return await account.attestor.verifyStorageChallenge({ storageChallengeID, attestorKey, feedKey, hosterKey })
+    return await account.attestor.verifyStorageChallenge({ storageChallenge, attestorKey, feedKey, hosterKey })
   }
 
   async function checkPerformance (data) {
     const { account, randomChunks, feedKey } = data
-    log('check performance')
+    log({ type: 'serviceAPI', body: [`check performance!`] })
+
     const report = await Promise.all(randomChunks.map(async (chunk) => {
       return await account.attestor.checkPerformance(feedKey, chunk)
     }))
@@ -87,11 +90,13 @@ function datdotService (profile) {
   function compareEncodings (messages, msg, cb) {
     const { index } = msg
     // get all three chunks from different encoders, compare and then respond to each
-    log(`comparing encoding for index: ${index} (${messages[index] ? messages[index].length : 'none'}/3)`)
+    log({ type: 'serviceAPI', body: [`comparing encoding for index: ${index} (${messages[index] ? messages[index].length : 'none'}/3)`] })
+
     if (messages[index]) messages[index].push({ msg, cb })
     else messages[index] = [{ msg, cb }]
     if (messages[index].length === 3) {
-      log('Have 3 encodings, comparing them now!')
+      log({ type: 'serviceAPI', body: [`Have 3 encodings, comparing them now!`] })
+
       const sizes = messages[index].map(message => {
         return Buffer.from(message.msg.encoded).length
       })

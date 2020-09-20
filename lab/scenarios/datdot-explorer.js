@@ -25,17 +25,121 @@ function handler (request, response) {
       break
   }
 }
+function show (LOG) {
+  document.body.innerHTML = ''
+  const parser = document.createElement('div')
+  document.body.innerHTML = `
+  <div class="log"></div>
+  <div class="status">${showStatus(LOG)}</div>
+  <style>
+    body { margin: 0; }
+    .log { height: 85vh; background-color: #000; color: #ccc; display: flex; flex-direction: column; overflow-y: scroll; }
+    .status { width: 100vw; height: 100vh; background-color: #000; }
+    .item { padding: 5px 12px; font-family: arial; display:flex; flex-direction: row; }
+    .name { font-size: 14px; min-width: 250px; }
+    .message { font-size: 14px; word-break: break-word; }
+  </style>`
+  const [log, status] = document.body.children
+  const nums = []
+  const names = {}
+  LOG.sort((a, b) => a[2] - b[2])
+  for (var i = 0, len = LOG.length; i < len; i++) {
+    const [name, id, time, message] = LOG[i]
+    const stamp = `${time}`.split('.')[0]
+    const color = () => {
+      return names[name] || (names[name] = getRandomColor())
+    }
+    parser.innerHTML = `<div class="item" style="background-color: ${ i%2 ? '#282828' : '#202020'};">
+      <div class="name" style="color: ${color()};">
+        <span>${name}</span> <span style="font-size: 9px">(${id})</span>
+      </div>
+      <div class="message">${format(message)}</div>
+    </div>`
+    const [element] = parser.children
+    log.append(element)
+  }
+  log.scrollTop = log.scrollHeight
+  function getRandomColor () {
+    var num = Math.random() * 360
+    for (var i = 0; i < nums.length; i++) if (Math.abs(nums[i] - num) < 30) num = Math.random() * 360
+    nums.push(num)
+    return `hsla(${num}, 100%, 70%, 1)`
+  }
+  function format (message) {
+    if (message && typeof message === 'object') {
+      const [{ type, body }] = message
+      if (type === 'error') return `<span style="color: red">${body}</span>`
+      if (type === 'chainEvent') return `<span style="color: orange">${body}</span>`
+      if (type === 'chain') return `<span style="color: white">${body}</span>`
+      if (type === 'user') return `<span style="color: maroon">${body}</span>`
+      if (type === 'peer') return `<span style="color: blue">${body}</span>`
+      if (type === 'publisher') return `<span style="color: purple">${body}</span>`
+      if (type === 'sponsor') return `<span style="color: lime">${body}</span>`
+      if (type === 'author') return `<span style="color: fuchsia">${body}</span>`
+      if (type === 'hoster') return `<span style="color: pink">${body}</span>`
+      if (type === 'attestor') return `<span style="color: olive">${body}</span>`
+      if (type === 'encoder') return `<span style="color: turquoise">${body}</span>`
+      if (type === 'serviceAPI') return `<span style="color: teal"> ${body}</span>`
+      if (type === 'chat') return `<span style="color: silver"> ${body}</span>`
+      if (type === 'p2plex') return `<span style="color: SlateBlue"> ${body}</span>`
+      if (type === 'chainAPI') return `<span style="color: white"> ${body}</span>`
+      if (type === 'requestResponse') return `<span style="color: aqua"> ${body}</span>`
+      if (type === 'feed') return `<span style="color: salmon"> ${body}</span>`
+      if (type === 'log') return `<span style="color: gray">${body}</span>`
+      if (Array.isArray(message)) return message.reduce((all, x) => all + `<span style="color: gray">${x}</span>`, '')
+      return console.log('error', message)
+    } else {
+      return message
+    }
+  }
+  function showStatus (LOG) {
+    return `<div style="color: gray; padding: 10px 40px;"> STATUS
+        <div> event NewContract: ${isLog('Event received: NewContract')}/7</div>
+        <div> Connections made: ${isLog('Got a peer')}/18</div>
+        <div> Encoding job done: ${isLog('confirmations received from the attestor')}/3</div>
+        <div> Hosting job done: ${isLog('Hoster received & stored all')}/3</div>
+        <div> event HostingStarted: ${isLog('Event received: HostingStarted')}/3</div>
+        <div> event NewStorageChallenge: ${isLog('Event received: NewStorageChallenge')}/6</div>
+        <div> event NewPerformanceChallenge: ${isLog('Event received: NewPerformanceChallenge')}/15</div>
+        <div> event StorageChallengeConfirmed: ${isLog('Event received: StorageChallengeConfirmed')}/3</div>
+        <div> event PerformanceChallengeConfirmed: ${isLog('Event received: PerformanceChallengeConfirmed')}/15</div>
+        <ul> Users: ${getUsers(LOG).join('')} </ul>
+        <div></div>
+      </div>`
 
+      function isLog (phrase) {
+        const results = []
+        for (var i = 0; i < LOG.length; i ++) {
+          const body = LOG[i][3][0].body[0]
+          if (body && body.includes(phrase)) results.push(LOG)
+        }
+        return results.length
+      }
+      function getUsers () {
+        var users = []
+        for (var i = 0; i < LOG.length; i ++) {
+          const body = LOG[i][3][0].body[0]
+          if (body && body.includes('New user')) users.push(`<p>${body.split('New user: ')[1]}</p>`)
+        }
+        return users
+      }
+  }
+}
 function explorer (PORTS) {
   const script = `;(async (PORTS) => {
+    window.PORTS = PORTS
     const name = 'datdot-explorer'
-    const connections = []
-    const id = setTimeout(() => { start(console.log.bind(console)) }, 5000)
-    window.start = start
-    function start (logger) {
-      window.start = void 0
-      window.logger = logger
-      clearTimeout(id)
+    start()
+    function logger (event) {
+      const message = JSON.parse(event.data)
+      const { flow: [from, into, id, time], type, body } = message
+      if (type !== 'log') return
+      console.log(from + ':' + id, body)
+      LOG.push([from, id, time, body])
+    }
+    function start () {
+      window.connections = []
+      window.LOG = []
       for (var i = 0, len = PORTS.length; i < len; i++) connect(PORTS[i])
       function connect (port) {
         const ws = new WebSocket('ws://localhost:' + port)
@@ -68,6 +172,7 @@ function explorer (PORTS) {
         }
       }
     }
+    window.show = ${show}
   })([${PORTS.join(',')}])`
   const explorer = `
   <!doctype html>
