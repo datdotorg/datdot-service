@@ -233,7 +233,8 @@ async function _requestStorageChallenge (user, { name, nonce }, status, args) {
   const storageChallenge = { contract: contractID, hoster: hosterID, chunks }
   const storageChallengeID = DB.storageChallenges.push(storageChallenge)
   storageChallenge.id = storageChallengeID
-  const attestorID = DB.idleAttestors.shift()
+  const attestorID = getAttestor(storageChallenge, log)
+  if (!attestorID) return
   storageChallenge.attestor = attestorID
   // emit events
   const challenge = { event: { data: [storageChallengeID], method: 'NewStorageChallenge' } }
@@ -386,6 +387,10 @@ function checkAttestorJobs (log) {
       DB.attestorJobs.shift()
       emitPerformanceChallenge(next.opts, log)
     }
+    if (next.fnName === 'emitStorageChallenge' && DB.idleAttestors.length >= 1) {
+      DB.attestorJobs.shift()
+      emitStorageChallenge(next.opts, log)
+    }
   }
 }
 
@@ -425,6 +430,14 @@ function getSelectedAttestor (attestors, selectedEncoders, selectedHosters) {
   }
   return selected
 }
+function getAttestor (storageChallenge, log) {
+  const hosterID = storageChallenge.hoster
+  log({ type: 'chain', body: [`getting attestor ${ DB.idleAttestors}`] })
+  for (var i = 0; i < DB.idleAttestors.length; i++) {
+    if (DB.idleAttestors[i]!== hosterID) return DB.idleAttestors.splice(i, 1)
+  }
+  DB.attestorJobs.push({ fnName: 'emitStorageChallenge', opts: storageChallenge })
+}
 ////////////////////////////////////////////////////////////////////////////
 function emitPerformanceChallenge (performanceChallenge, log) {
   // select 5 attestors
@@ -433,5 +446,16 @@ function emitPerformanceChallenge (performanceChallenge, log) {
   const challenge = { event: { data: [performanceChallengeID], method: 'NewPerformanceChallenge' } }
   const event = [challenge]
   handlers.forEach(([name, handler]) => handler(event))
-  // log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
+  log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
+}
+function emitStorageChallenge (storageChallenge, log) {
+  const attestorID = getAttestor(storageChallenge, log)
+  // @TODO if no attestor, we then add the job back to attestorJobs, but at the end of the array(!)
+  if (!attestorID) return
+  storageChallenge.attestor = attestorID
+  // emit events
+  const challenge = { event: { data: [storageChallenge.id], method: 'NewStorageChallenge' } }
+  const event = [challenge]
+  handlers.forEach(([name, handler]) => handler(event))
+  log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
 }

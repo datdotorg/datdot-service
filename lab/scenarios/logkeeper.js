@@ -50,7 +50,7 @@ async function logkeeper (name, PORT) {
           throw new Error('invalid type')
         }
         const message = encode('log', args)
-        console.log('New logkeeper message: ${message}', args)
+        // console.log(`New logkeeper message: ${message} ${args}`)
         history.push(message)
         for (var i = 0, len = connections.length; i < len; i++) {
           const client = connections[i]
