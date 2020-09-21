@@ -35,9 +35,25 @@ async function user ({name, roles}, config, logport) {
     const role = ROLES[rolename]
     await role(profile, APIS)
   }
+  captureErrors(log)
 }
 /******************************************************************************
   SCENARIO
 ******************************************************************************/
 const [scenario, config, logport] = process.argv.slice(2)
 user(JSON.parse(scenario), JSON.parse(config), logport)
+
+
+function captureErrors (log) {
+  process.on('unhandledRejection', error => {
+    log({ type: 'user', body: [`unhandledRejection ${error}`] })
+  })
+  process.on('uncaughtException', (err, origin) => {
+    log({ type: 'user', body: [`uncaughtException ${err} ${origin}`] })
+  })
+  process.on('warning', error => {
+    const stack = error.stack
+    log({ type: 'user', body: [`warning ${stack} ${error}`] })
+  })
+  process.setMaxListeners(0)
+}

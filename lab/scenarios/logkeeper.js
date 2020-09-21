@@ -80,13 +80,12 @@ async function logkeeper (name, PORT) {
         } else LOG('client sent unknown message', message)
       })
       ws.on('close', function close () {
-        console.log('logkeeper close', name, PORT)
         connections[index] = undefined
-        LOG(`client ${index} disconnected`)
+        LOG(`client ${index} disconnected from logkeeper ${name}/${PORT} logkeeper`)
       })
       ws.on('error', function error (err) {
-        console.log('logkeeper error ', name, PORT)
-        LOG(`ERROR: client ${index} disconnected`)
+        connections[index] = undefined
+        LOG(`ERROR: client ${index} disconnected from logkeeper ${name}/${PORT} logkeeper`, err)
       })
     })
   }

@@ -3,23 +3,23 @@ module.exports = requestResponse
 async function requestResponse ({ message, sendStream, receiveStream, log, wait = 5000 }) {
   return new Promise((resolve, reject) => {
 
-    receiveStream.on('data', (data) => {
-      if (data.type === 'ping') {
-        log({ type: 'requestResponse', body: [`Got ping, sending PONG`]})
-        sendStream.write({ type: 'pong' })
-      }
-    })
+    // receiveStream.on('data', (data) => {
+    //   if (data.type === 'ping') {
+    //     log({ type: 'requestResponse', body: [`Got ping, sending PONG`]})
+    //     sendStream.write({ type: 'pong' })
+    //   }
+    // })
     sendStream.write(message)
     log({ type: 'requestResponse', body: [`MSG sent (requestResponse) ${message.index}`]})
     const toID = setTimeout(() => {
       receiveStream.off('data', ondata)
       const error = [message.index, 'FAIL_ACK_TIMEOUT']
       log({ type: 'error', body: [`Timeout error for message index ${message.index}: ${error}`] })
-      log({ type: 'requestResponse', body: [`Sending PING`]})
-      sendStream.write({ type: 'ping' })
-      receiveStream.on('data', (data) => {
-        if (data.type === 'pong') log({ type: 'requestResponse', body: [`Got pong`]})
-      })
+      // log({ type: 'requestResponse', body: [`Sending PING`]})
+      // sendStream.write({ type: 'ping' })
+      // receiveStream.on('data', (data) => {
+      //   if (data.type === 'pong') log({ type: 'requestResponse', body: [`Got pong`]})
+      // })
       reject(error)
     }, wait)
 

@@ -220,7 +220,7 @@ module.exports = class Hoster {
       }
       try {
         const results = await Promise.all(all).catch((error) => log2attestor4Challenge({ type: 'error', body: [`error: ${error}`] }))
-        log2attestor4Challenge({ type: 'hoster', body: [`${all.length} confirmations received from the attestor`] })
+        log2attestor4Challenge({ type: 'hoster', body: [`${all.length} responses received from the attestor`] })
         log2attestor4Challenge({ type: 'hoster', body: [`Destroying communication with the attestor`] })
         streams.end()
         resolve(results)

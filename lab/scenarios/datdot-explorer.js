@@ -130,33 +130,39 @@ function explorer (PORTS) {
     window.PORTS = PORTS
     const name = 'datdot-explorer'
     start()
-    function logger (event) {
-      const message = JSON.parse(event.data)
-      const { flow: [from, into, id, time], type, body } = message
-      if (type !== 'log') return
-      console.log(from + ':' + id, body)
-      LOG.push([from, id, time, body])
-    }
     function start () {
-      window.connections = []
+      window.connections = {}
       window.LOG = []
+      function logger (port, message) {
+        const msgs = connections[port].msgs
+        const { flow: [from, into, id, time], type, body } = message
+
+        if (type !== 'log') return console.error('unknown message type', message)
+        if (!from) return console.error('missing sender', message)
+        if (!into) return console.error('missing recipient', message)
+
+        const path = \`\${from\}:\${into\}\${id\}\`
+        if (msgs[path]) return console.error('duplicate message', message)
+        msgs[path] = message
+
+        LOG.push([from, id, time, body])
+      }
       for (var i = 0, len = PORTS.length; i < len; i++) connect(PORTS[i])
       function connect (port) {
-        const ws = new WebSocket('ws://localhost:' + port)
-        connections.push({ ws, port, codec: { encode, decode } })
-        logger.connections = connections
+        const url = 'ws://localhost:' + port
+        console.log('connecting and fetching logs from:', url)
+        const ws = new WebSocket(url)
+        connections[port] = { ws, port, codec: { encode, decode }, msgs: {} }
         var counter = 0
-        function decode (json) { return json }
+        function decode (json) { return JSON.parse(json) }
         function encode (type, body, cite) {
           const flow = [name, port, counter++]
           const message = { flow, cite, type, body }
           return JSON.stringify(message)
         }
-        ws.onmessage = json => {
-          const message = decode(json)
-          const { flow, type, body } = message
-          const [name, id] = flow || []
-          logger(message)
+        ws.onmessage = event => {
+          const message = decode(event.data)
+          logger(port, message)
         }
         ws.onopen = function open () {
           const message = encode('all:live')
@@ -164,11 +170,11 @@ function explorer (PORTS) {
         }
         ws.onclose = function close () {
           const message = encode('close', 'unexpected closing of log server connection for: ' + port)
-          logger(message)
+          console.error(message)
         }
         ws.onerror = function error (err) {
           const message = encode('error', err)
-          logger(message) // setTimeout(() => , 2000)
+          console.error(message) // setTimeout(() => , 2000)
         }
       }
     }
