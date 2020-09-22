@@ -60,21 +60,21 @@ async function datdotChain (profile, provider) {
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function registerHoster ({ hosterKey, signer, nonce }) {
+  async function registerHoster ({ form, hosterKey, signer, nonce }) {
     // hosterKey = bufferToU8a(hosterKey)
-    const tx = await API.tx.datVerify.registerHoster(hosterKey)
+    const tx = await API.tx.datVerify.registerHoster(hosterKey,form)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function registerEncoder ({ encoderKey, signer, nonce }) {
+  async function registerEncoder ({ form, encoderKey, signer, nonce }) {
     // encoderKey = bufferToU8a(encoderKey)
-    const tx = await API.tx.datVerify.registerEncoder(encoderKey)
+    const tx = await API.tx.datVerify.registerEncoder(encoderKey,form)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function registerAttestor ({ attestorKey, signer, nonce }) {
+  async function registerAttestor ({ form, attestorKey, signer, nonce }) {
     // attestorKey = bufferToU8a(attestorKey)
-    const tx = await API.tx.datVerify.registerAttestor(attestorKey)
+    const tx = await API.tx.datVerify.registerAttestor(attestorKey, form)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }

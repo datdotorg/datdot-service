@@ -1,3 +1,4 @@
+const registrationForm = require('../registrationForm')
 /******************************************************************************
   ROLE: Hoster
 ******************************************************************************/
@@ -7,14 +8,15 @@ async function role (profile, APIS) {
   const { name, log } = profile
   const { serviceAPI, chainAPI, vaultAPI } = APIS
 
-  log({ type: 'chainEvent', body: [`Register as hoster`] })
+  log({ type: 'hoster', body: [`Register as hoster`] })
   await chainAPI.listenToEvents(handleEvent)
   await vaultAPI.initHoster({}, log)
   const hosterKey = vaultAPI.hoster.publicKey
   const myAddress = vaultAPI.chainKeypair.address
   const signer = vaultAPI.chainKeypair
   const nonce = vaultAPI.getNonce()
-  await chainAPI.registerHoster({ hosterKey, signer, nonce })
+  const form = registrationForm('attestor')
+  await chainAPI.registerHoster({ form, hosterKey, signer, nonce })
 
   // EVENTS
   async function isForMe (peerids) {
@@ -30,7 +32,7 @@ async function role (profile, APIS) {
       const contract = await chainAPI.getContractByID(contractID)
       const hosters = contract.hosters
       if (!await isForMe(hosters)) return
-      log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+      log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       const { feedKey, attestorKey, plan } = await getHostingData(contract)
       await serviceAPI.host({ contractID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
       const nonce = vaultAPI.getNonce()
@@ -44,7 +46,7 @@ async function role (profile, APIS) {
       const hosterID = storageChallenge.hoster
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
-        log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
         const data = await getStorageChallengeData(storageChallenge, contract)
         data.account = vaultAPI
         data.hosterKey = hosterKey

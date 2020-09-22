@@ -1,3 +1,4 @@
+const registrationForm = require('../registrationForm')
 /******************************************************************************
   ROLE: Encoder
 ******************************************************************************/
@@ -15,7 +16,8 @@ async function role (profile, APIS) {
   const myAddress = vaultAPI.chainKeypair.address
   const signer = vaultAPI.chainKeypair
   const nonce = await vaultAPI.getNonce()
-  await chainAPI.registerEncoder({ encoderKey, signer, nonce })
+  const form = registrationForm('encoder')
+  await chainAPI.registerEncoder({ form, encoderKey, signer, nonce })
 
   // EVENTS
   async function isForMe (peerids) {

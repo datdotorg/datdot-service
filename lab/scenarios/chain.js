@@ -160,12 +160,12 @@ async function _registerHoster(user, { name, nonce }, status, args) {
   const log = connections[name].log
 
   const userID = user.id
-  const [hosterKey] = args
+  const [hosterKey, form] = args
   // @TODO emit event or make a callback to notify the user
   if (DB.users[userID-1].hosterKey) return log({ type: 'chain', body: [`User is already registered as a hoster`] })
   const keyBuf = Buffer.from(hosterKey, 'hex')
   DB.users[userID - 1].hosterKey = keyBuf.toString('hex')
-  DB.users[userID - 1].hoster = true
+  DB.users[userID - 1].hosterForm = form
   DB.idleHosters.push(userID)
   tryNewContract({ log })
 }
@@ -173,11 +173,11 @@ async function _registerEncoder (user, { name, nonce }, status, args) {
   const log = connections[name].log
 
   const userID = user.id
-  const [encoderKey] = args
+  const [encoderKey, form] = args
   if (DB.users[userID-1].encoderKey) return log({ type: 'chain', body: [`User is already registered as encoder`] })
   const keyBuf = Buffer.from(encoderKey, 'hex')
   DB.users[userID - 1].encoderKey = keyBuf.toString('hex')
-  DB.users[userID - 1].encoder = true
+  DB.users[userID - 1].encoderForm = form
   DB.idleEncoders.push(userID)
   tryNewContract({ log })
 }
@@ -185,11 +185,11 @@ async function _registerAttestor (user, { name, nonce }, status, args) {
   const log = connections[name].log
 
   const userID = user.id
-  const [attestorKey] = args
+  const [attestorKey, form] = args
   if (DB.users[userID-1].attestorKey) return log({ type: 'chain', body: [`User is already registered as a attestor`] })
   const keyBuf = Buffer.from(attestorKey, 'hex')
   DB.users[userID - 1].attestorKey = keyBuf.toString('hex')
-  DB.users[userID - 1].attestor = true
+  DB.users[userID - 1].attestorForm = form
   DB.idleAttestors.push(userID)
   checkAttestorJobs(log)
   tryNewContract({ log })

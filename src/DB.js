@@ -4,7 +4,13 @@
 const users = []
 /*
 {
-  address: signer
+  address: signer,
+  attestorKey: Buff,
+  encoderKey: Buff,
+  hosterKey: Buff,
+  attestorForm: {},
+  encoderForm: {},
+  hosterForm: {}
 }
 */
 const feeds = []
