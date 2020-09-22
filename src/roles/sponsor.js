@@ -66,7 +66,7 @@ async function role (profile, APIS) {
 
   // HELPERS
 
- // See example https://pastebin.com/5nAb6XHQ 
+ // See example https://pastebin.com/5nAb6XHQ
   function makePlan (feedID) {
     const config = { // at least 1 region is mandatory (e.g. global)
       performance: {
@@ -85,7 +85,7 @@ async function role (profile, APIS) {
     }
     return {
       feeds: [{ id: feedID, ranges: [[0,8]] }/*, ...*/],
-      from       : '', // date
+      from       : new Date(), // or new Date('Apr 30, 2000')
       until: {
         time     : '', // date
         budget   : '',

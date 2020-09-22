@@ -326,7 +326,6 @@ function tryNewContract ({ plan, log }) {
   const selectedPlan = DB.plans[planID - 1]
   if (!selectedPlan) return log({ type: 'chain', body: [`current lack of demand for hosting plans`] })
 
-
   // Get available hosters, encoders and attestors
   const { unhostedFeeds, from, until, importance, config, schedules } =  selectedPlan
   const encoders  = DB.idleEncoders
@@ -337,14 +336,16 @@ function tryNewContract ({ plan, log }) {
   if (!attestors.length) return log({ type: 'chain', body: [`missing attestors`] })
 
   // @TODO select hosters and encoders who match the plan (storage space, availability etc.)
+  // see user.attestorForm/encoderForm/hosterForm to see their settings
+  // get info about space needed from hoster (calculate chunks amount x 164kb?)
   // Select the providers for a new contract
-  const selectedEncoders = getSelectedEncoders(encoders)
-  const selectedHosters = getSelectedHosters(hosters, selectedEncoders)
+  const selectedEncoders = selectEncoders(encoders)
+  const selectedHosters = selectHosters(hosters, selectedEncoders)
   if (!selectedHosters) {
     encoders.unshift(selectedEncoders)
     return log({ type: 'chain', body: [`missing unique hosters`] })
   }
-  const selectedAttestor = getSelectedAttestor(attestors, selectedEncoders, selectedHosters)
+  const selectedAttestor = selectAttestor(attestors, selectedEncoders, selectedHosters)
   if (!selectedAttestor) {
     encoders.unshift(selectedEncoders)
     hosters.unshift(selectedHosters)
@@ -364,6 +365,8 @@ function makeContract (opts, log) {
   const contract = {
     plan: planID,
     feed: feed.id,
+    // @TODO add until
+    // @TODO add ranges for this particular contract
     ranges: feed.ranges,
     encoders: selectedEncoders,
     hosters: selectedHosters,
@@ -401,10 +404,12 @@ function removeFromUnhosted (planID, unhostedPlans) {
   }
 }
 
-function getSelectedEncoders (encoders) {
+function selectEncoders (encoders) {
+  // @TODO check for each encoder if (encoder.form.until is undefined or date is tomorrow)
   return encoders.splice(0,3)
 }
-function getSelectedHosters (hosters, selectedEncoders) {
+function selectHosters (hosters, selectedEncoders) {
+  // @TODO check for each hoster if enough storage, if available in requested schedules of the contract
   var selected = []
   var indexes = []
   for (var i = 0; i < hosters.length; i++) {
@@ -419,7 +424,8 @@ function getSelectedHosters (hosters, selectedEncoders) {
   }
   return selected
 }
-function getSelectedAttestor (attestors, selectedEncoders, selectedHosters) {
+function selectAttestor (attestors, selectedEncoders, selectedHosters) {
+  // @TODO check for each attestor if (attestor.form.until is undefined or date is tomorrow)
   var selected
   for (var i = 0; i < attestors.length; i++) {
     if (!selectedEncoders.includes(attestors[i]) && !selectedHosters.includes(attestors[i])) {

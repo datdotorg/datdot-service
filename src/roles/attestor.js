@@ -36,7 +36,7 @@ async function role (profile, APIS) {
       }/*, ...*/]
     }
     return {
-      from       : new Date(),
+      from       : new Date(), // or new Date('Apr 30, 2000')
       until      : void 0,
       config, // general config
       schedules  : [{
