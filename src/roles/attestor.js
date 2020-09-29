@@ -19,36 +19,6 @@ async function role (profile, APIS) {
   const form = registrationForm('attestor')
   await chainAPI.registerAttestor({ form, attestorKey, signer, nonce })
 
-  function makeRegistration () {
-    const config = { // at least 1 region is mandatory (e.g. global)
-      performance: {
-        availability: void 0, // percentage_decimal
-        bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
-        latency: { /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
-      },
-      regions: [{
-        region: 'global', // e.g. 'NORTH AMERICA', @TODO: see issue, e.g. latitude, longitude
-        performance: {
-          // availability:  void 0, // percentage_decimal
-          // bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
-          // latency: {  /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
-        }
-      }/*, ...*/]
-    }
-    return {
-      from       : new Date(), // or new Date('Apr 30, 2000')
-      until      : void 0,
-      config, // general config
-      schedules  : [{
-        // duration :  void 0, // milliseconds
-        // delay    :  void 0, // milliseconds
-        // interval :  void 0, // milliseconds
-        // repeat   :  void 0, // number
-        // config // specialized config for each schedule
-      }]
-    }
-  }
-
   // EVENTS
   // async function isForMe (peerids) {
   //   peerids = [].concat(peerids)

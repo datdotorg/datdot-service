@@ -30,6 +30,14 @@ async function role (profile, APIS) {
   await feed.append('Bonjour le monde!')
   await feed.append('Здраво Свете!')
   await feed.append('Hai dunia!')
+  await feed.append('Mhoro nyika!')
+  await feed.append('Salom Dunyo!')
+  await feed.append('Halo Dunia!')
+  await feed.append('Kumusta kalibutan!')
+  await feed.append('Hei Verden!')
+  await feed.append('Ahoj svet!')
+  await feed.append('Hej världen!')
+  await feed.append('Helló Világ!')
 
   await reallyReady(feed)
   const feedkey = feed.key

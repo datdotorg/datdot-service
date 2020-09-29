@@ -83,8 +83,17 @@ async function role (profile, APIS) {
         }
       }/*, ...*/]
     }
+    const ranges = [[0,3], [5,8], [10,14]]
+    function getSize (ranges) {
+      var size = 0
+      for (var i = 0; i < ranges.length; i++) {
+        const range = ranges[i]
+        size = size + (range[1] - range[0])
+      }
+      return size*64 // each chunk is 64kb
+    }
     return {
-      feeds: [{ id: feedID, ranges: [[0,8]] }/*, ...*/],
+      feeds: [{ id: feedID, ranges, size: getSize(ranges) }],
       from       : new Date(), // or new Date('Apr 30, 2000')
       until: {
         time     : '', // date

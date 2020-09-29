@@ -7,9 +7,10 @@ function registrationForm (role) {
   if (role === 'encoder') {}
   if (role === 'hoster') {
     registration.storage = 1000000000 //1 GB to bytes is 1e+9
+    registration.idleStorage = 1000000000 // at the registration all the storage is idle
   }
   registration.from = new Date()
-  registration.until = void 0
+  registration.until = ''
   registration.schedules = [{
     // duration :  void 0, // milliseconds
     // delay    :  void 0, // milliseconds
@@ -19,7 +20,7 @@ function registrationForm (role) {
   }]
   registration.config = { // at least 1 region is mandatory (e.g. global)
     performance: {
-      availability: void 0, // percentage_decimal
+      availability: '', // percentage_decimal
       bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
       latency: { /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
     },
