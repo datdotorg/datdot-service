@@ -1,5 +1,3 @@
-const debug = require('debug')
-
 module.exports = datdotService
 
 function datdotService (profile) {
