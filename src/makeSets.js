@@ -3,7 +3,8 @@ module.exports = makeSets
 function makeSets ({ ranges, setSize }) {
   const sets = []
   for (var i = 0; i < ranges.length; i++) fillTheSet(ranges[i], sets, setSize)
-  if (sets[0] === setSize) formatSets(sets)
+  formatSets(sets)
+  // if (sets[0] === setSize) formatSets(sets)
   return sets
 }
 

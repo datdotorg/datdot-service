@@ -229,7 +229,7 @@ async function _requestStorageChallenge (user, { name, nonce }, status, args) {
 
   const [ contractID, hosterID ] = args
   const ranges = DB.contracts[contractID - 1].ranges // [ [0, 3], [5, 7] ]
-  // @TODO currently we check one chunk in each range => find better logic
+  // @TODO currently we check one random chunk in each range => find better logic
   const chunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
   const storageChallenge = { contract: contractID, hoster: hosterID, chunks }
   const storageChallengeID = DB.storageChallenges.push(storageChallenge)
@@ -304,19 +304,21 @@ function tryContract ({ plan, log }) {
   log({ type: 'chain', body: [`Trying new contract`] })
 
   // get a plan
-  let planID
   const unhostedPlans = DB.unhostedPlans
-  const selectedPlan = getPlan({ plan, planID, unhostedPlans, log })
+  var selectedPlan
+  if (plan) selectedPlan = plan
+  else if (!plan && unhostedPlans.length) selectedPlan = findPlan({ plan, unhostedPlans, log })
   if (!selectedPlan) return log({ type: 'chain', body: [`current lack of demand for hosting plans`] })
+  const planID = selectedPlan.id
 
   // select feed
   const unhostedFeeds = selectedPlan.unhostedFeeds
   const feed = unhostedFeeds.shift()
   // If no unhosted feeds left in the plan, remove plan ID from unhostedPlans
-  if (!unhostedFeeds.length) removeFromUnhosted(planID, unhostedPlans)
+  if (!unhostedFeeds.length) removePlanFromUnhosted(planID, unhostedPlans)
 
  // split ranges to sets (size = setSize)
-  const setSize = 10 // every contract is for 10 chunks
+  const setSize = 10 // every contract is for hosting 10 chunks
   const sets = makeSets({ ranges: feed.ranges, setSize })
 
  // get providers & make contracts
@@ -394,16 +396,17 @@ function validateProof (proofs, storageChallenge) {
   if (`${chunks.length}` === `${proofs.length}`) return true
   else return false
 }
-function getPlan ({ plan, planID, unhostedPlans, log }) {
-  if (plan) planID = plan.id
-  if (!planID && unhostedPlans.length) [planID, pos] = getRandom(unhostedPlans)
+function findPlan ({ unhostedPlans, log }) {
+  var [planID] = getRandom(unhostedPlans)
   return DB.plans[planID - 1]
 }
 function selectEncoders ({ idleEncoders }) {
+  idleEncoders.sort(() => Math.random() - 0.5);
   // @TODO check for each encoder if (encoder.form.until is undefined or date is tomorrow)
   return idleEncoders.splice(0,3)
 }
 function selectHosters ({ idleHosters, encoders, size, log }) {
+  idleHosters.sort(() => Math.random() - 0.5)
   var hosters = []
   var indexes = []
   for (var i = 0; i < idleHosters.length; i++) {
@@ -426,6 +429,7 @@ function selectHosters ({ idleHosters, encoders, size, log }) {
   return hosters
 }
 function selectAttestor ({ idleAttestors, encoders, hosters }) {
+  idleAttestors.sort(() => Math.random() - 0.5)
   // @TODO check for each attestor if (attestor.form.until is undefined or date is tomorrow)
   var attestor
   for (var i = 0; i < idleAttestors.length; i++) {
@@ -451,7 +455,7 @@ function checkAttestorJobs (log) {
     }
   }
 }
-function removeFromUnhosted (planID, unhostedPlans) {
+function removePlanFromUnhosted (planID, unhostedPlans) {
   for (var i = 0; i < unhostedPlans.length; i++) {
     if (unhostedPlans[i] === planID) unhostedPlans.splice(i, 1)
   }

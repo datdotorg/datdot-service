@@ -84,6 +84,7 @@ async function role (profile, APIS) {
       }/*, ...*/]
     }
     const ranges = [[0,3], [5,8], [10,14]]
+    // const ranges = [[0,3], [5,8]]
     function getSize (ranges) {
       var size = 0
       for (var i = 0; i < ranges.length; i++) {

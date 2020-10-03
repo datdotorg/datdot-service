@@ -15,7 +15,8 @@ async function role (profile, APIS) {
   const myAddress = vaultAPI.chainKeypair.address
   const signer = vaultAPI.chainKeypair
   const nonce = vaultAPI.getNonce()
-  const form = registrationForm('hoster')
+  const settings = { from: Date.now(), until: '' }
+  const form = registrationForm('hoster', settings)
   await chainAPI.registerHoster({ form, hosterKey, signer, nonce })
 
   // EVENTS

@@ -1,7 +1,8 @@
 module.exports = registrationForm
 
 // See example https://pastebin.com/5nAb6XHQ
-function registrationForm (role) {
+function registrationForm (role, settings) {
+  const { from, until, region = 'global'} = settings
   const registration = {}
   if (role === 'attestor') {}
   if (role === 'encoder') {}
@@ -9,8 +10,8 @@ function registrationForm (role) {
     registration.storage = 1000000000 //1 GB to bytes is 1e+9
     registration.idleStorage = 1000000000 // at the registration all the storage is idle
   }
-  registration.from = new Date()
-  registration.until = ''
+  registration.from = from
+  registration.until = until
   registration.schedules = [{
     // duration :  void 0, // milliseconds
     // delay    :  void 0, // milliseconds
@@ -25,7 +26,7 @@ function registrationForm (role) {
       latency: { /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
     },
     regions: [{
-      region: 'global', // e.g. 'NORTH AMERICA', @TODO: see issue, e.g. latitude, longitude
+      region: region, // e.g. 'NORTH AMERICA', @TODO: see issue, e.g. latitude, longitude
       performance: {
         // availability:  void 0, // percentage_decimal
         // bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
