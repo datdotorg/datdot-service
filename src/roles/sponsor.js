@@ -21,7 +21,9 @@ async function role (profile, APIS) {
       log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
 
       const nonce = await vaultAPI.getNonce()
-      const plan = makePlan(feedID)
+      const feed1 = { id: feedID, ranges: [[0,3], [5,8], [10,14]] }
+      const feeds = [feed1 /*, ... */]
+      const plan = makePlan({ feeds })
       await chainAPI.publishPlan({ plan, signer, nonce })
     }
     if (event.method === 'HostingStarted') {
@@ -67,15 +69,20 @@ async function role (profile, APIS) {
   // HELPERS
 
  // See example https://pastebin.com/5nAb6XHQ
-  function makePlan (feedID) {
-    const config = { // at least 1 region is mandatory (e.g. global)
+ // all feeds under one Plan have same hosting settings
+  function makePlan ({ feeds }) {
+    for (var i = 0; i < feeds.length; i++) {
+      const size = getSize(feeds[i].ranges)
+      feeds[i].size = size
+    }
+    const config = {
       performance: {
         availability: '', // percentage_decimal
         bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
         latency: { /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
       },
       regions: [{
-        region: '', // e.g. 'NORTH AMERICA', @TODO: see issue, e.g. latitude, longitude
+        region: '',  // at least 1 region is mandatory (defaults to global)
         performance: {
           availability: '', // percentage_decimal
           bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
@@ -83,21 +90,11 @@ async function role (profile, APIS) {
         }
       }/*, ...*/]
     }
-    const ranges = [[0,3], [5,8], [10,14]]
-    // const ranges = [[0,3], [5,8]]
-    function getSize (ranges) {
-      var size = 0
-      for (var i = 0; i < ranges.length; i++) {
-        const range = ranges[i]
-        size = size + (range[1] - range[0])
-      }
-      return size*64 // each chunk is 64kb
-    }
     return {
-      feeds: [{ id: feedID, ranges, size: getSize(ranges) }],
+      feeds,
       from       : new Date(), // or new Date('Apr 30, 2000')
       until: {
-        time     : '', // date
+        time     : new Date('Apr 30, 2023'), // date
         budget   : '',
         traffic  : '',
         price    : '',
@@ -112,5 +109,11 @@ async function role (profile, APIS) {
         config // specialized config for each schedule
       }]
     }
+  }
+
+  function getSize (ranges) { // [[0,3], [5,8], [10,14]]
+    var size = 0
+    for (var i = 0; i < ranges.length; i++) { size = size + (ranges[i][1] - ranges[i][0]) } // [0,3]
+    return size*64 // each chunk is 64kb
   }
 }
