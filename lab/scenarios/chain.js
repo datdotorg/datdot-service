@@ -325,7 +325,9 @@ function tryContract ({ plan, log }) {
   const allArgs = []
   sets.forEach(set => {
     const size = set.length*64 //assuming each chunk is 64kb
-    const { encoders, hosters, attestor } = getProviders({ size, selectedPlan, unhostedPlans, feed, log })
+    const providers = getProviders({ size, selectedPlan, unhostedPlans, feed, log })
+    if (!providers) return
+    const { encoders, hosters, attestor } = providers
     const args = { feed, planID, encoders, hosters, attestor, set }
     allArgs.push({ args, log })
   })
@@ -358,24 +360,24 @@ function getProviders ({ size, selectedPlan: plan, unhostedPlans, feed, log }) {
   if (!DB.idleAttestors.length) return log({ type: 'chain', body: [`missing attestors`] })
 
   // @TODO select more detailed based on providers' settings (storage space, availability etc.)
-  const encoders = selectEncoders({ idleEncoders: DB.idleEncoders, plan, log })
+  const encoders = selectEncoders({ plan, log })
   if (!encoders.length) {
     revertPlanAndFeed ({ planID, feed, unhostedPlans, unhostedFeeds })
     return log({ type: 'chain', body: [`no matching encoders`] })
   }
 
-  const hosters = selectHosters({ idleHosters: DB.idleHosters, encoders, size, plan, log} )
+  const hosters = selectHosters({ encoders, size, plan, log} )
   if (!hosters.length) {
     revertPlanAndFeed({ planID, feed, unhostedPlans, unhostedFeeds })
     revertEncoders({ encoders, feed, planID, log })
     return log({ type: 'chain', body: [`no matching hosters`] })
   }
 
-  const attestor = selectAttestor({ idleAttestors: DB.idleAttestors, encoders, hosters, plan, log })
+  const attestor = selectAttestor({ encoders, hosters, plan, log })
   if (!attestor) {
     revertPlanAndFeed({ planID, feed, unhostedPlans, unhostedFeeds })
     revertEncoders({ encoders, feed, planID, log })
-    revertHosters({ hosters })
+    revertHosters({ hosters, size })
     return log({ type: 'chain', body: [`no matching attestor`] })
   }
   return { encoders, hosters, attestor }
@@ -400,7 +402,8 @@ function findPlan ({ unhostedPlans, log }) {
   var [planID] = getRandom(unhostedPlans)
   return DB.plans[planID - 1]
 }
-function selectEncoders ({ idleEncoders, plan, log }) {
+function selectEncoders ({ plan, log }) {
+  const idleEncoders = DB.idleEncoders
   const { from, until, importance, config, schedules } =  plan
   idleEncoders.sort(() => Math.random() - 0.5)
   const encoders = []
@@ -408,7 +411,8 @@ function selectEncoders ({ idleEncoders, plan, log }) {
     var indexes = []
     const encoderID = idleEncoders[i]
     const encoder = getUserByID(encoderID)
-    if (true)  {
+    const checkOpts = {}
+    if (doesEncoderQualifyForAJob(checkOpts))  {
       encoders.push(encoderID)
       indexes.push(i)
       if (indexes.length === 3) {
@@ -421,17 +425,18 @@ function selectEncoders ({ idleEncoders, plan, log }) {
   // if (encoder.form.from... && encoder.form.until...) ... => make this a function isAvailable()
   return idleEncoders.splice(0,3)
 }
-function selectHosters ({ idleHosters, encoders, size, plan, log }) {
+function selectHosters ({ encoders, size, plan, log }) {
+  const idleHosters = DB.idleHosters
   const { from, until, importance, config, schedules } =  plan
   idleHosters.sort(() => Math.random() - 0.5)
-  var hosters = []
+  var selectedHosters = []
+  var indexes = []
   for (var i = 0; i < idleHosters.length; i++) {
-    var indexes = []
     const hosterID = idleHosters[i]
     const hoster = getUserByID(hosterID)
-    const checkOpts = { role: 'hoster', encoders, hosterID, size, hoster }
-    if (isAMatch(checkOpts)) {
-      hosters.push(hosterID)
+    const checkOpts = { encoders, hosterID, size, hoster }
+    if (doesHosterQualifyForAJob(checkOpts)) {
+      selectedHosters.push(hosterID)
       indexes.push(i)
       if (indexes.length === 3) {
         indexes.forEach(index => { idleHosters.splice(index, 1) })
@@ -439,51 +444,45 @@ function selectHosters ({ idleHosters, encoders, size, plan, log }) {
       }
     }
   }
-  reduceIdleStorage(hosters, size)
-  return hosters
+  return selectedHosters
+  reduceIdleStorage(selectedHosters, size)
 }
-function selectAttestor ({ idleAttestors, encoders, hosters, plan, log }) {
+function selectAttestor ({ encoders, hosters, plan, log }) {
+  const idleAttestors = DB.idleAttestors
   const { from, until, importance, config, schedules } =  plan
   idleAttestors.sort(() => Math.random() - 0.5)
   // @TODO check for each attestor if (attestor.form.until is undefined or date is tomorrow)
-  var attestor
+  var selectedAttestor
   for (var i = 0; i < idleAttestors.length; i++) {
-    var attestor = idleAttestors[i]
-    if (!encoders.includes(idleAttestors[i]) && !hosters.includes(idleAttestors[i])) {
-      attestor = idleAttestors[i]
+    const attestorID = idleAttestors[i]
+    const checkOpts = { encoders, hosters, attestorID }
+    if (doesAttestorQualifyForAJob(checkOpts)) {
+      selectedAttestor = attestorID
       idleAttestors.splice(i, 1)
       break
     }
   }
-  return attestor
+  return selectedAttestor
 }
-function isAMatch (checkOpts) {
-  const { role } = checkOpts
-  if (role === 'hoster') {
-    const { encoders, hosterID, size, hoster } = checkOpts
-    if (!encoders.includes(hosterID) && (size <= hoster.hosterForm.idleStorage)) {
-      return true
-    }
+function doesEncoderQualifyForAJob (checkOpts) {
+  return true
+}
+function doesHosterQualifyForAJob (checkOpts) {
+  const { encoders, hosterID, size, hoster } = checkOpts
+  if (!encoders.includes(hosterID) && (size <= hoster.hosterForm.idleStorage)) {
+    return true
   }
-  if (role === 'encoder') {
-    const {  } = checkOpts
-    if (true) {
-      return true
-    }
-  }
-  if (role === 'attestor') {
-    const {  } = checkOpts
-    if (true) {
-      return true
-    }
+}
+function doesAttestorQualifyForAJob (checkOpts) {
+  const { encoders, hosters, attestorID } = checkOpts
+  if (!encoders.includes(attestorID) && !hosters.includes(attestorID)) {
+    return true
   }
 }
 function reduceIdleStorage (hosters, size) {
   hosters.forEach(hosterID => {
     const hoster = getUserByID(hosterID)
-    console.log('Old Storage', hosterID, hoster.hosterForm.idleStorage)
     hoster.hosterForm.idleStorage -= size
-    console.log('New Storage', hosterID, hoster.hosterForm.idleStorage)
   })
 }
 function checkAttestorJobs (log) {
@@ -510,13 +509,15 @@ function revertPlanAndFeed ({ planID, feed, unhostedPlans, unhostedFeeds }) {
 }
 function revertEncoders ({ encoders, feed, planID, log }) {
   // if no hosters available, revert everything
-  DB.idleEncoders.unshift(encoders)
+  encoders.forEach(encoderID => {
+    DB.idleEncoders.unshift(encoderID)
+  })
 }
-function revertHosters ({ hosters }) {
-  DB.idleHosters.unshift(hosters)
-  DB.idleHosters.forEach(hosterID => {
-    var idleStorage = getUserByID(hosterID).hosterForm.idleStorage
-    idleStorage = idleStorage + size
+function revertHosters ({ hosters, size }) {
+  hosters.forEach(hosterID => {
+    DB.idleHosters.unshift(hosterID)
+    const hoster = getUserByID(hosterID)
+    hoster.hosterForm.idleStorage += size
   })
 }
 function emitPerformanceChallenge (performanceChallenge, log) {
