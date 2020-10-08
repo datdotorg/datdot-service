@@ -190,23 +190,27 @@ async function _registerAttestor (user, { name, nonce }, status, args) {
   const keyBuf = Buffer.from(attestorKey, 'hex')
   DB.users[userID - 1].attestorKey = keyBuf.toString('hex')
   DB.users[userID - 1].attestorForm = form
-  DB.idleAttestors.push(userID)
-  checkAttestorJobs(log)
+  const attestorID = userID
+  giveAttestorsNewJobs([attestorID], log)
   tryContract({ log })
 }
 async function _hostingStarts (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [ contractID ] = args
-  // DB.contractsHosted.push(contractID)
-  const contract = DB.contracts[contractID - 1]
-  if (!contract.hoster === user.id) return log({ type: 'chain', body: [`Error: this user can not call this function`] })
-  // if hosting starts, also the attestor finished job, add them to idleAttestors again
-  const attestorID = contract.attestor
-  if (!DB.idleAttestors.includes(attestorID)) {
-    DB.idleAttestors.push(attestorID)
-    checkAttestorJobs(log)
-  }
   const userID = user.id
+  const contract = DB.contracts[contractID - 1]
+  const hosters = contract.hosters
+  if (!hosters.includes(userID)) return log({ type: 'chain', body: [`Error: this user can not call this function`] })
+  const activeHosters = contract.active
+  if (!activeHosters.includes(userID)) activeHosters.push(userID)
+  if (activeHosters.length === hosters.length) {
+    const attestorID = contract.attestor
+    if (!DB.idleAttestors.includes(attestorID)) giveAttestorsNewJobs([attestorID], log)
+    const encoders = contract.encoders
+    for (var i = 0; i < encoders.length; i++) {
+      if (!DB.idleEncoders.includes(encoders[i])) DB.idleEncoders.push(encoders[i])
+    }
+  }
   const confirmation = { event: { data: [contractID, userID], method: 'HostingStarted' } }
   const event = [confirmation]
   handlers.forEach(([name, handler]) => handler(event))
@@ -241,10 +245,7 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
   const storageChallenge = DB.storageChallenges[storageChallengeID - 1]
   // attestor finished job, add them to idleAttestors again
   const attestorID = storageChallenge.attestor
-  if (!DB.idleAttestors.includes(attestorID)) {
-    DB.idleAttestors.push(attestorID)
-    checkAttestorJobs(log)
-  }
+  if (!DB.idleAttestors.includes(attestorID)) giveAttestorsNewJobs([attestorID], log)
   // @TODO validate proof
   const isValid = validateProof(proofs, storageChallenge)
   let proofValidation
@@ -276,10 +277,7 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
   const performanceChallenge = DB.performanceChallenges[performanceChallengeID - 1]
   // attestor finished job, add them to idleAttestors again
   const attestorID = user.id
-  if (!DB.idleAttestors.includes(attestorID)) {
-    DB.idleAttestors.push(attestorID)
-    checkAttestorJobs(log)
-  }
+  if (!DB.idleAttestors.includes(attestorID)) giveAttestorsNewJobs([attestorID], log)
   // emit events
   if (report) response = { event: { data: [performanceChallengeID], method: 'PerformanceChallengeConfirmed' } }
   else response = { event: { data: [performanceChallengeID], method: 'PerformanceChallengeFailed' } }
@@ -332,7 +330,8 @@ function makeContract ({ args, log }) {
     ranges: set, // subset of all ranges from the plan (size = setSize)
     encoders,
     hosters,
-    attestor
+    attestor,
+    active: []
     // @TODO make more defined: add until, config etc.
   }
   const contractID = DB.contracts.push(contract)
@@ -476,16 +475,20 @@ function reduceIdleStorage (hosters, size) {
     hoster.hosterForm.idleStorage -= size
   })
 }
-function checkAttestorJobs (log) {
-  if (DB.attestorJobs.length) {
-    const next = DB.attestorJobs[0]
-    if (next.fnName === 'asignAttestorsAndEmitPerformanceChallenge' && DB.idleAttestors.length >= 5) {
-      DB.attestorJobs.shift()
-      asignAttestorsAndEmitPerformanceChallenge(next.opts, log)
-    }
-    if (next.fnName === 'assignAttestorAndEmitStorageChallenge' && DB.idleAttestors.length >= 1) {
-      DB.attestorJobs.shift()
-      assignAttestorAndEmitStorageChallenge(next.opts, log)
+function giveAttestorsNewJobs (ids, log) {
+  for (var i = 0; i < ids.length; i++) {
+    const attestorID = ids[i]
+    DB.idleAttestors.push(attestorID)
+    if (DB.attestorJobs.length) {
+      const next = DB.attestorJobs[0]
+      if (next.fnName === 'asignAttestorsAndEmitPerformanceChallenge' && DB.idleAttestors.length >= 5) {
+        DB.attestorJobs.shift()
+        asignAttestorsAndEmitPerformanceChallenge(next.opts, log)
+      }
+      if (next.fnName === 'assignAttestorAndEmitStorageChallenge' && DB.idleAttestors.length >= 1) {
+        DB.attestorJobs.shift()
+        assignAttestorAndEmitStorageChallenge(next.opts, log)
+      }
     }
   }
 }
