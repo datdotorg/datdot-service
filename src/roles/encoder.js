@@ -39,8 +39,6 @@ async function role (profile, APIS) {
       const encoding = await serviceAPI.encode({ contractID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges }).catch((error) => log({ type: 'error', body: [`error: ${error}`] }))
       if (!encoding) { return log({ type: 'encoder', body: [`Encoding job could not be finished`] }) }
       log({ type: 'encoder', body: [`Encoding done`] })
-      // const nonce = await vaultAPI.getNonce()
-      // await chainAPI.encodingDone({ contractID, signer, nonce })
     }
   }
 

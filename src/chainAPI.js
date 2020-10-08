@@ -22,7 +22,6 @@ async function datdotChain (profile, provider) {
     registerAttestor,
     publishFeed,
     publishPlan,
-    encodingDone,
     hostingStarts,
     requestStorageChallenge,
     submitStorageChallenge,
@@ -138,12 +137,6 @@ async function datdotChain (profile, provider) {
   async function getPerformanceChallengeByID (id) {
     // return (await API.query.datVerify.getPerformanceChallengeByID(id)).toJSON()
     return await API.query.datVerify.getPerformanceChallengeByID(id)
-  }
-  async function encodingDone (opts) {
-    const { contractID, signer, nonce } = opts
-    const tx = await API.tx.datVerify.encodingDone(contractID)
-    // tx.signAndSend(signer, await makeNonce(nonce))
-    tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function hostingStarts (opts) {
     const { contractID, signer, nonce } = opts

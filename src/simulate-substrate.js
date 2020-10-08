@@ -28,7 +28,6 @@ module.exports = {
         registerHoster: registerHoster.bind(name),
         publishFeed: publishFeed.bind(name),
         publishPlan: publishPlan.bind(name),
-        encodingDone: encodingDone.bind(name),
         hostingStarts: hostingStarts.bind(name),
         requestStorageChallenge: requestStorageChallenge.bind(name),
         requestPerformanceChallenge: requestPerformanceChallenge.bind(name),
@@ -71,7 +70,6 @@ async function registerAttestor (...args) { return { signAndSend: signAndSend.bi
 async function registerHoster (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'registerHoster' }) } }
 async function publishFeed (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'publishFeed'}) } }
 async function publishPlan (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'publishPlan'}) } }
-async function encodingDone (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'encodingDone'}) } }
 async function hostingStarts (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'hostingStarts'}) } }
 async function requestStorageChallenge (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'requestStorageChallenge'}) } }
 async function requestPerformanceChallenge (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'requestPerformanceChallenge'}) } }

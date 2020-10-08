@@ -86,7 +86,6 @@ function signAndSend (body, name, status) {
   else if (type === 'registerEncoder') _registerEncoder(user, { name, nonce }, status, args)
   else if (type === 'registerAttestor') _registerAttestor(user, { name, nonce }, status, args)
   else if (type === 'registerHoster') _registerHoster(user, { name, nonce }, status, args)
-  else if (type === 'encodingDone') _encodingDone(user, { name, nonce }, status, args)
   else if (type === 'hostingStarts') _hostingStarts(user, { name, nonce }, status, args)
   else if (type === 'requestStorageChallenge') _requestStorageChallenge(user, { name, nonce }, status, args)
   else if (type === 'requestPerformanceChallenge') _requestPerformanceChallenge(user, { name, nonce }, status, args)
@@ -195,23 +194,12 @@ async function _registerAttestor (user, { name, nonce }, status, args) {
   checkAttestorJobs(log)
   tryContract({ log })
 }
-async function _encodingDone (user, { name, nonce }, status, args) {
-  const log = connections[name].log
-
-  const [ contractID ] = args
-  DB.contractsEncoded.push(contractID)
-  const contract = DB.contracts[contractID - 1]
-  const encoderIDs = contract.encoders
-  encoderIDs.forEach(encoderID => { if (!DB.idleEncoders.includes(encoderID)) DB.idleEncoders.push(encoderID) })
-  // @TODO check if any jobs waiting for the encoders
-}
 async function _hostingStarts (user, { name, nonce }, status, args) {
   const log = connections[name].log
-
-  // @TODO check if encodingDone and only then trigger hostingStarts
   const [ contractID ] = args
-  DB.contractsHosted.push(contractID)
+  // DB.contractsHosted.push(contractID)
   const contract = DB.contracts[contractID - 1]
+  if (!contract.hoster === user.id) return log({ type: 'chain', body: [`Error: this user can not call this function`] })
   // if hosting starts, also the attestor finished job, add them to idleAttestors again
   const attestorID = contract.attestor
   if (!DB.idleAttestors.includes(attestorID)) {
@@ -228,6 +216,9 @@ async function _requestStorageChallenge (user, { name, nonce }, status, args) {
   const log = connections[name].log
 
   const [ contractID, hosterID ] = args
+  const planID = DB.contracts[contractID - 1].plan
+  const plan = DB.contracts[planID - 1]
+  if (!plan.sponsor === user.id) return log({ type: 'chain', body: [`Error: this user can not call this function`] })
   const ranges = DB.contracts[contractID - 1].ranges // [ [0, 3], [5, 7] ]
   // @TODO currently we check one random chunk in each range => find better logic
   const chunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
@@ -273,8 +264,8 @@ async function _requestPerformanceChallenge (user, { name, nonce }, status, args
   const performanceChallenge = { contract: contractID }
   const performanceChallengeID = DB.performanceChallenges.push(performanceChallenge)
   performanceChallenge.id = performanceChallengeID
-  if (DB.idleAttestors.length >= 5) emitPerformanceChallenge(performanceChallenge, log)
-  else DB.attestorJobs.push({ fnName: 'emitPerformanceChallenge', opts: performanceChallenge })
+  if (DB.idleAttestors.length >= 5) asignAttestorsAndEmitPerformanceChallenge(performanceChallenge, log)
+  else DB.attestorJobs.push({ fnName: 'asignAttestorsAndEmitPerformanceChallenge', opts: performanceChallenge })
 }
 
 async function _submitPerformanceChallenge (user, { name, nonce }, status, args) {
@@ -488,13 +479,13 @@ function reduceIdleStorage (hosters, size) {
 function checkAttestorJobs (log) {
   if (DB.attestorJobs.length) {
     const next = DB.attestorJobs[0]
-    if (next.fnName === 'emitPerformanceChallenge' && DB.idleAttestors.length >= 5) {
+    if (next.fnName === 'asignAttestorsAndEmitPerformanceChallenge' && DB.idleAttestors.length >= 5) {
       DB.attestorJobs.shift()
-      emitPerformanceChallenge(next.opts, log)
+      asignAttestorsAndEmitPerformanceChallenge(next.opts, log)
     }
-    if (next.fnName === 'emitStorageChallenge' && DB.idleAttestors.length >= 1) {
+    if (next.fnName === 'assignAttestorAndEmitStorageChallenge' && DB.idleAttestors.length >= 1) {
       DB.attestorJobs.shift()
-      emitStorageChallenge(next.opts, log)
+      assignAttestorAndEmitStorageChallenge(next.opts, log)
     }
   }
 }
@@ -520,7 +511,7 @@ function revertHosters ({ hosters, size }) {
     hoster.hosterForm.idleStorage += size
   })
 }
-function emitPerformanceChallenge (performanceChallenge, log) {
+function asignAttestorsAndEmitPerformanceChallenge (performanceChallenge, log) {
   // select 5 attestors
   performanceChallenge.attestors = DB.idleAttestors.splice(0, 5)
   const performanceChallengeID = performanceChallenge.id
@@ -529,7 +520,7 @@ function emitPerformanceChallenge (performanceChallenge, log) {
   handlers.forEach(([name, handler]) => handler(event))
   log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
 }
-function emitStorageChallenge (storageChallenge, log) {
+function assignAttestorAndEmitStorageChallenge (storageChallenge, log) {
   const attestorID = getAttestor(storageChallenge, log)
   // @TODO if no attestor, we then add the job back to attestorJobs, but at the end of the array(!)
   if (!attestorID) return
@@ -546,5 +537,5 @@ function getAttestor (storageChallenge, log) {
   for (var i = 0; i < DB.idleAttestors.length; i++) {
     if (DB.idleAttestors[i]!== hosterID) return DB.idleAttestors.splice(i, 1)
   }
-  DB.attestorJobs.push({ fnName: 'emitStorageChallenge', opts: storageChallenge })
+  DB.attestorJobs.push({ fnName: 'assignAttestorAndEmitStorageChallenge', opts: storageChallenge })
 }
