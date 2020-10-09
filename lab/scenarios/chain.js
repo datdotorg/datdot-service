@@ -191,7 +191,7 @@ async function _registerAttestor (user, { name, nonce }, status, args) {
   DB.users[userID - 1].attestorKey = keyBuf.toString('hex')
   DB.users[userID - 1].attestorForm = form
   const attestorID = userID
-  giveAttestorsNewJobs([attestorID], log)
+  giveAttestorNewJob(attestorID, log)
   tryContract({ log })
 }
 async function _hostingStarts (user, { name, nonce }, status, args) {
@@ -205,7 +205,7 @@ async function _hostingStarts (user, { name, nonce }, status, args) {
   if (!activeHosters.includes(userID)) activeHosters.push(userID)
   if (activeHosters.length === hosters.length) {
     const attestorID = contract.attestor
-    if (!DB.idleAttestors.includes(attestorID)) giveAttestorsNewJobs([attestorID], log)
+    if (!DB.idleAttestors.includes(attestorID)) giveAttestorNewJob(attestorID, log)
     const encoders = contract.encoders
     for (var i = 0; i < encoders.length; i++) {
       if (!DB.idleEncoders.includes(encoders[i])) DB.idleEncoders.push(encoders[i])
@@ -245,7 +245,7 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
   const storageChallenge = DB.storageChallenges[storageChallengeID - 1]
   // attestor finished job, add them to idleAttestors again
   const attestorID = storageChallenge.attestor
-  if (!DB.idleAttestors.includes(attestorID)) giveAttestorsNewJobs([attestorID], log)
+  if (!DB.idleAttestors.includes(attestorID)) giveAttestorNewJob(attestorID, log)
   // @TODO validate proof
   const isValid = validateProof(proofs, storageChallenge)
   let proofValidation
@@ -277,7 +277,7 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
   const performanceChallenge = DB.performanceChallenges[performanceChallengeID - 1]
   // attestor finished job, add them to idleAttestors again
   const attestorID = user.id
-  if (!DB.idleAttestors.includes(attestorID)) giveAttestorsNewJobs([attestorID], log)
+  if (!DB.idleAttestors.includes(attestorID)) giveAttestorNewJob(attestorID, log)
   // emit events
   if (report) response = { event: { data: [performanceChallengeID], method: 'PerformanceChallengeConfirmed' } }
   else response = { event: { data: [performanceChallengeID], method: 'PerformanceChallengeFailed' } }
@@ -394,15 +394,14 @@ function findPlan ({ unhostedPlans, log }) {
 }
 function selectEncoders ({ plan, log }) {
   const idleEncoders = DB.idleEncoders
-  const { from, until, importance, config, schedules } =  plan
   idleEncoders.sort(() => Math.random() - 0.5)
   const encoders = []
   for (var i = 0; i < idleEncoders.length; i++) {
     var indexes = []
     const encoderID = idleEncoders[i]
     const encoder = getUserByID(encoderID)
-    const checkOpts = {}
-    if (doesEncoderQualifyForAJob(checkOpts))  {
+    const checkOpts = { plan, form: encoder.encoderForm }
+    if (doesEncoderQualifyForAJob(checkOpts)) {
       encoders.push(encoderID)
       indexes.push(i)
       if (indexes.length === 3) {
@@ -424,7 +423,7 @@ function selectHosters ({ encoders, size, plan, log }) {
   for (var i = 0; i < idleHosters.length; i++) {
     const hosterID = idleHosters[i]
     const hoster = getUserByID(hosterID)
-    const checkOpts = { encoders, hosterID, size, hoster }
+    const checkOpts = { encoders, hosterID, size, hoster, plan, form: hoster.hosterForm }
     if (doesHosterQualifyForAJob(checkOpts)) {
       selectedHosters.push(hosterID)
       indexes.push(i)
@@ -445,7 +444,8 @@ function selectAttestor ({ encoders, hosters, plan, log }) {
   var selectedAttestor
   for (var i = 0; i < idleAttestors.length; i++) {
     const attestorID = idleAttestors[i]
-    const checkOpts = { encoders, hosters, attestorID }
+    const attestor = getUserByID(attestorID)
+    const checkOpts = { encoders, hosters, attestorID, plan, form: attestor.attestorForm }
     if (doesAttestorQualifyForAJob(checkOpts)) {
       selectedAttestor = attestorID
       idleAttestors.splice(i, 1)
@@ -454,18 +454,26 @@ function selectAttestor ({ encoders, hosters, plan, log }) {
   }
   return selectedAttestor
 }
-function doesEncoderQualifyForAJob (checkOpts) {
-  return true
+function doesEncoderQualifyForAJob ({ plan, form }) {
+  const { from, until, importance, config, schedules } =  plan
+  if (isAvailableFromUntil({ from, until, form })) return true
 }
 function doesHosterQualifyForAJob (checkOpts) {
-  const { encoders, hosterID, size, hoster } = checkOpts
-  if (!encoders.includes(hosterID) && (size <= hoster.hosterForm.idleStorage)) {
+  const { encoders, hosterID, size, hoster, plan, form } = checkOpts
+  const { from, until, importance, config, schedules } =  plan
+  if (!encoders.includes(hosterID) && (size <= hoster.hosterForm.idleStorage) && (isAvailableFromUntil({ from, until, form }))) {
     return true
   }
 }
 function doesAttestorQualifyForAJob (checkOpts) {
-  const { encoders, hosters, attestorID } = checkOpts
-  if (!encoders.includes(attestorID) && !hosters.includes(attestorID)) {
+  const { encoders, hosters, attestorID, plan, form } = checkOpts
+  const { from, until, importance, config, schedules } =  plan
+  if (!encoders.includes(attestorID) && !hosters.includes(attestorID) && (isAvailableFromUntil({ from, until, form }))) {
+    return true
+  }
+}
+function isAvailableFromUntil ({ from, until, form: providerForm }) {
+  if (from && (providerForm.from <= from) && until && (providerForm.until === '' || providerForm.until >= until)) {
     return true
   }
 }
@@ -475,20 +483,17 @@ function reduceIdleStorage (hosters, size) {
     hoster.hosterForm.idleStorage -= size
   })
 }
-function giveAttestorsNewJobs (ids, log) {
-  for (var i = 0; i < ids.length; i++) {
-    const attestorID = ids[i]
-    DB.idleAttestors.push(attestorID)
-    if (DB.attestorJobs.length) {
-      const next = DB.attestorJobs[0]
-      if (next.fnName === 'asignAttestorsAndEmitPerformanceChallenge' && DB.idleAttestors.length >= 5) {
-        DB.attestorJobs.shift()
-        asignAttestorsAndEmitPerformanceChallenge(next.opts, log)
-      }
-      if (next.fnName === 'assignAttestorAndEmitStorageChallenge' && DB.idleAttestors.length >= 1) {
-        DB.attestorJobs.shift()
-        assignAttestorAndEmitStorageChallenge(next.opts, log)
-      }
+function giveAttestorNewJob (attestorID, log) {
+  DB.idleAttestors.push(attestorID)
+  if (DB.attestorJobs.length) {
+    const next = DB.attestorJobs[0]
+    if (next.fnName === 'asignAttestorsAndEmitPerformanceChallenge' && DB.idleAttestors.length >= 5) {
+      DB.attestorJobs.shift()
+      asignAttestorsAndEmitPerformanceChallenge(next.opts, log)
+    }
+    if (next.fnName === 'assignAttestorAndEmitStorageChallenge' && DB.idleAttestors.length >= 1) {
+      DB.attestorJobs.shift()
+      assignAttestorAndEmitStorageChallenge(next.opts, log)
     }
   }
 }

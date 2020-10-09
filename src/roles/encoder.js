@@ -16,7 +16,7 @@ async function role (profile, APIS) {
   const myAddress = vaultAPI.chainKeypair.address
   const signer = vaultAPI.chainKeypair
   const nonce = await vaultAPI.getNonce()
-  const settings = { from: Date.now(), until: '' }
+  const settings = { from: new Date(), until: '' }
   const form = registrationForm('encoder', settings)
   await chainAPI.registerEncoder({ form, encoderKey, signer, nonce })
 
