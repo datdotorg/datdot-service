@@ -18,7 +18,7 @@
     "colors": "^1.4.0",
     "cross-spawn": "^7.0.3",
     "crypto": "^1.0.1",
-    "dat-sdk": "^2.2.0",
+    "dat-sdk": "^2.8.1",
     "debug": "^4.1.1",
     "delay": "^4.3.0",
     "encoding-down": "^6.3.0",

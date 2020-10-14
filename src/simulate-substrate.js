@@ -2,11 +2,13 @@ const WebSocket = require('ws')
 
 const handlers = []
 const requests = []
+const blockSubscribers = []
 var instance = void 0
 
 module.exports = {
   create: async ({ name, provider }) => {
     if (typeof provider !== 'string') throw new Error('provider is not a fake chain')
+    const header = { number: 0 }
     const api = ({
       query: {
         system: { events: handler => handlers.push(handler) },
@@ -34,6 +36,9 @@ module.exports = {
         submitStorageChallenge: submitStorageChallenge.bind(name),
         submitPerformanceChallenge: submitPerformanceChallenge.bind(name)
         }
+      },
+      rpc: {
+        chain: { subscribeNewHeads: handle => blockSubscribers.push(handle) }
       }
     })
     if (instance) throw new Error('only one fakechain API per process')
@@ -53,6 +58,7 @@ module.exports = {
       })
       ws.on('message', function incoming (message) {
         const { cite, type, body } = JSON.parse(message)
+        if (type === 'block') return blockSubscribers.forEach(handle => handle(body))
         if (!cite) return handlers.forEach(handle => handle(body))
         const [name, msgid] = cite[0]
         const resolve = requests[msgid]

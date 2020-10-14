@@ -34,10 +34,6 @@ async function role (profile, APIS) {
       if (sponsorAddress === myAddress) {
         // log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
         log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
-        const nonce = await vaultAPI.getNonce()
-        // @TODO:Request regular challenges
-        await chainAPI.requestStorageChallenge({ contractID, hosterID: userID, signer, nonce })
-        await chainAPI.requestPerformanceChallenge({ contractID, signer, nonce })
       }
     }
     if (event.method === 'StorageChallengeConfirmed') {
@@ -101,13 +97,14 @@ async function role (profile, APIS) {
       },
       importance : '', // 1-3? 1-10?
       config, // general config
-      schedules  : [{
-        duration : '', // milliseconds
-        delay    : '', // milliseconds
-        interval : '', // milliseconds
-        repeat   : '', // number
-        config // specialized config for each schedule
-      }]
+      schedules: [],
+      // schedules  : [{
+      //   duration : '', // milliseconds
+      //   delay    : '', // milliseconds
+      //   interval : '', // milliseconds
+      //   repeat   : '', // number
+      //   config // specialized config for each schedule
+      // }]
     }
   }
 
