@@ -99,11 +99,12 @@ function show (LOG) {
         <div> Encoding job done: ${isLog('confirmations received from the attestor')}/3</div>
         <div> Hosting job done: ${isLog('Hoster received & stored all')}/3</div>
         <div> event HostingStarted: ${isLog('Event received: HostingStarted')}/3</div>
+        <div> Requesting Storage challenge: ${isLog('Requesting new StorageChallenge')}</div>
+        <div> Requesting Performance challenge: ${isLog('Requesting new PerformanceChallenge')}</div>
         <div> event NewStorageChallenge: ${isLog('Event received: NewStorageChallenge')}/6</div>
         <div> event NewPerformanceChallenge: ${isLog('Event received: NewPerformanceChallenge')}/15</div>
         <div> event StorageChallengeConfirmed: ${isLog('Event received: StorageChallengeConfirmed')}/3</div>
         <div> event PerformanceChallengeConfirmed: ${isLog('Event received: PerformanceChallengeConfirmed')}/15</div>
-        <ul> Users: ${getUsers(LOG).join('')} </ul>
         <div></div>
       </div>`
 
@@ -114,14 +115,6 @@ function show (LOG) {
           if (body && body.includes(phrase)) results.push(LOG)
         }
         return results.length
-      }
-      function getUsers () {
-        var users = []
-        for (var i = 0; i < LOG.length; i ++) {
-          const body = LOG[i][3][0].body[0]
-          if (body && body.includes('New user')) users.push(`<p>${body.split('New user: ')[1]}</p>`)
-        }
-        return users
       }
   }
 }

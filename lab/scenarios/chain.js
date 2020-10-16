@@ -153,9 +153,12 @@ async function _publishPlan (user, { name, nonce }, status, args) {
   DB.unhostedPlans.push(planID)
   // Add feeds to unhosted
   plan.unhostedFeeds = feeds
+
+  // @TODO schedule for plan.from 
+  // => then in callback execute Db.unhostedPlans.push(planID) && tryContract
   // Find hosters,encoders and attestors
-  // @TODO schedule the contract for plan.from => then execute Db.unhostedPlans.push(planID) && tryContract
   tryContract({ plan, log })
+
   // Emit event
   const NewPlan = { event: { data: [planID], method: 'NewPlan' } }
   const event = [NewPlan]
@@ -236,7 +239,7 @@ async function _hostingStarts (user, { name, nonce }, status, args) {
   const plan = getPlanByID(contract.plan)
   const hosters = contract.hosters
   if (!hosters.includes(userID)) return log({ type: 'chain', body: [`Error: this user can not call this function`] })
-  const activeHosters = contract.active
+  const activeHosters = contract.activeHosters
   if (!activeHosters.includes(userID)) activeHosters.push(userID)
   // for each hostingStarts we pay attestor(1/3), this hoster (full), encoders (full, but just once)
   // encoders finished their job, make them idle again
@@ -254,9 +257,8 @@ async function _hostingStarts (user, { name, nonce }, status, args) {
   handlers.forEach(([name, handler]) => handler(event))
   // log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
   const scheduleChallenges = () => {
-    // schedule new challenges until the contract is active (plan.until.time > new Date())
+    // @TODO schedule new challenges while the contract is active (plan.until.time > new Date())
     if (!plan.schedules.length) {
-      console.log('Executing a scheduleChallenges')
       const planID = DB.contracts[contractID - 1].plan
       const plan = getPlanByID(planID)
       const from = plan.from
@@ -264,7 +266,7 @@ async function _hostingStarts (user, { name, nonce }, status, args) {
       const hosterID = user.id
       // request challenges for the hoster
       _requestStorageChallenge({ user, signingData: { name, nonce }, status, args: [contractID, hosterID] })
-      _requestPerformanceChallenge({ user, signingData: { name, nonce }, status, args: [contractID] })
+      _requestPerformanceChallenge({ user, signingData: { name, nonce }, status, args: [contractID, hosterID] })
       schedule({ action: scheduleChallenges, delay: 5 })
     } else {
       // plan schedules based on plan.schedules
@@ -273,20 +275,6 @@ async function _hostingStarts (user, { name, nonce }, status, args) {
   const schedule = await scheduleAction
   schedule({ action: scheduleChallenges, delay: 1 })
 }
-
-// function scheduleChallenges ({ user, signingData, contractID, hosterID, status }) {
-//   // request challenges for the hoster
-//   const planID = DB.contracts[contractID - 1].plan
-//   const plan = getPlanByID(planID)
-//   const from = plan.from
-//   const until = plan.until.time
-//   if (!plan.schedules.length) {
-//     const hosterID = user.id
-//     _requestStorageChallenge({ user, signingData, status, args: [contractID, hosterID] })
-//     _requestPerformanceChallenge({ user, signingData, status, args: [contractID] })
-//   }
-// }
-
 
 async function _requestStorageChallenge ({ user, signingData, status, args }) {
   const { name, nonce } = signingData
@@ -301,21 +289,15 @@ async function _requestStorageChallenge ({ user, signingData, status, args }) {
   const storageChallenge = { contract: contractID, hoster: hosterID, chunks }
   const storageChallengeID = DB.storageChallenges.push(storageChallenge)
   storageChallenge.id = storageChallengeID
-  const attestorID = getAttestor(storageChallenge, log)
-  if (!attestorID) return
-  storageChallenge.attestor = attestorID
-  // emit events
-  const challenge = { event: { data: [storageChallengeID], method: 'NewStorageChallenge' } }
-  const event = [challenge]
-  handlers.forEach(([name, handler]) => handler(event))
-  // log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
+  if (DB.idleAttestors.length) assignAttestorAndEmitStorageChallenge(storageChallenge, log)
+  else DB.attestorJobs.push({ fnName: 'assignAttestorAndEmitStorageChallenge', opts: storageChallenge })
 }
 async function _submitStorageChallenge (user, { name, nonce }, status, args) {
   const log = connections[name].log
 
-  if (user.id !== storageChallenge.attestor) return log({ type: 'chain', body: [`Only the attestor can submit the storage challenge`] })
   const [ storageChallengeID, proofs ] = args
   const storageChallenge = DB.storageChallenges[storageChallengeID - 1]
+  if (user.id !== storageChallenge.attestor) return log({ type: 'chain', body: [`Only the attestor can submit this storage challenge`] })
   // attestor finished job, add them to idleAttestors again
   const attestorID = storageChallenge.attestor
   if (!DB.idleAttestors.includes(attestorID)) giveAttestorNewJob(attestorID, log)
@@ -323,7 +305,6 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
   const isValid = validateProof(proofs, storageChallenge)
   let proofValidation
   const data = [storageChallengeID]
-  log({ type: 'chain', body: [`StorageChallenge Proof for challenge: ${storageChallengeID}`] })
   if (isValid) response = { event: { data, method: 'StorageChallengeConfirmed' } }
   else response = { event: { data: [storageChallengeID], method: 'StorageChallengeFailed' } }
   // emit events
@@ -334,8 +315,8 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
 async function _requestPerformanceChallenge ({ user, signingData, status, args }) {
   const { name, nonce } = signingData
   const log = connections[name].log
-  const [ contractID ] = args
-  const performanceChallenge = { contract: contractID }
+  const [ contractID, hosterID ] = args
+  const performanceChallenge = { contract: contractID, hoster: hosterID }
   const performanceChallengeID = DB.performanceChallenges.push(performanceChallenge)
   performanceChallenge.id = performanceChallengeID
   if (DB.idleAttestors.length >= 5) asignAttestorsAndEmitPerformanceChallenge(performanceChallenge, log)
@@ -348,6 +329,7 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
   const [ performanceChallengeID, report ] = args
   log({ type: 'chain', body: [`Performance Challenge proof by attestor: ${user.id} for challenge: ${performanceChallengeID}`] })
   const performanceChallenge = DB.performanceChallenges[performanceChallengeID - 1]
+  if (!performanceChallenge.attestors.includes(user.id)) return log({ type: 'chain', body: [`Only selected attestors can submit this performance challenge`] })
   // attestor finished job, add them to idleAttestors again
   const attestorID = user.id
   if (!DB.idleAttestors.includes(attestorID)) giveAttestorNewJob(attestorID, log)
@@ -374,27 +356,42 @@ function tryContract ({ plan, log }) {
   if (!selectedPlan) return log({ type: 'chain', body: [`current lack of demand for hosting plans`] })
   const planID = selectedPlan.id
 
-  // select feed
+  // For each feed
+
   const unhostedFeeds = selectedPlan.unhostedFeeds
-  const feed = unhostedFeeds.shift() // next unhosted Feed in the selectedPlan
-  // If this was last unhosted feed in the plan, we can remove plan ID from unhostedPlans
-  if (!unhostedFeeds.length) removePlanFromUnhosted(planID, unhostedPlans)
+  console.log('unhostedFeeds', unhostedFeeds)
+  const readyForContract = []
+  const unhostedFeedsCount = unhostedFeeds.length
+  for (var i = 0; i < unhostedFeeds.length; i++) {
+    const feed = unhostedFeeds[i]
 
- // split ranges to sets (size = setSize)
-  const setSize = 10 // every contract is for hosting 10 chunks
-  const sets = makeSets({ ranges: feed.ranges, setSize })
+    // remove feed from unhostedFeeds
+    unhostedFeeds.shift()
+    // If this was last unhosted feed in the plan, we can remove plan ID from unhostedPlans
+    if (!unhostedFeeds.length) removePlanFromUnhosted(planID, unhostedPlans)
 
- // get providers & make contracts
-  const allArgs = []
-  sets.forEach(set => {
-    const size = set.length*64 //assuming each chunk is 64kb
-    const providers = getProviders({ size, selectedPlan, feed, log })
-    if (!providers) return
-    const { encoders, hosters, attestor } = providers
-    const args = { feed, planID, encoders, hosters, attestor, set }
-    allArgs.push({ args, log })
-  })
-  if (allArgs.length === sets.length) allArgs.forEach(({ args, log }) => makeContract ({ args, log }) )
+    // split ranges to sets (size = setSize)
+    const setSize = 10 // every contract is for hosting 10 chunks
+    const sets = makeSets({ ranges: feed.ranges, setSize })
+    // get providers
+    const allArgs = []
+    sets.forEach(set => {
+      const size = set.length*64 //assuming each chunk is 64kb
+      const providers = getProviders({ size, selectedPlan, feed, log })
+      if (!providers) return log({ type: 'chain', body: [`not enough providers available for this feed`] })
+      const { encoders, hosters, attestor } = providers
+      const args = { feed, planID, encoders, hosters, attestor, set }
+      allArgs.push({ args, log })
+    })
+    if (allArgs.length === sets.length) readyForContract.push(allArgs)
+  }
+
+  if (readyForContract.length !== unhostedFeedsCount) return log({ type: 'chain', body: [`not enough providers available for all the feeds in this plan`] })
+  readyForContract.flat().forEach(({ args, log }) => makeContract ({ args, log }) )
+
+
+
+  // make contracts
 }
 async function makeContract ({ args, log }) {
   const { feed, planID, encoders, hosters, attestor, set } = args
@@ -403,34 +400,30 @@ async function makeContract ({ args, log }) {
     feed: feed.id,
     ranges: set, // subset of all ranges from the plan (size = setSize)
     encoders,
-    hosters,
+    hosters, // [1,5,9, 7]
     attestor,
-    active: []
+    activeHosters: [], // [1,9]
     // @TODO make more defined: add until, config etc.
   }
   const contractID = DB.contracts.push(contract)
   contract.id = contractID
-  /* we need to store all contracts that host same feed and same set of chunks + all active hosters
-  feedID, ranges/set => contract1, contract2
-  '23-[[3,4],[17-22],[30,32]]': {
-    contracts: [],
-    active: []
-  }
-*/
+
   log({ type: 'chain', body: [`New Contract: ${JSON.stringify(contract)}`] })
-  const backupContract = () => {
+  const contractFollowUp = () => {
     const contract = getContractByID(contractID)
-    console.log('Contracts active length', contract.active.length)
-    if (contract.active.length < 3) {
+    console.log('Contracts active length', contract.activeHosters.length)
+    if (contract.activeHosters.length < 3) {
       console.log('Making additional contract since we do not have enough hosters')
       // find more hosters => make newContract again, don't drop existing hostings
+      // @TODO notify the failed hoster(s) that they are out so we don't have zombie hosters
+      // INSTEAD OF ADDITIONAL CONTRACT rather select new hosters and if activeHosters than they send encoded to attestor
       makeAdditionalContract(contractID, log)
       // attestor is not needed anymore, set them to idle again
       giveAttestorNewJob(attestor, log)
     }
   }
   const schedule = await scheduleAction
-  schedule({ action: backupContract, delay: 3 })
+  schedule({ action: contractFollowUp, delay: 5 })
   const NewContract = { event: { data: [contractID], method: 'NewContract' } }
   const event = [NewContract]
   handlers.forEach(([name, handler]) => handler(event))
@@ -634,18 +627,20 @@ function asignAttestorsAndEmitPerformanceChallenge (performanceChallenge, log) {
   // select 5 attestors
   performanceChallenge.attestors = DB.idleAttestors.splice(0, 5)
   const performanceChallengeID = performanceChallenge.id
+  log({ type: 'chain', body: [`Requesting new PerformanceChallenge: ${performanceChallengeID}`] })
   const challenge = { event: { data: [performanceChallengeID], method: 'NewPerformanceChallenge' } }
   const event = [challenge]
   handlers.forEach(([name, handler]) => handler(event))
   log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
 }
 function assignAttestorAndEmitStorageChallenge (storageChallenge, log) {
-  const attestorID = getAttestor(storageChallenge, log)
-  // @TODO if no attestor, we then add the job back to attestorJobs, but at the end of the array(!)
-  if (!attestorID) return
+  const [attestorID] = getAttestor(storageChallenge, log)
+  const storageChallengeID = storageChallenge.id
+  storageChallenge.attestor = attestorID
+  log({ type: 'chain', body: [`Requesting new StorageChallenge: ${storageChallengeID}`] })
   storageChallenge.attestor = attestorID
   // emit events
-  const challenge = { event: { data: [storageChallenge.id], method: 'NewStorageChallenge' } }
+  const challenge = { event: { data: [storageChallengeID], method: 'NewStorageChallenge' } }
   const event = [challenge]
   handlers.forEach(([name, handler]) => handler(event))
   log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
@@ -656,5 +651,4 @@ function getAttestor (storageChallenge, log) {
   for (var i = 0; i < DB.idleAttestors.length; i++) {
     if (DB.idleAttestors[i]!== hosterID) return DB.idleAttestors.splice(i, 1)
   }
-  DB.attestorJobs.push({ fnName: 'assignAttestorAndEmitStorageChallenge', opts: storageChallenge })
 }

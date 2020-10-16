@@ -16,9 +16,12 @@ function blockgenerator (log, emit) {
       }
     }
     currentBlock++
+    console.log('Current Block', currentBlock)
     actions = actions.filter(function keep ({ action, executeBlock }) {
-      console.log('Current/execute block', currentBlock, executeBlock)
-      if (executeBlock === currentBlock) action()
+      if (executeBlock === currentBlock) {
+        console.log('Executing scheduled action', action)
+        setTimeout(action, 0)
+      }
       else return true
     })
     const msg = { type: 'block', body: { number: currentBlock } }
@@ -27,8 +30,8 @@ function blockgenerator (log, emit) {
   }, 2000)
 
   function scheduleAction ({ action, delay }) {
-    console.log('Pushing new action', action, delay)
     actions.push({ action, executeBlock: currentBlock? currentBlock + delay : delay })
+    console.log('Pushing new action', action)
   }
   return scheduleAction
 }

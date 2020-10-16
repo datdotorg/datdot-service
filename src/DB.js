@@ -37,7 +37,8 @@ plan: planID,
 ranges: selectedPlan.ranges,
 encoders: encoders.splice(0,3),
 hosters: hosters.splice(0,3),
-attestor: attestors.shift()
+attestor: attestors.shift(),
+activeHosters: []
 }
 */
 const storageChallenges = [] // Storage Proof
