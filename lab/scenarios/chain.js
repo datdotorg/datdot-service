@@ -362,7 +362,6 @@ function splitPlanIntoOrders (plan) {
 
 function tryContract ({ log }) {
   const orders = DB.orders
-
   for (var i = 0; i < orders.length; i++) {
     const order = orders[i]
     const size = setSize*64 //assuming each chunk is 64kb
@@ -370,12 +369,12 @@ function tryContract ({ log }) {
     const feed = getFeedByID(order.feedID)
     const providers = getProviders({ size, plan, feed }, log)
     if (!providers) return log({ type: 'chain', body: [`not enough providers available for this feed`] })
-    const { encoders, hosters, attestor } = providers
-    makeContract({ feed, planID: plan.id, encoders, hosters, attestor, set: order.set }, log)
+    makeContract({ feed, planID: plan.id, providers, set: order.set }, log)
   }
 }
 
-async function makeContract ({ feed, planID, encoders, hosters, attestor, set }, log) {
+async function makeContract ({ feed, planID, providers, set }, log) {
+  const { encoders, hosters, attestor } = providers
   const contract = {
     plan: planID,
     feed: feed.id,
@@ -419,32 +418,26 @@ function makeAdditionalContract (contractID, log) {
   const size = setSize*64 //assuming each chunk is 64kb
   const providers = getProviders({ size, plan, feed }, log)
   if (!providers) return log({ type: 'chain', body: [`not enough providers available for this feed`] })
-  const { encoders, hosters, attestor } = providers
-  makeContract({ feed, planID, encoders, hosters, attestor, set }, log)
+  makeContract({ feed, planID, providers, set }, log)
 }
 
 function getProviders ({ size, plan, feed }, log) {
-  // 3 encoders, 3 hosters, 1 attestor
-  const { id: planID } =  plan
   if (DB.idleEncoders.length < 3) return log({ type: 'chain', body: [`missing encoders`] })
   if (DB.idleHosters.length < 3) return log({ type: 'chain', body: [`missing hosters`] })
   if (!DB.idleAttestors.length) return log({ type: 'chain', body: [`missing attestors`] })
-
-  // @TODO select more detailed based on providers' settings (storage space, availability etc.)
+  // get 3 encoders
   const encoders = selectEncoders({ plan, log })
-  if (!encoders.length) {
-    return log({ type: 'chain', body: [`no matching encoders`] })
-  }
-
+  if (!encoders.length) return log({ type: 'chain', body: [`no matching encoders`] })
+  // get 3 hosters
   const hosters = selectHosters({ encoders, size, plan, log} )
   if (!hosters.length) {
-    revertEncoders({ encoders, feed, planID, log })
+    revertEncoders({ encoders, feed, planID: plan.id, log })
     return log({ type: 'chain', body: [`no matching hosters`] })
   }
-
+  // get 1 attestor
   const attestor = selectAttestor({ encoders, hosters, plan, log })
   if (!attestor) {
-    revertEncoders({ encoders, feed, planID, log })
+    revertEncoders({ encoders, feed, planID: plan.id, log })
     revertHosters({ hosters, size })
     return log({ type: 'chain', body: [`no matching attestor`] })
   }
@@ -576,7 +569,6 @@ function giveAttestorNewJob (attestorID, log) {
   }
 }
 function revertEncoders ({ encoders, feed, planID, log }) {
-  // if no hosters available, revert everything
   encoders.forEach(encoderID => {
     DB.idleEncoders.unshift(encoderID)
   })
