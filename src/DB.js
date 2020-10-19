@@ -28,9 +28,10 @@ const plans = []
   feed: feedID,
   sponsor: 'userID',
   ranges: [[0, 5], [7, 55]] // default [{0, feed.length}],
+  contracts: []
 }
 */
-const orders = []
+const unhostedContracts = []
 /*
 { planID, feedID, set }
 */
@@ -91,7 +92,7 @@ const DB = {
   users,
   feeds,
   plans,
-  orders,
+  unhostedContracts,
   contracts,
   storageChallenges,
   performanceChallenges,

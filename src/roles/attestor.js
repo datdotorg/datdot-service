@@ -33,7 +33,7 @@ async function role (profile, APIS) {
     if (event.method === 'NewContract') {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)
-      const attestorID = contract.attestor
+      const attestorID = contract.providers.attestor
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress !== myAddress) return
       log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
@@ -104,13 +104,13 @@ async function role (profile, APIS) {
   }
 
   async function getContractData (contract) {
-    const encoders = contract.encoders
+    const encoders = contract.providers.encoders
     const encoderKeys = []
     encoders.forEach(async (id) => {
       const key = await chainAPI.getEncoderKey(id)
       encoderKeys.push(key)
     })
-    const hosters = contract.hosters
+    const hosters = contract.providers.hosters
     const hosterKeys = []
     hosters.forEach(async (id) => {
       const key = await chainAPI.getHosterKey(id)

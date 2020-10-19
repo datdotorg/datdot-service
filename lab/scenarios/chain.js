@@ -149,17 +149,13 @@ async function _publishPlan (user, { name, nonce }, status, args) {
   plan.sponsor = userID // or patron?
   const planID = DB.plans.push(plan)
   plan.id = planID
-  // Add planID to unhostedPlans
-  DB.unhostedPlans.push(planID)
-  // Add feeds to unhosted
-  plan.unhostedFeeds = feeds
+  plan.contracts = []
 
   // @TODO schedule for plan.from
-  // => then in callback execute Db.unhostedPlans.push(planID) && tryContract
+  // => then in callback execute Db.unhostedPlans.push(planID) && notifyProviders
   // Find hosters,encoders and attestors
-  splitPlanIntoOrders(plan)
-  tryContract({ log })
-
+  makeContracts(plan)
+  notifyProviders({ log })
   // Emit event
   const NewPlan = { event: { data: [planID], method: 'NewPlan' } }
   const event = [NewPlan]
@@ -177,7 +173,7 @@ async function _registerHoster(user, { name, nonce }, status, args) {
   DB.users[userID - 1].hosterKey = keyBuf.toString('hex')
   DB.users[userID - 1].hosterForm = form
   DB.idleHosters.push(userID)
-  tryContract({ log })
+  notifyProviders({ log })
 }
 async function _registerEncoder (user, { name, nonce }, status, args) {
   const log = connections[name].log
@@ -189,7 +185,7 @@ async function _registerEncoder (user, { name, nonce }, status, args) {
   DB.users[userID - 1].encoderKey = keyBuf.toString('hex')
   DB.users[userID - 1].encoderForm = form
   DB.idleEncoders.push(userID)
-  tryContract({ log })
+  notifyProviders({ log })
 }
 async function _registerAttestor (user, { name, nonce }, status, args) {
   const log = connections[name].log
@@ -201,7 +197,7 @@ async function _registerAttestor (user, { name, nonce }, status, args) {
   DB.users[userID - 1].attestorForm = form
   const attestorID = userID
   giveAttestorNewJob(attestorID, log)
-  tryContract({ log })
+  notifyProviders({ log })
 }
 
 async function unpublishPlan (user, { name, nonce }, status, args) {
@@ -216,7 +212,7 @@ async function unregisterHoster (user, { name, nonce }, status) {
     user.hosterKey = void 0
     user.hosterForm = void 0
     // remove from idlehosters
-    // @TODO if hoster was hosting anything && same set of ranges is hosted by less than 3 hosters, then makeAdditionalContract()
+    // @TODO if hoster was hosting anything && same set of ranges is hosted by less than 3 hosters, then findAdditionalProviders()
   }
 }
 async function unregisterEncoder (user, { name, nonce }, status) {
@@ -238,19 +234,19 @@ async function _hostingStarts (user, { name, nonce }, status, args) {
   const userID = user.id
   const contract = DB.contracts[contractID - 1]
   const plan = getPlanByID(contract.plan)
-  const hosters = contract.hosters
+  const hosters = contract.providers.hosters
   if (!hosters.includes(userID)) return log({ type: 'chain', body: [`Error: this user can not call this function`] })
   const activeHosters = contract.activeHosters
   if (!activeHosters.includes(userID)) activeHosters.push(userID)
   // for each hostingStarts we pay attestor(1/3), this hoster (full), encoders (full, but just once)
   // encoders finished their job, make them idle again
-  const encoders = contract.encoders
+  const encoders = contract.providers.encoders
   for (var i = 0; i < encoders.length; i++) {
     if (!DB.idleEncoders.includes(encoders[i])) DB.idleEncoders.push(encoders[i])
   }
   if (activeHosters.length === hosters.length) {
     // atestor finished their job, make them idle again
-    const attestorID = contract.attestor
+    const attestorID = contract.providers.attestor
     if (!DB.idleAttestors.includes(attestorID)) giveAttestorNewJob(attestorID, log)
   }
   const confirmation = { event: { data: [contractID, userID], method: 'HostingStarted' } }
@@ -348,96 +344,99 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
 const setSize = 10 // every contract is for hosting 10 chunks
 
 // split plan into orders with 10 chunks
-function splitPlanIntoOrders (plan) {
+function makeContracts (plan) {
   const feeds = plan.feeds
   for (var i = 0; i < feeds.length; i++) {
     const feed = feeds[i]
     // split ranges to sets (size = setSize)
     const sets = makeSets({ ranges: feed.ranges, setSize })
     sets.forEach(set => {
-      DB.orders.push({planID: plan.id, feedID: feed.id, set})
+      const contract = { plan: plan.id, feed: feed.id, ranges: set }
+      const contractID = DB.contracts.push(contract)
+      contract.id = contractID
+      DB.unhostedContracts.push(contractID)
     })
   }
 }
 
-function tryContract ({ log }) {
-  const orders = DB.orders
-  for (var i = 0; i < orders.length; i++) {
-    const order = orders[i]
-    const size = setSize*64 //assuming each chunk is 64kb
-    const plan = getPlanByID(order.planID)
-    const feed = getFeedByID(order.feedID)
-    const providers = getProviders({ size, plan, feed }, log)
-    if (!providers) return log({ type: 'chain', body: [`not enough providers available for this feed`] })
-    makeContract({ feed, planID: plan.id, providers, set: order.set }, log)
-  }
-}
-
-async function makeContract ({ feed, planID, providers, set }, log) {
-  const { encoders, hosters, attestor } = providers
-  const contract = {
-    plan: planID,
-    feed: feed.id,
-    ranges: set, // subset of all ranges from the plan (size = setSize)
-    encoders,
-    hosters, // [1,5,9, 7]
-    attestor,
-    activeHosters: [], // [1,9]
-    // @TODO make more defined: add until, config etc.
-  }
-  const contractID = DB.contracts.push(contract)
-  contract.id = contractID
-
-  const NewContract = { event: { data: [contractID], method: 'NewContract' } }
-  const event = [NewContract]
-  handlers.forEach(([name, handler]) => handler(event))
-  log({ type: 'chain', body: [`New Contract: ${JSON.stringify(contract)}`] })
-
-  const contractFollowUp = () => {
+async function notifyProviders ({ log }) {
+  for (var start = new Date(); DB.unhostedContracts.length && new Date() - start < 4000;) {
+    // remove contract from unhostedContracts
+    const contractID = DB.unhostedContracts.shift()
     const contract = getContractByID(contractID)
-    console.log('Contracts active length', contract.activeHosters.length)
-    if (contract.activeHosters.length < 3) {
-      console.log('Making additional contract since we do not have enough hosters')
-      // find more hosters => make newContract again, don't drop existing hostings
-      // @TODO notify the failed hoster(s) that they are out so we don't have zombie hosters
-      // INSTEAD OF ADDITIONAL CONTRACT rather select new hosters and if activeHosters than they send encoded to attestor
-      makeAdditionalContract(contractID, log)
-      // attestor is not needed anymore, set them to idle again
-      giveAttestorNewJob(attestor, log)
+    const size = setSize*64 //assuming each chunk is 64kb
+    const plan = getPlanByID(contract.plan)
+    const providers = getProviders({ plan }, log)
+    if (!providers) {
+      DB.unhostedContracts.unshift(contractID)
+      return log({ type: 'chain', body: [`not enough providers available for this feed`] })
     }
+    contract.providers = providers
+    contract.activeHosters = []
+    // emit event
+    const NewContract = { event: { data: [contractID], method: 'NewContract' } }
+    const event = [NewContract]
+    handlers.forEach(([name, handler]) => handler(event))
+    log({ type: 'chain', body: [`New Contract: ${JSON.stringify(contract)}`] })
+    // add contract to the plan
+    plan.contracts.push(contractID)
+    const contractFollowUp = () => {
+      const contract = getContractByID(contractID)
+      console.log('Contracts active length', contract.activeHosters.length)
+      if (contract.activeHosters.length < 3) {
+        console.log('Making additional contract since we do not have enough hosters')
+        // find more hosters => make newContract again, don't drop existing hostings
+        // @TODO notify the failed hoster(s) that they are out so we don't have zombie hosters
+        // INSTEAD OF ADDITIONAL CONTRACT rather select new hosters and if activeHosters than they send encoded to attestor
+        findAdditionalProviders(contractID, log)
+        // attestor is not needed anymore, set them to idle again
+        giveAttestorNewJob(attestor, log)
+      }
+    }
+    const schedule = await scheduleAction
+    schedule({ action: contractFollowUp, delay: 5 })
   }
-  const schedule = await scheduleAction
-  schedule({ action: contractFollowUp, delay: 5 })
 }
 
-function makeAdditionalContract (contractID, log) {
+function findAdditionalProviders (contractID, log) {
   const contract = getContractByID(contractID)
   const { ranges: set, plan: planID, feed: feedID } = contract
   const plan = getPlanByID(planID)
   const feed = getFeedByID(feedID)
   const size = setSize*64 //assuming each chunk is 64kb
-  const providers = getProviders({ size, plan, feed }, log)
+  const providers = getProviders({ plan }, log)
   if (!providers) return log({ type: 'chain', body: [`not enough providers available for this feed`] })
-  makeContract({ feed, planID, providers, set }, log)
+  notifyProviders({ feed, planID, providers, set }, log)
 }
 
-function getProviders ({ size, plan, feed }, log) {
+function getProviders ({ plan }, log) {
   if (DB.idleEncoders.length < 3) return log({ type: 'chain', body: [`missing encoders`] })
   if (DB.idleHosters.length < 3) return log({ type: 'chain', body: [`missing hosters`] })
   if (!DB.idleAttestors.length) return log({ type: 'chain', body: [`missing attestors`] })
+  const size = setSize*64 //assuming each chunk is 64kb
+  const avoid = {}
+  avoid[plan.sponsor] = true
+  plan.feeds.forEach(feedObj => {
+    const feed = getFeedByID(feedObj.id)
+    avoid[feed.publisher] = true
+  })
   // get 3 encoders
-  const encoders = selectEncoders({ plan, log })
+  const encoderOpts = { idleProviders: DB.idleEncoders, amount: 3, doesQualify: doesEncoderQualifyForAJob, avoid, plan, log }
+  const encoders = select(encoderOpts)
   if (!encoders.length) return log({ type: 'chain', body: [`no matching encoders`] })
   // get 3 hosters
-  const hosters = selectHosters({ encoders, size, plan, log} )
+  const hosterOpts = { size, idleProviders: DB.idleHosters, amount: 3, doesQualify: doesHosterQualifyForAJob, avoid, plan, log }
+  const hosters = select(hosterOpts)
   if (!hosters.length) {
-    revertEncoders({ encoders, feed, planID: plan.id, log })
+    revertEncoders({ encoders, log })
     return log({ type: 'chain', body: [`no matching hosters`] })
   }
+  reduceIdleStorage(hosters, size)
   // get 1 attestor
-  const attestor = selectAttestor({ encoders, hosters, plan, log })
+  const attestorOpts = { idleProviders: DB.idleAttestors, amount: 1, doesQualify: doesAttestorQualifyForAJob, avoid, plan, log }
+  const [attestor] = select(attestorOpts)
   if (!attestor) {
-    revertEncoders({ encoders, feed, planID: plan.id, log })
+    revertEncoders({ encoders, log })
     revertHosters({ hosters, size })
     return log({ type: 'chain', body: [`no matching attestor`] })
   }
@@ -459,90 +458,52 @@ function validateProof (proofs, storageChallenge) {
   if (`${chunks.length}` === `${proofs.length}`) return true
   else return false
 }
-function findPlan ({ unhostedPlans, log }) {
-  var [planID] = getRandom(unhostedPlans)
-  return DB.plans[planID - 1]
-}
-function selectEncoders ({ plan, log }) {
-  const idleEncoders = DB.idleEncoders
-  idleEncoders.sort(() => Math.random() - 0.5)
-  const encoders = []
-  for (var i = 0; i < idleEncoders.length; i++) {
-    var indexes = []
-    const encoderID = idleEncoders[i]
-    const encoder = getUserByID(encoderID)
-    const checkOpts = { plan, form: encoder.encoderForm }
-    if (doesEncoderQualifyForAJob(checkOpts)) {
-      encoders.push(encoderID)
-      indexes.push(i)
-      if (indexes.length === 3) {
-        indexes.forEach(index => { idleEncoders.splice(index, 1) })
-        break
-      }
-    }
-  }
-  // @TODO check for each encoder if (encoder.form.until is undefined or date is tomorrow)
+
+function select ({ size, idleProviders, amount, doesQualify, avoid, plan, log }) {
+  const { from, until, importance, config, schedules } =  plan
+  idleProviders.sort(() => Math.random() - 0.5) // TODO: improve randomness
+  // @TODO check for each provider if (provider.form.until is undefined or date is tomorrow)
   // if (encoder.form.from... && encoder.form.until...) ... => make this a function isAvailable()
-  return idleEncoders.splice(0,3)
-}
-function selectHosters ({ encoders, size, plan, log }) {
-  const idleHosters = DB.idleHosters
-  const { from, until, importance, config, schedules } =  plan
-  idleHosters.sort(() => Math.random() - 0.5)
-  var selectedHosters = []
-  var indexes = []
-  for (var i = 0; i < idleHosters.length; i++) {
-    const hosterID = idleHosters[i]
-    const hoster = getUserByID(hosterID)
-    const checkOpts = { encoders, hosterID, size, hoster, plan, form: hoster.hosterForm }
-    if (doesHosterQualifyForAJob(checkOpts)) {
-      selectedHosters.push(hosterID)
+  const selectedProviders = []
+  const indexes = []
+  for (var i = 0; i < idleProviders.length; i++) {
+    const providerID = idleProviders[i]
+    if (avoid[providerID]) continue // if providerID is in avoid, don't select it
+    const provider = getUserByID(providerID)
+    if (doesQualify({ size, plan, provider })) {
+      selectedProviders.push(providerID)
+      avoid[providerID] = true
       indexes.push(i)
-      if (indexes.length === 3) {
-        indexes.forEach(index => { idleHosters.splice(index, 1) })
+      if (indexes.length === amount) {
+        indexes.forEach(index => { idleProviders.splice(index, 1) })
         break
       }
     }
   }
-  return selectedHosters
-  reduceIdleStorage(selectedHosters, size)
+  return selectedProviders
 }
-function selectAttestor ({ encoders, hosters, plan, log }) {
-  const idleAttestors = DB.idleAttestors
-  const { from, until, importance, config, schedules } =  plan
-  idleAttestors.sort(() => Math.random() - 0.5)
-  // @TODO check for each attestor if (attestor.form.until is undefined or date is tomorrow)
-  var selectedAttestor
-  for (var i = 0; i < idleAttestors.length; i++) {
-    const attestorID = idleAttestors[i]
-    const attestor = getUserByID(attestorID)
-    const checkOpts = { encoders, hosters, attestorID, plan, form: attestor.attestorForm }
-    if (doesAttestorQualifyForAJob(checkOpts)) {
-      selectedAttestor = attestorID
-      idleAttestors.splice(i, 1)
-      break
-    }
-  }
-  return selectedAttestor
-}
-function doesEncoderQualifyForAJob ({ plan, form }) {
+
+function doesEncoderQualifyForAJob ({ plan, provider }) {
+  const form = provider.encoderForm
   const { from, until, importance, config, schedules } =  plan
   if (isAvailableFromUntil({ from, until, form })) return true
 }
-function doesHosterQualifyForAJob (checkOpts) {
-  const { encoders, hosterID, size, hoster, plan, form } = checkOpts
+function doesHosterQualifyForAJob ({ size, plan, provider }) {
+  const hoster = provider
+  const form = provider.hosterForm
   const { from, until, importance, config, schedules } =  plan
-  if (!encoders.includes(hosterID) && (size <= hoster.hosterForm.idleStorage) && (isAvailableFromUntil({ from, until, form }))) {
+  if ((size <= hoster.hosterForm.idleStorage) && (isAvailableFromUntil({ from, until, form }))) {
     return true
   }
 }
-function doesAttestorQualifyForAJob (checkOpts) {
-  const { encoders, hosters, attestorID, plan, form } = checkOpts
+function doesAttestorQualifyForAJob ({ plan, provider }) {
+  const form = provider.attestorForm
   const { from, until, importance, config, schedules } =  plan
-  if (!encoders.includes(attestorID) && !hosters.includes(attestorID) && (isAvailableFromUntil({ from, until, form }))) {
+  if (isAvailableFromUntil({ from, until, form })) {
     return true
   }
 }
+
 function isAvailableFromUntil ({ from, until, form: providerForm }) {
   if (from && (providerForm.from <= from) && until && (providerForm.until === '' || providerForm.until >= until)) {
     return true
@@ -568,7 +529,7 @@ function giveAttestorNewJob (attestorID, log) {
     }
   }
 }
-function revertEncoders ({ encoders, feed, planID, log }) {
+function revertEncoders ({ encoders, log }) {
   encoders.forEach(encoderID => {
     DB.idleEncoders.unshift(encoderID)
   })

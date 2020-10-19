@@ -31,7 +31,7 @@ async function role (profile, APIS) {
     if (event.method === 'NewContract') {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)
-      const hosters = contract.hosters
+      const hosters = contract.providers.hosters
       if (!await isForMe(hosters)) return
       log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       const { feedKey, attestorKey, plan } = await getHostingData(contract)
@@ -64,7 +64,7 @@ async function role (profile, APIS) {
 
   async function getHostingData (contract) {
     const ranges = contract.ranges
-    const attestorID = contract.attestor
+    const attestorID = contract.providers.attestor
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
     const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
