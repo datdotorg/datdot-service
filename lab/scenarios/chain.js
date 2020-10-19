@@ -154,10 +154,11 @@ async function _publishPlan (user, { name, nonce }, status, args) {
   // Add feeds to unhosted
   plan.unhostedFeeds = feeds
 
-  // @TODO schedule for plan.from 
+  // @TODO schedule for plan.from
   // => then in callback execute Db.unhostedPlans.push(planID) && tryContract
   // Find hosters,encoders and attestors
-  tryContract({ plan, log })
+  splitPlanIntoOrders(plan)
+  tryContract({ log })
 
   // Emit event
   const NewPlan = { event: { data: [planID], method: 'NewPlan' } }
@@ -344,57 +345,37 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
 /******************************************************************************
   HELPERS
 ******************************************************************************/
-function tryContract ({ plan, log }) {
-  // @TODO try to make contract for when the plan needs to be hosted (plan.from)
-  log({ type: 'chain', body: [`Trying new contract`] })
+const setSize = 10 // every contract is for hosting 10 chunks
 
-  // get a plan
-  const unhostedPlans = DB.unhostedPlans
-  var selectedPlan
-  if (plan) selectedPlan = plan
-  else if (!plan && unhostedPlans.length) selectedPlan = findPlan({ plan, unhostedPlans, log })
-  if (!selectedPlan) return log({ type: 'chain', body: [`current lack of demand for hosting plans`] })
-  const planID = selectedPlan.id
-
-  // For each feed
-
-  const unhostedFeeds = selectedPlan.unhostedFeeds
-  console.log('unhostedFeeds', unhostedFeeds)
-  const readyForContract = []
-  const unhostedFeedsCount = unhostedFeeds.length
-  for (var i = 0; i < unhostedFeeds.length; i++) {
-    const feed = unhostedFeeds[i]
-
-    // remove feed from unhostedFeeds
-    unhostedFeeds.shift()
-    // If this was last unhosted feed in the plan, we can remove plan ID from unhostedPlans
-    if (!unhostedFeeds.length) removePlanFromUnhosted(planID, unhostedPlans)
-
+// split plan into orders with 10 chunks
+function splitPlanIntoOrders (plan) {
+  const feeds = plan.feeds
+  for (var i = 0; i < feeds.length; i++) {
+    const feed = feeds[i]
     // split ranges to sets (size = setSize)
-    const setSize = 10 // every contract is for hosting 10 chunks
     const sets = makeSets({ ranges: feed.ranges, setSize })
-    // get providers
-    const allArgs = []
     sets.forEach(set => {
-      const size = set.length*64 //assuming each chunk is 64kb
-      const providers = getProviders({ size, selectedPlan, feed, log })
-      if (!providers) return log({ type: 'chain', body: [`not enough providers available for this feed`] })
-      const { encoders, hosters, attestor } = providers
-      const args = { feed, planID, encoders, hosters, attestor, set }
-      allArgs.push({ args, log })
+      DB.orders.push({planID: plan.id, feedID: feed.id, set})
     })
-    if (allArgs.length === sets.length) readyForContract.push(allArgs)
   }
-
-  if (readyForContract.length !== unhostedFeedsCount) return log({ type: 'chain', body: [`not enough providers available for all the feeds in this plan`] })
-  readyForContract.flat().forEach(({ args, log }) => makeContract ({ args, log }) )
-
-
-
-  // make contracts
 }
-async function makeContract ({ args, log }) {
-  const { feed, planID, encoders, hosters, attestor, set } = args
+
+function tryContract ({ log }) {
+  const orders = DB.orders
+
+  for (var i = 0; i < orders.length; i++) {
+    const order = orders[i]
+    const size = setSize*64 //assuming each chunk is 64kb
+    const plan = getPlanByID(order.planID)
+    const feed = getFeedByID(order.feedID)
+    const providers = getProviders({ size, plan, feed }, log)
+    if (!providers) return log({ type: 'chain', body: [`not enough providers available for this feed`] })
+    const { encoders, hosters, attestor } = providers
+    makeContract({ feed, planID: plan.id, encoders, hosters, attestor, set: order.set }, log)
+  }
+}
+
+async function makeContract ({ feed, planID, encoders, hosters, attestor, set }, log) {
   const contract = {
     plan: planID,
     feed: feed.id,
@@ -408,7 +389,11 @@ async function makeContract ({ args, log }) {
   const contractID = DB.contracts.push(contract)
   contract.id = contractID
 
+  const NewContract = { event: { data: [contractID], method: 'NewContract' } }
+  const event = [NewContract]
+  handlers.forEach(([name, handler]) => handler(event))
   log({ type: 'chain', body: [`New Contract: ${JSON.stringify(contract)}`] })
+
   const contractFollowUp = () => {
     const contract = getContractByID(contractID)
     console.log('Contracts active length', contract.activeHosters.length)
@@ -424,31 +409,23 @@ async function makeContract ({ args, log }) {
   }
   const schedule = await scheduleAction
   schedule({ action: contractFollowUp, delay: 5 })
-  const NewContract = { event: { data: [contractID], method: 'NewContract' } }
-  const event = [NewContract]
-  handlers.forEach(([name, handler]) => handler(event))
 }
-function makeAdditionalContract (contractID, log) {
-  if (DB.idleEncoders.length < 3) return log({ type: 'chain', body: [`missing encoders`] })
-  if (DB.idleHosters.length < 3) return log({ type: 'chain', body: [`missing hosters`] })
-  if (!DB.idleAttestors.length) return log({ type: 'chain', body: [`missing attestors`] })
 
+function makeAdditionalContract (contractID, log) {
   const contract = getContractByID(contractID)
   const { ranges: set, plan: planID, feed: feedID } = contract
   const plan = getPlanByID(planID)
   const feed = getFeedByID(feedID)
-  const size = set.length*64 //assuming each chunk is 64kb
-  const providers = getProviders({ size, selectedPlan: plan, feed, log })
-  if (!providers) return
+  const size = setSize*64 //assuming each chunk is 64kb
+  const providers = getProviders({ size, plan, feed }, log)
+  if (!providers) return log({ type: 'chain', body: [`not enough providers available for this feed`] })
   const { encoders, hosters, attestor } = providers
-
-  const args = { feed, planID, encoders, hosters, attestor, set }
-  makeContract ({ args, log })
+  makeContract({ feed, planID, encoders, hosters, attestor, set }, log)
 }
-function getProviders ({ size, selectedPlan: plan, feed, log }) {
+
+function getProviders ({ size, plan, feed }, log) {
   // 3 encoders, 3 hosters, 1 attestor
-  const unhostedPlans = DB.unhostedPlans
-  const { unhostedFeeds, id: planID } =  plan
+  const { id: planID } =  plan
   if (DB.idleEncoders.length < 3) return log({ type: 'chain', body: [`missing encoders`] })
   if (DB.idleHosters.length < 3) return log({ type: 'chain', body: [`missing hosters`] })
   if (!DB.idleAttestors.length) return log({ type: 'chain', body: [`missing attestors`] })
@@ -456,20 +433,17 @@ function getProviders ({ size, selectedPlan: plan, feed, log }) {
   // @TODO select more detailed based on providers' settings (storage space, availability etc.)
   const encoders = selectEncoders({ plan, log })
   if (!encoders.length) {
-    revertPlanAndFeed ({ planID, feed, unhostedPlans, unhostedFeeds })
     return log({ type: 'chain', body: [`no matching encoders`] })
   }
 
   const hosters = selectHosters({ encoders, size, plan, log} )
   if (!hosters.length) {
-    revertPlanAndFeed({ planID, feed, unhostedPlans, unhostedFeeds })
     revertEncoders({ encoders, feed, planID, log })
     return log({ type: 'chain', body: [`no matching hosters`] })
   }
 
   const attestor = selectAttestor({ encoders, hosters, plan, log })
   if (!attestor) {
-    revertPlanAndFeed({ planID, feed, unhostedPlans, unhostedFeeds })
     revertEncoders({ encoders, feed, planID, log })
     revertHosters({ hosters, size })
     return log({ type: 'chain', body: [`no matching attestor`] })
@@ -600,15 +574,6 @@ function giveAttestorNewJob (attestorID, log) {
       assignAttestorAndEmitStorageChallenge(next.opts, log)
     }
   }
-}
-function removePlanFromUnhosted (planID, unhostedPlans) {
-  for (var i = 0; i < unhostedPlans.length; i++) {
-    if (unhostedPlans[i] === planID) unhostedPlans.splice(i, 1)
-  }
-}
-function revertPlanAndFeed ({ planID, feed, unhostedPlans, unhostedFeeds }) {
-  unhostedPlans.unshift(planID)
-  unhostedFeeds.unshift(feed)
 }
 function revertEncoders ({ encoders, feed, planID, log }) {
   // if no hosters available, revert everything

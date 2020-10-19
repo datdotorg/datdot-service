@@ -30,6 +30,10 @@ const plans = []
   ranges: [[0, 5], [7, 55]] // default [{0, feed.length}],
 }
 */
+const orders = []
+/*
+{ planID, feedID, set }
+*/
 const contracts = []
 /*
 {
@@ -87,6 +91,7 @@ const DB = {
   users,
   feeds,
   plans,
+  orders,
   contracts,
   storageChallenges,
   performanceChallenges,
