@@ -151,18 +151,19 @@ async function _publishPlan (user, { name, nonce }, status, args) {
   plan.id = planID
   plan.contracts = []
 
-  const start = plan.from
+  const start = Date.parse(plan.from)
   const now = new Date()
   const difference = (start - now)/1000
   const delay = Math.round(difference/6)
+  // if delay is negative, take delay 0 => @TODO adapt scheduler to execute right away if delay is 0
   console.log('DELAY', start, difference, delay)
 
-  const scheduleAction = () => {
+  const schedulePlan = () => {
     makeDraftContracts({ plan }, log)
     activateContracts(log)
   }
   const schedule = await scheduleAction
-  schedule({ action: scheduleAction, delay })
+  schedule({ action: schedulePlan, delay })
 
   // Emit event
   const NewPlan = { event: { data: [planID], method: 'NewPlan' } }
@@ -225,21 +226,17 @@ async function unpublishPlan (user, { name, nonce }, status, args) {
   if (!plan.sponsor === user.id) return log({ type: 'chain', body: [`Only a sponsor is allowed o unpublish the plan`] })
 }
 async function unregisterHoster (user, { name, nonce }, status) {
-  unregisterUser ({ id: user.id, key: user.hosterKey, form: user.hosterForm, idleProviders: DB.idleHosters })
-  if (user.hosterKey && user.hosterForm) {
-    user.hosterKey = void 0
-    user.hosterForm = void 0
-    // @TODO dropHosting (if hoster was hosting anything && same set of ranges is hosted by less than 3 hosters, then findAdditionalProviders())
-  }
+  unregisterRole ({ id: user.id, key: user.hosterKey, form: user.hosterForm, idleProviders: DB.idleHosters })
+  // @TODO dropHosting (if hoster was hosting anything && same set of ranges is hosted by less than 3 hosters, then findAdditionalProviders())
 }
 async function unregisterEncoder (user, { name, nonce }, status) {
-  unregisterUser ({ id: user.id, key: user.encoderKey, form: user.encoderForm, idleProviders: DB.idleEncoderss })
+  unregisterRole ({ id: user.id, key: user.encoderKey, form: user.encoderForm, idleProviders: DB.idleEncoders })
 }
 async function unregisterAttestor (user, { name, nonce }, status) {
-  unregisterUser ({ id: user.id, key: user.attestorKey, form: user.attestorForm, idleProviders: DB.idleAttestors })
+  unregisterRole ({ id: user.id, key: user.attestorKey, form: user.attestorForm, idleProviders: DB.idleAttestors })
 }
 
-function unregisterUser ({ id, key, form, idleProviders }) {
+function unregisterRole ({ id, key, form, idleProviders }) {
   if (key && form) {
     key = void 0
     form = void 0
@@ -540,7 +537,7 @@ function doesAttestorQualifyForAJob ({ plan, provider }) {
 }
 
 function isAvailableFromUntil ({ from, until, form: providerForm }) {
-  if (from && (providerForm.from <= from) && until && (providerForm.until === '' || providerForm.until >= until)) {
+  if (from && (providerForm.from <= from) && until && (providerForm.until === '' || providerForm.until >= until.time)) {
     return true
   }
 }
