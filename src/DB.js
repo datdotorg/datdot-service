@@ -31,7 +31,7 @@ const plans = []
   contracts: []
 }
 */
-const unhostedContracts = []
+const draftContracts = []
 /*
 { planID, feedID, set }
 */
@@ -92,7 +92,7 @@ const DB = {
   users,
   feeds,
   plans,
-  unhostedContracts,
+  draftContracts,
   contracts,
   storageChallenges,
   performanceChallenges,
