@@ -88,7 +88,7 @@ async function role (profile, APIS) {
     }
     return {
       feeds,
-      from       : new Date('October 21, 2020 20:48:00'), // or new Date('Apr 30, 2000')
+      from       : new Date('October 22, 2020 01:45:00'), // or new Date('Apr 30, 2000')
       until: {
         time     : new Date('October 21, 2020 21:50:00'), // date
         budget   : '',

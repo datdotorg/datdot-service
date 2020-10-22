@@ -18,7 +18,7 @@ function fillTheSet (range, sets, setSize) {
   }
 }
 
-function formatSets (sets) { 
+function formatSets (sets) {
   var prev
   for (var i = 0; i < sets.length; i++) { // [[0,1,2,3,7],[8,9,10,15,16],[17,18,19,20,21],[22,23,24,25,26],[27,28,29,30,31],[32,33,70,71,72],[73,74,75,76,77],[78,79,80,81,82]]
     const set = sets[i]

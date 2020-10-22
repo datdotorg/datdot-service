@@ -156,7 +156,6 @@ async function _publishPlan (user, { name, nonce }, status, args) {
   const difference = (start - now)/1000
   const delay = Math.round(difference/6)
   // if delay is negative, take delay 0 => @TODO adapt scheduler to execute right away if delay is 0
-  console.log('DELAY', start, difference, delay)
 
   const schedulePlan = () => {
     makeDraftContracts({ plan }, log)
@@ -405,15 +404,13 @@ async function activateContracts (log) {
 
     const followUpAction = () => {
       const contract = getContractByID(contractID)
-      console.log('Contracts active length', contract.activeHosters.length)
       const allHosters = []
       plan.contracts.forEach(contractID => {
           const contract = getContractByID(contractID)
           allHosters.push(...contract.activeHosters)
       })
-      console.log('All hosters', allHosters)
       if (allHosters.length < 3) {
-        console.log('Making additional contract since we do not have enough hosters')
+        log({ type: 'chain', body: [`Making additional contract since we do not have enough hosters`] })
         // @TODO dropHosting (notify the failed hoster(s) that they are out so we don't have zombie hosters)
         // INSTEAD OF ADDITIONAL CONTRACT rather select new hosters and if activeHosters than they send encoded to attestor
         // example, if you need 1 hoster => 2 activeHosters + new encoder, 1 attestor
@@ -537,7 +534,13 @@ function doesAttestorQualifyForAJob ({ plan, provider }) {
 }
 
 function isAvailableFromUntil ({ from, until, form: providerForm }) {
-  if (from && (providerForm.from <= from) && until && (providerForm.until === '' || providerForm.until >= until.time)) {
+  const providerFrom = Date.parse(providerForm.from)
+  const providerUntil = Date.parse(providerForm.until)
+  const planFrom = Date.parse(from)
+  const planUntil = Date.parse(until.time)
+  const timeNow = new Date()
+
+  if ((planFrom < timeNow || providerFrom <= planFrom) && (providerForm.until === '' || providerUntil >= planUntil)) {
     return true
   }
 }
