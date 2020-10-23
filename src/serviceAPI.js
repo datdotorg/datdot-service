@@ -50,6 +50,12 @@ function datdotService (profile) {
     return await account.hoster.hostFor(opts)
   }
 
+  async function removeFeed ({ feedKey, account }) {
+    const { account, feedKey } = data
+    log({ type: 'serviceAPI', body: [`Host!`] })
+    return await account.hoster.removeFeed(feedKey)
+  }
+
   /* ----------------------------------------------------------------
                      WHILE HOSTING => proof
 ------------------------------------------------------------------ */

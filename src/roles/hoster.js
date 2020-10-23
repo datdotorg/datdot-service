@@ -39,6 +39,14 @@ async function role (profile, APIS) {
       const nonce = vaultAPI.getNonce()
       await chainAPI.hostingStarts({ contractID, signer, nonce })
     }
+    if (event.method === 'DropHosting') {
+      const [feedID, hosterID] = event.data
+      const hosterAddress = await chainAPI.getUserAddress(hosterID)
+      if (hosterAddress === myAddress) {
+      log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+      const feedKey = getFeedByID(feedID).publickey
+      await serviceAPI.removeFeed({ feedKey, account: vaultAPI }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+    }
 
     if (event.method === 'NewStorageChallenge') {
       const [storageChallengeID] = event.data

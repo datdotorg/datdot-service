@@ -31,10 +31,6 @@ const plans = []
   contracts: []
 }
 */
-const draftContracts = []
-/*
-{ planID, feedID, set }
-*/
 const contracts = []
 /*
 {
@@ -46,6 +42,7 @@ attestor: attestors.shift(),
 activeHosters: []
 }
 */
+
 const storageChallenges = [] // Storage Proof
 /*
 {
@@ -54,10 +51,6 @@ const storageChallenges = [] // Storage Proof
 }
 */
 
-const attestorJobs = []
-/*
-{ fnName: 'makePerformanceChallenge', opts: contractID ) }
-*/
 const performanceChallenges = [] // Performance Proof
 /*
 {
@@ -79,13 +72,9 @@ const feedByKey = {
 const idleHosters = [] // user ids
 const idleEncoders = [] // user ids
 const idleAttestors = [] // user ids
-
-const unhostedPlans = [] // ids of unhosted plans
-const hostedPlans = [] // when all contracts for certain plan are hosted => push planID to hostedPlans
-
-const contractsEncoded = [] // IDs of contracts where encoding is confirmed
-const contractsHosted = [] // IDs of contracts where hosting is confirmed
-
+const draftContracts = [] // { planID, feedID, set }
+const attestorJobs = [] //{ fnName: 'makePerformanceChallenge', opts: contractID ) }
+const hostings = {} // userID: [contractID1, contractID2]
 /*****************************************************************************/
 const DB = {
   // state
@@ -94,6 +83,7 @@ const DB = {
   plans,
   draftContracts,
   contracts,
+  hostings
   storageChallenges,
   performanceChallenges,
   // lookups
@@ -103,10 +93,6 @@ const DB = {
   idleHosters,
   idleEncoders,
   idleAttestors,
-  unhostedPlans,
-  hostedPlans,
-  contractsEncoded,
-  contractsHosted,
   attestorJobs
 }
 module.exports = DB

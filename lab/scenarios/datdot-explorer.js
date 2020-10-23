@@ -70,6 +70,7 @@ function show (LOG) {
       const [{ type, body }] = message
       if (type === 'error') return `<span style="color: red">${body}</span>`
       if (type === 'chainEvent') return `<span style="color: orange">${body}</span>`
+      if (type === 'block') return `<span style="color: green">${body}</span>`
       if (type === 'chain') return `<span style="color: white">${body}</span>`
       if (type === 'user') return `<span style="color: maroon">${body}</span>`
       if (type === 'peer') return `<span style="color: blue">${body}</span>`
