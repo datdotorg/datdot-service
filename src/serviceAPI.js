@@ -51,7 +51,6 @@ function datdotService (profile) {
   }
 
   async function removeFeed ({ feedKey, account }) {
-    const { account, feedKey } = data
     log({ type: 'serviceAPI', body: [`Host!`] })
     return await account.hoster.removeFeed(feedKey)
   }

@@ -29,6 +29,13 @@ async function role (profile, APIS) {
     }
   }
   async function handleEvent (event) {
+    if (event.method === 'RegisteredForEncoding') {
+      const [userID] = event.data
+      const encoderAddress = await chainAPI.getUserAddress(userID)
+      if (encoderAddress === myAddress) {
+        log({ type: 'encoder', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+      }
+    }
     if (event.method === 'NewContract') {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)

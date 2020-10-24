@@ -30,6 +30,13 @@ async function role (profile, APIS) {
   //   }
   // }
   async function handleEvent (event) {
+    if (event.method === 'RegisteredForAttesting') {
+      const [userID] = event.data
+      const attestorAddress = await chainAPI.getUserAddress(userID)
+      if (attestorAddress === myAddress) {
+        log({ type: 'attestor', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+      }
+    }
     if (event.method === 'NewContract') {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)

@@ -83,7 +83,7 @@ const DB = {
   plans,
   draftContracts,
   contracts,
-  hostings
+  hostings,
   storageChallenges,
   performanceChallenges,
   // lookups

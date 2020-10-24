@@ -28,6 +28,13 @@ async function role (profile, APIS) {
     }
   }
   async function handleEvent (event) {
+    if (event.method === 'RegisteredForHosting') {
+      const [userID] = event.data
+      const hosterAddress = await chainAPI.getUserAddress(userID)
+      if (hosterAddress === myAddress) {
+        log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+      }
+    }
     if (event.method === 'NewContract') {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)
@@ -43,11 +50,11 @@ async function role (profile, APIS) {
       const [feedID, hosterID] = event.data
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
-      log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
-      const feedKey = getFeedByID(feedID).publickey
-      await serviceAPI.removeFeed({ feedKey, account: vaultAPI }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+        log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+        const feedKey = getFeedByID(feedID).publickey
+        await serviceAPI.removeFeed({ feedKey, account: vaultAPI }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+      }
     }
-
     if (event.method === 'NewStorageChallenge') {
       const [storageChallengeID] = event.data
       const storageChallenge = await chainAPI.getStorageChallengeByID(storageChallengeID)
