@@ -145,6 +145,15 @@ async function _publishPlan (user, { name, nonce }, status, args) {
   log({ type: 'chain', body: [`Publishing a plan`] })
   const [plan] = args
   const { feeds, from, until, importance, config, schedules } =  plan
+
+  // verify if plan from/until times are valid
+  const planFrom = Date.parse(from)
+  const planUntil = Date.parse(until.time)
+  const timeNow = Date.parse(new Date())
+  if (!((planUntil > planFrom) && (planFrom > timeNow))) {
+    return log({ type: 'chain', body: [`Plan from and/or until are invalid`] })
+  }
+
   const userID = user.id
   plan.sponsor = userID // or patron?
   const planID = DB.plans.push(plan)
@@ -375,7 +384,7 @@ async function tryActivateDraftContracts (log) {
     // add contract to the plan
     plan.contracts.push(contractID)
     // follow up action
-    scheduleContractFollowUp({ plan, contractID })
+    scheduleContractFollowUp({ plan, contractID }, log)
   }
 }
 function findAdditionalProviders (contractID, log) {
@@ -593,22 +602,26 @@ async function schedulePlan ({ plan }, log) {
 }
 async function scheduleChallenges ({ plan, user, name, nonce, contractID, status }) {
   const schedulingChallenges = () => {
-    // @TODO schedule new challenges ONLY while the contract is active (plan.until.time > new Date())
+
+    if (!plan.schedules.length) {}
+    else {} // plan schedules based on plan.schedules
+    
+    // schedule new challenges ONLY while the contract is active (plan.until.time > new Date())
+    const planUntil = Date.parse(plan.until.time)
+    const timeNow = Date.parse(new Date())
+    if (!(planUntil > timeNow)) return
     const planID = plan.id
     const from = plan.from
-    const until = plan.until.time
     const hosterID = user.id
-    // request challenges for the hoster
+
     _requestStorageChallenge({ user, signingData: { name, nonce }, status, args: [contractID, hosterID] })
     _requestPerformanceChallenge({ user, signingData: { name, nonce }, status, args: [contractID, hosterID] })
       schedule({ action: schedulingChallenges, delay: 5, name: 'schedulingChallenges' })
-    if (!plan.schedules.length) {}
-    else {} // plan schedules based on plan.schedules
   }
   const schedule = await scheduleAction
   schedule({ action: schedulingChallenges, delay: 1, name: 'schedulingChallenges' })
 }
-async function scheduleContractFollowUp ({ plan, contractID }) {
+async function scheduleContractFollowUp ({ plan, contractID }, log) {
   const schedulingContractFollowUp = () => {
     const contract = getContractByID(contractID)
     const allHosters = []
