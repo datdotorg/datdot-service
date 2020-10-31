@@ -34,7 +34,6 @@ module.exports = class Hoster {
     const noiseKeyPair = seedKeygen(noiseSeed)
     this.communication = p2plex({ keyPair: noiseKeyPair })
     this.publicKey = noiseKeyPair.publicKey
-    // this.communication = p2plex({ keyPair: noiseKeyPair })
     const keys = await this.listKeys()
     for (const { key, options } of keys) {
       await this.setOpts(key, options)
@@ -194,8 +193,8 @@ module.exports = class Hoster {
     hoster.log({ type: 'hoster', body: [`Starting sendStorageChallenge`] })
     const storageChallengeID = storageChallenge.id
     const chunks = storageChallenge.chunks
+    // console.log('CHUNKS', chunks)
     return new Promise(async (resolve, reject) => {
-
       const opts = {
         plex: hoster.communication,
         senderKey: hosterKey,
@@ -211,12 +210,13 @@ module.exports = class Hoster {
       const all = []
       for (var i = 0; i < chunks.length; i++) {
         const index = chunks[i]
-        const proof = await hoster.getStorageChallenge(feedKey, index)
-        const message = { type: 'StorageChallenge', feedKey, storageChallengeID, proof}
+        const data = await hoster.getStorageChallenge(feedKey, index)
+        // console.log('Got data for', index)
+        const message = { type: 'StorageChallenge', feedKey, storageChallengeID, data}
         message.index = i
-        log2attestor4Challenge({ type: 'hoster', body: [`Send proof of storage chunk ${chunks[i]}, message index: ${message.index}`] })
-        const proofSent = requestResponse({ message, sendStream: streams.serialize$, receiveStream: streams.parse$, log: log2attestor4Challenge })
-        all.push(proofSent)
+        log2attestor4Challenge({ type: 'hoster', body: [`Sending proof of storage chunk ${chunks[i]}, message index: ${message.index}`] })
+        const dataSent = requestResponse({ message, sendStream: streams.serialize$, receiveStream: streams.parse$, log: log2attestor4Challenge })
+        all.push(dataSent)
       }
       try {
         const results = await Promise.all(all).catch((error) => log2attestor4Challenge({ type: 'error', body: [`error: ${error}`] }))
@@ -245,7 +245,7 @@ module.exports = class Hoster {
     const feed = this.Hypercore(key, { sparse: true })
     const db = sub(this.db, stringKey, { valueEncoding: 'binary' })
     await reallyReady(feed)
-    const storage = new HosterStorage(this.EncoderDecoder, db, feed)
+    const storage = new HosterStorage({ EncoderDecoder: this.EncoderDecoder, db, feed, log: this.log })
     this.storages.set(stringKey, storage)
     return storage
   }

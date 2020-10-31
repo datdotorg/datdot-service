@@ -9,20 +9,21 @@ async function role (profile, APIS) {
   const { serviceAPI, chainAPI, vaultAPI } = APIS
 
   log({ type: 'hoster', body: [`Register as hoster`] })
-  await chainAPI.listenToEvents(handleEvent)
   await vaultAPI.initHoster({}, log)
   const hosterKey = vaultAPI.hoster.publicKey
   const myAddress = vaultAPI.chainKeypair.address
+  log({ type: 'hoster', body: [`My address ${myAddress}`] })
   const signer = vaultAPI.chainKeypair
   const nonce = vaultAPI.getNonce()
   const settings = { from: new Date(), until: '' }
   const form = registrationForm('hoster', settings)
   await chainAPI.registerHoster({ form, hosterKey, signer, nonce })
+  await chainAPI.listenToEvents(handleEvent)
 
   // EVENTS
-  async function isForMe (peerids) {
-    for (var i = 0, len = peerids.length; i < len; i++) {
-      const id = peerids[i]
+  async function isForMe (peerIDs) {
+    for (var i = 0, len = peerIDs.length; i < len; i++) {
+      const id = peerIDs[i]
       const peerAddress = await chainAPI.getUserAddress(id)
       if (peerAddress === myAddress) return true
     }
@@ -51,11 +52,12 @@ async function role (profile, APIS) {
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
         log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
-        const feedKey = getFeedByID(feedID).publickey
+        const feedKey = await chainAPI.getFeedByID(feedID).publickey
         await serviceAPI.removeFeed({ feedKey, account: vaultAPI }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
       }
     }
     if (event.method === 'NewStorageChallenge') {
+      log({ type: 'hoster', body: [`NewStorageChallenge event for hoster`] })
       const [storageChallengeID] = event.data
       const storageChallenge = await chainAPI.getStorageChallengeByID(storageChallengeID)
       const contract = await chainAPI.getContractByID(storageChallenge.contract)

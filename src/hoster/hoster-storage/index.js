@@ -10,9 +10,10 @@ module.exports = class HosterStorage {
   db is a levelup instance
   feed is a hypercore instance that will be used to store / seed the hosted hypercore
   **/
-  constructor (EncoderDecoder, db, feed) {
+  constructor ({ EncoderDecoder, db, feed, log }) {
     this.EncoderDecoder = EncoderDecoder
     this.db = db
+    this.log = log
     this.feed = feed
     this.unintercept = intercept(feed, {
       getData: (index, cb) => this.getData(index, cb),
@@ -56,7 +57,7 @@ module.exports = class HosterStorage {
       this._getEncoded(index),
       this._getProof(index)
     ])
-
+    this.log({ type: 'hoster', body: [`Fetching data for index: ${index}`] })
     return {
       index,
       encoded,

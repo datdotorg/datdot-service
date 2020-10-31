@@ -10,15 +10,16 @@ async function role (profile, APIS) {
   const { serviceAPI, chainAPI, vaultAPI } = APIS
 
   log({ type: 'attestor', body: [`Register as attestor`] })
-  chainAPI.listenToEvents(handleEvent)
   await vaultAPI.initAttestor({}, log)
   const attestorKey = vaultAPI.attestor.publicKey
   const myAddress = vaultAPI.chainKeypair.address
+  log({ type: 'attestor', body: [`My address ${myAddress}`] })
   const signer = vaultAPI.chainKeypair
   const nonce = await vaultAPI.getNonce()
   const settings = { from: new Date(), until: '' }
   const form = registrationForm('attestor', settings)
   await chainAPI.registerAttestor({ form, attestorKey, signer, nonce })
+  chainAPI.listenToEvents(handleEvent)
 
   // EVENTS
   // async function isForMe (peerids) {
@@ -67,9 +68,9 @@ async function role (profile, APIS) {
           const ranges = contract.ranges
           const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
           // @TODO: meet with other attestors in the swarm to decide on random number of attestors
-          // @TODO: sign random number
-          // @TODO: add time of execution for each attestor
-          // @TODO: select a reporter
+          //  sign random number
+          //  add time of execution for each attestor
+          //  select a reporter
           // const meeting = await serviceAPI.meetAttestors(feedKey)
           const data = { account: vaultAPI, randomChunks, feedKey }
           const report = await serviceAPI.checkPerformance(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
@@ -79,6 +80,7 @@ async function role (profile, APIS) {
       })
     }
     if (event.method === 'NewStorageChallenge') {
+      log({ type: 'hoster', body: [`NewStorageChallenge event for attestor`] })
       const [storageChallengeID] = event.data
       const storageChallenge = await chainAPI.getStorageChallengeByID(storageChallengeID)
       const attestorID = storageChallenge.attestor
@@ -91,8 +93,9 @@ async function role (profile, APIS) {
         const proofs = await serviceAPI.verifyStorageChallenge(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
         log({ type: 'attestor', body: [`Got all the proofs`] })
         if (proofs) {
+          const response = makeResponse({ proofs, storageChallengeID})
           const nonce = vaultAPI.getNonce()
-          const opts = { storageChallengeID, proofs, signer, nonce }
+          const opts = { response, signer, nonce }
           await chainAPI.submitStorageChallenge(opts)
         }
       }
@@ -100,6 +103,20 @@ async function role (profile, APIS) {
   }
 
   // HELPERS
+
+  function makeResponse ({ proofs, storageChallengeID}) {
+    const signature = 'foobar' // we will get the signature from the message
+    const response = { storageChallengeID, signature }
+    for (var i = 0, len = proofs.length; i < len; i++) {
+      response.hashes = []
+      const proof = proofs[i]
+      const hash = proof // @TODO later hash the proof
+      response.hashes.push(hash)
+      // does hoster send a hash or does attestor decode and then hash?
+    }
+    // return hash, challengeID, signature of the event
+    return response
+  }
 
   async function getStorageChallengeData (storageChallenge) {
     const hosterID = storageChallenge.hoster

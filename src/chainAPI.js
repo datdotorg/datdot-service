@@ -151,8 +151,8 @@ async function datdotChain (profile, provider) {
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function submitStorageChallenge (opts) {
-    const { storageChallengeID, proofs, signer, nonce } = opts
-    const tx = await API.tx.datVerify.submitStorageChallenge(storageChallengeID, proofs)
+    const { response, signer, nonce } = opts
+    const tx = await API.tx.datVerify.submitStorageChallenge(response)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }

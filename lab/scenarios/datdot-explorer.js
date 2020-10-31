@@ -95,17 +95,27 @@ function show (LOG) {
   }
   function showStatus (LOG) {
     return `<div style="color: gray; padding: 10px 40px;"> STATUS
-        <div> event NewContract: ${isLog('Event received: NewContract')}/7</div>
-        <div> Connections made: ${isLog('Got a peer')}/18</div>
-        <div> Encoding job done: ${isLog('confirmations received from the attestor')}/3</div>
-        <div> Hosting job done: ${isLog('Hoster received & stored all')}/3</div>
-        <div> event HostingStarted: ${isLog('Event received: HostingStarted')}/3</div>
-        <div> Requesting Storage challenge: ${isLog('Requesting new StorageChallenge')}</div>
-        <div> Requesting Performance challenge: ${isLog('Requesting new PerformanceChallenge')}</div>
-        <div> event NewStorageChallenge: ${isLog('Event received: NewStorageChallenge')}/6</div>
-        <div> event NewPerformanceChallenge: ${isLog('Event received: NewPerformanceChallenge')}/15</div>
-        <div> event StorageChallengeConfirmed: ${isLog('Event received: StorageChallengeConfirmed')}/3</div>
-        <div> event PerformanceChallengeConfirmed: ${isLog('Event received: PerformanceChallengeConfirmed')}/15</div>
+        <div> event NewContract: ${isLog('Event received: NewContract')} (7 per contract)</div>
+        <div> event HostingStarted: ${isLog('Event received: HostingStarted')} (3 per contract)</div>
+        <br>
+        <div> Storage challenge emitted: ${isLog('"method":"NewStorageChallenge"')}</div>
+        <div> All NewStorage events for hosters ${isLog('NewStorageChallenge event for hoster')}</div>
+        <div> All NewStorage events for attestors ${isLog('NewStorageChallenge event for attestor')}</div>
+        <div> Event received (attestor & hoster) ${isLog('Event received: NewStorageChallenge')}</div>
+        <div> Attestor: starting verifyStorageChallenge ${isLog('Starting verifyStorageChallenge')}</div>
+        <div> Hoster: starting Starting sendStorageChallenge ${isLog('Starting sendStorageChallenge')}</div>
+        <div> Hoster Storage fetching data ${isLog('Fetching data for index')}</div>
+        <div> Hoster -> Attestor: sending proof of storage ${isLog('Sending proof of storage chunk')}</div>
+        <div> Attestor received proof ${isLog('Storage Proof received')}</div>
+        <div> Attestor -> Hoster: storage is verified ${isLog('Storage verified for chunk')}</div>
+        <div> Hoster got all reponses: ${isLog('responses received from the attestor')}</div>
+        <div> event StorageChallengeConfirmed: ${isLog('Event received: StorageChallengeConfirmed')} (3 per contract)</div>
+        <br>
+        <div> Performance challenge requests: ${isLog('Requesting new PerformanceChallenge')}</div>
+        <div> event PerformanceChallengeConfirmed: ${isLog('Event received: PerformanceChallengeConfirmed')} (5 per contract)</div>
+        <br>
+        <div> FAIL_ACK_TIMEOUT: ${isLog('FAIL_ACK_TIMEOUT')}</div>
+        <div> uncaughtException Error: Channel destroyed uncaughtException ${isLog('uncaughtException Error: Channel destroyed uncaughtException')}</div>
         <div></div>
       </div>`
 
@@ -136,7 +146,6 @@ function explorer (PORTS) {
         if (!into) return console.error('missing recipient', message)
 
         const path = \`\${from\}:\${into\}\${id\}\`
-        if (msgs[path]) return console.error('duplicate message', message)
         msgs[path] = message
 
         LOG.push([from, id, time, body])

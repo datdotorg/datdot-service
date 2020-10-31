@@ -11,6 +11,7 @@ async function role (profile, APIS) {
   log({ type: 'sponsor', body: [`I am a sponsor`] })
   await chainAPI.listenToEvents(handleEvent)
   const myAddress = vaultAPI.chainKeypair.address
+  log({ type: 'sponsor', body: [`My address ${myAddress}`] })
   const signer = vaultAPI.chainKeypair
 
   // EVENTS
@@ -71,6 +72,7 @@ async function role (profile, APIS) {
       const size = getSize(feeds[i].ranges)
       feeds[i].size = size
     }
+    // @TODO make sponsor go check the actual feed size
     const config = {
       performance: {
         availability: '', // percentage_decimal
@@ -88,9 +90,9 @@ async function role (profile, APIS) {
     }
     return {
       feeds,
-      from       : new Date('October 25, 2020 02:52:00'), // or new Date('Apr 30, 2000')
+      from       : new Date('October 26, 2020 21:33'), // or new Date('Apr 30, 2000')
       until: {
-        time     : new Date('October 25, 2020 01:48:00'), // date
+        time     : new Date('October 26, 2021 23:55:00'), // date
         budget   : '',
         traffic  : '',
         price    : '',

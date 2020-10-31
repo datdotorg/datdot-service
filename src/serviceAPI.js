@@ -8,6 +8,7 @@ function datdotService (profile) {
     encode,
     verifyEncoding,
     // getStorageChallenge,
+    removeFeed,    
     sendStorageChallengeToAttestor,
     verifyStorageChallenge,
     checkPerformance
@@ -51,8 +52,10 @@ function datdotService (profile) {
   }
 
   async function removeFeed ({ feedKey, account }) {
-    log({ type: 'serviceAPI', body: [`Host!`] })
-    return await account.hoster.removeFeed(feedKey)
+    log({ type: 'serviceAPI', body: [`DropHosting`] })
+    const hasKey = await account.hoster.hasKey(feedKey)
+    if (hasKey) return await account.hoster.removeFeed(feedKey)
+    // @TODO ELSE => cancelHostFor process (disconnect from attestor and removeKey) <= for hosters that didn't start hosting on time
   }
 
   /* ----------------------------------------------------------------
@@ -79,7 +82,6 @@ function datdotService (profile) {
   async function checkPerformance (data) {
     const { account, randomChunks, feedKey } = data
     log({ type: 'serviceAPI', body: [`check performance!`] })
-
     const report = await Promise.all(randomChunks.map(async (chunk) => {
       return await account.attestor.checkPerformance(feedKey, chunk)
     }))

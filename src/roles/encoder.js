@@ -10,15 +10,16 @@ async function role (profile, APIS) {
   const { serviceAPI, chainAPI, vaultAPI } = APIS
 
   log({ type: 'encoder', body: [`Register as encoder`] })
-  await chainAPI.listenToEvents(handleEvent)
   await vaultAPI.initEncoder({}, log)
   const encoderKey = vaultAPI.encoder.publicKey
   const myAddress = vaultAPI.chainKeypair.address
+  log({ type: 'encoder', body: [`My address ${myAddress}`] })
   const signer = vaultAPI.chainKeypair
   const nonce = await vaultAPI.getNonce()
   const settings = { from: new Date(), until: '' }
   const form = registrationForm('encoder', settings)
   await chainAPI.registerEncoder({ form, encoderKey, signer, nonce })
+  await chainAPI.listenToEvents(handleEvent)
 
   // EVENTS
   async function isForMe (peerids) {

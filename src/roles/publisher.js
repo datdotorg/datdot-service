@@ -11,7 +11,6 @@ async function role (profile, APIS) {
   const getChatAPI = require('../../lab/scenarios/chatAPI')
   const chatAPI = await getChatAPI(profile, ['ws://localhost', '8000'].join(':'))
 
-  await chainAPI.listenToEvents(handleEvent)
 
   chatAPI.on(keys => {
     log({ type: 'publisher', body: [`Got the keys, publishing data now => ${keys}`] })
@@ -24,9 +23,11 @@ async function role (profile, APIS) {
     const data = await getData(log, feedkey, topic)
     log({ type: 'publisher', body: [`Got the data => ${data}`] })
     const myAddress = vaultAPI.chainKeypair.address
+    log({ type: 'publisher', body: [`My address ${myAddress}`] })
     const signer = vaultAPI.chainKeypair
     const nonce = await vaultAPI.getNonce()
     await chainAPI.publishFeed({ merkleRoot: data, signer, nonce })
+    await chainAPI.listenToEvents(handleEvent)
   }
 
   // EVENTS

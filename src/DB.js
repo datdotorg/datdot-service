@@ -19,7 +19,8 @@ const feeds = []
   id: 1,
   publickey: 'key',
   meta: '{ signature, hashType, children }',
-  status: 'unhosted'
+  status: 'unhosted',
+  publisher
 }
 */
 const plans = []
@@ -34,19 +35,24 @@ const plans = []
 const contracts = []
 /*
 {
+id,
+feed,
 plan: planID,
 ranges: selectedPlan.ranges,
-encoders: encoders.splice(0,3),
-hosters: hosters.splice(0,3),
-attestor: attestors.shift(),
-activeHosters: []
+providers: {
+  encoders,
+  hosters,
+  attestor,
+  activeHosters
+}
 }
 */
 
 const storageChallenges = [] // Storage Proof
 /*
 {
-  contract: 'contractID', // get hoster and feed from contract
+  contract: 'contractID', 
+  hoster,
   chunks: [1,4,6]
 }
 */
@@ -72,7 +78,7 @@ const feedByKey = {
 const idleHosters = [] // user ids
 const idleEncoders = [] // user ids
 const idleAttestors = [] // user ids
-const draftContracts = [] // { planID, feedID, set }
+const draftContractsQueue = [] // { planID, feedID, set }
 const attestorJobs = [] //{ fnName: 'makePerformanceChallenge', opts: contractID ) }
 const hostings = {} // userID: [contractID1, contractID2]
 /*****************************************************************************/
@@ -81,7 +87,7 @@ const DB = {
   users,
   feeds,
   plans,
-  draftContracts,
+  draftContractsQueue,
   contracts,
   hostings,
   storageChallenges,

@@ -17,6 +17,7 @@ async function role (profile, APIS) {
 
   const nonce = await vaultAPI.getNonce()
   const myAddress = vaultAPI.chainKeypair.address
+  log({ type: 'peer', body: [`My address ${myAddress}`] })
   const signer = vaultAPI.chainKeypair
   log({ type: 'peer', body: [`New account created => ${myAddress}`] })
   await chainAPI.newUser({ signer, nonce })

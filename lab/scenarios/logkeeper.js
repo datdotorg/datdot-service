@@ -36,7 +36,7 @@ async function logkeeper (name, PORT) {
     function makelog (names) {
       const path = names.join('/')
       if (loggers[path]) {
-        LOG(`warning: requesting logger "${path}" more than once`)
+        // LOG(`warning: requesting logger "${path}" more than once`)
         return loggers[path]
       }
       const { encode, decode } = codec(path, '*')

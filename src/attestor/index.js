@@ -5,6 +5,7 @@ const { performance } = require('perf_hooks')
 
 const peerConnect = require('../p2plex-connection')
 const requestResponse = require('../requestResponse')
+const EncoderDecoder = require('../EncoderDecoder')
 
 const NAMESPACE = 'datdot-attestor'
 const NOISE_NAME = 'noise'
@@ -58,7 +59,6 @@ module.exports = class Attestor {
         id: contractID,
         myKey: attestorKey,
       }
-      // console.log('@TODO: hoster')
       const log2hoster = attestor.log.sub(`->Hoster ${hosterKey.toString('hex').substring(0,5)}`)
       const streams = await peerConnect(opts2, log2hoster)
 
@@ -80,7 +80,6 @@ module.exports = class Attestor {
         }
       }
       const results = await Promise.all(verifiedAndStored).catch((error) => attestor.log({ type: 'error', body: [`Error: ${error}`] }))
-      // console.log('@TODO: hoster')
       streams.end()
       resolve(`All data from encoder: ${encoderKey.toString('hex')} verified and sent to the hoster: ${hosterKey.toString('hex')}`)
 
@@ -90,7 +89,6 @@ module.exports = class Attestor {
             if (!err) {
               log2encoder({ type: 'attestor', body: [`${message.index} SEND_ACK ${encoderKey.toString('hex')}`] })
               encoderComm.serialize$.write({ type: 'encoded:checked', ok: true, index: message.index })
-              // console.log('@TODO: hoster')
               try {
                 const response = await sendToHoster(message, log2hoster)
                 return resolve(response)
@@ -142,26 +140,20 @@ module.exports = class Attestor {
 
       const all = []
       for await (const message of streams.parse$) {
-        log2hosterChallenge({ type: 'attestor', body: [`MSG received, ${message.index}`]})
+        log2hosterChallenge({ type: 'attestor', body: [`Storage Proof received, ${message.index}`]})
         const { type } = message
         if (type === 'StorageChallenge') {
-          const { storageChallengeID, proof, index } = message
+          const { storageChallengeID, data, index } = message
+          // console.log(`Attestor received ${storageChallenge.chunks[index]}`)
           if (id === storageChallengeID) {
-            // proof.encoded
-            // @TODO: merkle verify each chunk (to see if it belongs to the feed) && verify the signature
-            // @TODO: check the proof
-            // @TODO: hash the data
-            if (proof) {
+            if (proofIsVerified(message, feedKey, storageChallenge)) {
               streams.serialize$.write({
                 type: 'StorageChallenge:verified',
                 ok: true
               })
-              log2hosterChallenge({ type: 'attestor', body: [`Storage verified for chunk ${message.index}`]})
-              all.push(proof)
+              log2hosterChallenge({ type: 'attestor', body: [`Storage verified for chunk ${storageChallenge.chunks[index]}`]})
+              all.push(data)
               if (all.length === storageChallenge.chunks.length) resolve(all)
-              // resolve(proof)
-              // return hash, challengeID, signature of the event
-              // does hoster send a hash or does attestor decode and then hash?
             }
           }
         } else {
@@ -169,6 +161,24 @@ module.exports = class Attestor {
           sendError('UNKNOWN_MESSAGE', { messageType: type })
           reject()
         }
+      }
+
+      async function proofIsVerified (message,feedKey, storageChallenge) {
+        const { data, index } = message
+        // console.log('verifying index', storageChallenge.chunks[index])
+        // const feed = attestor.Hypercore(feedKey, { persist: false })
+        // await feed.ready()
+        // ...
+        // await feed.close()
+        // console.log('PROOF', data.proof)
+        const encoded = Buffer.from(data.encoded)
+        const decoded = await EncoderDecoder.decode(encoded)
+        // console.log('decoded', decoded.toString('binary'))
+        // proof.encoded
+        // @TODO: merkle verify each chunk (to see if it belongs to the feed) && verify the signature
+        // check the proof
+        // hash the data
+        return true
       }
 
       function sendError (message, details = {}) {
