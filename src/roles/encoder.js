@@ -57,7 +57,7 @@ async function role (profile, APIS) {
     const planID = contract.plan
     const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
-    const attestorID = contract.providers.attestor
+    const [attestorID] = contract.providers.attestors
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
     return { attestorKey, feedKey, ranges }
   }

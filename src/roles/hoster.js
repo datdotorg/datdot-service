@@ -81,7 +81,7 @@ async function role (profile, APIS) {
 
   async function getHostingData (contract) {
     const ranges = contract.ranges
-    const attestorID = contract.providers.attestor
+    const [attestorID] = contract.providers.attestors
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
     const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)

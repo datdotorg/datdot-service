@@ -174,6 +174,7 @@ async function _registerHoster(user, { name, nonce }, status, args) {
   const keyBuf = Buffer.from(hosterKey, 'hex')
   user.hosterKey = keyBuf.toString('hex')
   user.hosterForm = form
+  user.hosterJobs = {}
   DB.idleHosters.push(userID)
   // Emit event
   const confirmation = { event: { data: [userID], method: 'RegisteredForHosting' } }
@@ -189,6 +190,7 @@ async function _registerEncoder (user, { name, nonce }, status, args) {
   const keyBuf = Buffer.from(encoderKey, 'hex')
   user.encoderKey = keyBuf.toString('hex')
   user.encoderForm = form
+  user.encoderJobs = {}
   DB.idleEncoders.push(userID)
   // Emit event
   const confirmation = { event: { data: [userID], method: 'RegisteredForEncoding' } }
@@ -204,13 +206,14 @@ async function _registerAttestor (user, { name, nonce }, status, args) {
   const keyBuf = Buffer.from(attestorKey, 'hex')
   user.attestorKey = keyBuf.toString('hex')
   user.attestorForm = form
-  const attestorID = userID
+  user.attestorJobs = {}
   // Emit event
   const confirmation = { event: { data: [userID], method: 'RegisteredForAttesting' } }
   const event = [confirmation]
   handlers.forEach(([name, handler]) => handler(event))
   // try to activate draft contracts and check attestor jobs
-  giveAttestorNewJob({ attestorID }, log)
+  DB.idleAttestors.push(userID)
+  giveAttestorNewJob({ attestorID: userID }, log)
   tryActivateDraftContracts(log)
 }
 async function unpublishPlan (user, { name, nonce }, status, args) {
@@ -250,24 +253,22 @@ async function _hostingStarts (user, { name, nonce }, status, args) {
   const userID = user.id
   const contract = getContractByID(contractID)
   const plan = getPlanByID(contract.plan)
-  const hosters = contract.providers.hosters
+  const { hosters, attestors, encoders, activeHosters } = contract.providers
   if (!hosters.includes(userID)) return log({ type: 'chain', body: [`Error: this user can not call this function`] })
   // store to contract's active hosters
-  if (!contract.providers.activeHosters.includes(userID)) contract.providers.activeHosters.push(userID)
+  if (!activeHosters.includes(userID)) activeHosters.push(userID)
   // add to hostings
   DB.hostings[userID] ? DB.hostings[user.id].push(contractID) : DB.hostings[user.id] = [contractID]
+
   // for each hostingStarts we pay attestor(1/3), this hoster (full), encoders (full, but just once)
-  const encoders = contract.providers.encoders
-  for (var i = 0; i < encoders.length; i++) {
-    // encoders finished their job, make them idle again
-    if (!DB.idleEncoders.includes(encoders[i])) DB.idleEncoders.push(encoders[i])
-    tryActivateDraftContracts(log)
+  const doneJob = `NewContract${contractID}`
+  // Remove Encoders' done jobs
+  encoders.map(id => removeDoneJob({ id, jobsType: 'encoderJobs', doneJob, idle: DB.idleEncoders, action: tryActivateDraftContracts(log)}))
+  // Remove Attestors' done jobs
+  if (activeHosters.length === hosters.length) {
+    attestors.map(id => removeDoneJob({ id, jobsType: 'attestorJobs', doneJob, idle: DB.idleAttestors, action: giveAttestorNewJob({ attestorID: id }, log) }))
   }
-  if (contract.providers.activeHosters.length === hosters.length) {
-    const attestorID = contract.providers.attestor
-    // atestor finished their job, make them idle again
-    if (!DB.idleAttestors.includes(attestorID)) giveAttestorNewJob({ attestorID }, log)
-  }
+
   // Emit event
   const confirmation = { event: { data: [contractID, userID], method: 'HostingStarted' } }
   const event = [confirmation]
@@ -304,7 +305,9 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
   if (user.id !== storageChallenge.attestor) return log({ type: 'chain', body: [`Only the attestor can submit this storage challenge`] })
   // attestor finished job, add them to idleAttestors again
   const attestorID = storageChallenge.attestor
-  if (!DB.idleAttestors.includes(attestorID)) giveAttestorNewJob({ attestorID }, log)
+  const doneJob = `NewStorageChallenge${storageChallengeID}`
+  const opts = { id: attestorID, jobsType: 'attestorJobs', doneJob, idle: DB.idleAttestors, action: giveAttestorNewJob({ attestorID }, log) }
+  removeDoneJob(opts)
   // @TODO validate proof
   const isValid = validateProof(hashes, signature, storageChallenge)
   let proofValidation
@@ -342,7 +345,9 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
   if (!performanceChallenge.attestors.includes(user.id)) return log({ type: 'chain', body: [`Only selected attestors can submit this performance challenge`] })
   // attestor finished job, add them to idleAttestors again
   const attestorID = user.id
-  if (!DB.idleAttestors.includes(attestorID)) giveAttestorNewJob({ attestorID }, log)
+  const doneJob = `NewPerformanceChallenge${performanceChallengeID}`
+  const opts = { id: attestorID, jobsType: 'attestorJobs', doneJob, idle: DB.idleAttestors, action: giveAttestorNewJob({ attestorID }, log) }
+  removeDoneJob(opts)
   // emit events
   if (report) response = { event: { data: [performanceChallengeID], method: 'PerformanceChallengeConfirmed' } }
   else response = { event: { data: [performanceChallengeID], method: 'PerformanceChallengeFailed' } }
@@ -377,13 +382,17 @@ async function tryActivateDraftContracts (log) {
     // remove contract from draftContractsQueue
     const contractID = DB.draftContractsQueue.shift()
     const contract = getContractByID(contractID)
-    const size = setSize*64 //assuming each chunk is 64kb
     const plan = getPlanByID(contract.plan)
+    console.log('Getting providers')
     const providers = getProviders({ plan }, log)
     if (!providers) {
       DB.draftContractsQueue.unshift(contractID)
       return log({ type: 'chain', body: [`not enough providers available for this feed`] })
     }
+     // add jobs to provider and remove from idle if ! hasCapacity
+     const newJob = `NewContract${contractID}`
+     addJobsToProviders({ providers, newJob })
+
     contract.providers = providers
     contract.providers.activeHosters = []
     // emit event
@@ -395,6 +404,37 @@ async function tryActivateDraftContracts (log) {
     plan.contracts.push(contractID)
     // follow up action
     scheduleContractFollowUp({ plan, contract }, log)
+  }
+}
+function addJobsToProviders ({ providers, newJob }) {
+  const { encoders, hosters, attestors } = providers
+  attestors.map(id => {
+    const opts = { providerID: id, max: 5, jobsType: 'attestorJobs'}
+    addNewJob({ newJob, opts, idleProviders: DB.idleAttestors })
+  })
+  encoders.map(id => {
+    const opts = { providerID: id, max: 3, jobsType: 'encoderJobs'}
+    addNewJob({ newJob, opts, idleProviders: DB.idleEncoders })
+  })
+  hosters.map(id => {
+    const hoster = getUserByID(id)
+    const opts = { providerID: id, max: hoster.hosterForm.idleStorage, jobsType: 'hosterJobs'}
+    addNewJob({ newJob, opts, idleProviders: DB.idleHosters })
+  })
+}
+function addNewJob ({ newJob, opts, idleProviders }) {
+  const id = opts.providerID
+  const provider = getUserByID(id)
+  const providerJobs = provider[opts.jobsType]
+  providerJobs[newJob] = true
+  if (!hasCapacity(opts)) idleProviders.splice(id, 1)
+}
+function removeDoneJob ({ id, jobsType, doneJob, idle: idleProviders, action }) {
+  const providerJobs = getUserByID(id)[jobsType]
+  if (providerJobs[doneJob]) {
+    delete providerJobs[doneJob]
+    idleProviders.push(id)
+    action
   }
 }
 function findAdditionalProviders (contractID, log) {
@@ -412,33 +452,26 @@ function getProviders ({ plan }, log) {
   if (!DB.idleAttestors.length) return log({ type: 'chain', body: [`missing attestors`] })
   if (DB.idleEncoders.length < 3) return log({ type: 'chain', body: [`missing encoders`] })
   if (DB.idleHosters.length < 3) return log({ type: 'chain', body: [`missing hosters`] })
-  const size = setSize*64 //assuming each chunk is 64kb
+
   const avoid = makeAvoid({ plan })
+
+  // get 1 attestor
+  const attestorAmount = 1
+  const attestorOpts = { idleProviders: DB.idleAttestors, role: 'attestor', amount: attestorAmount, avoid, plan, log }
+  const attestors = select(attestorOpts)
+  if (!attestors.length) return log({ type: 'chain', body: [`insufficient matching attestors`] })
   // get 3 encoders
   const encoderAmount = 3
-  const hosterAmount = 3
-  const attestorAmount = 1
-
-  const encoderOpts = { idleProviders: DB.idleEncoders, amount: encoderAmount, doesQualify: doesEncoderQualifyForAJob, avoid, plan, log }
+  const encoderOpts = { idleProviders: DB.idleEncoders, role: 'encoder', amount: encoderAmount, avoid, plan, log }
   const encoders = select(encoderOpts)
-  if (!encoders.length === encoderAmount) return log({ type: 'chain', body: [`insuffucient matching encoders`] })
+  if (!encoders.length === encoderAmount) return log({ type: 'chain', body: [`insufficient matching encoders`] })
   // get 3 hosters
-  const hosterOpts = { size, idleProviders: DB.idleHosters, amount: hosterAmount, doesQualify: doesHosterQualifyForAJob, avoid, plan, log }
+  const hosterAmount = 3
+  const hosterOpts = { idleProviders: DB.idleHosters, role: 'hoster', amount: hosterAmount, avoid, plan, log }
   const hosters = select(hosterOpts)
-  if (!hosters.length === hosterAmount) {
-    revertEncoders({ encoders, log })
-    return log({ type: 'chain', body: [`insuffucient matching hosters`] })
-  }
-  reduceIdleStorage(hosters, size)
-  // get 1 attestor
-  const attestorOpts = { idleProviders: DB.idleAttestors, amount: attestorAmount, doesQualify: doesAttestorQualifyForAJob, avoid, plan, log }
-  const [attestor] = select(attestorOpts)
-  if (!attestor) {
-    revertEncoders({ encoders, log })
-    revertHosters({ hosters, size })
-    return log({ type: 'chain', body: [`insuffucient matching attestors`] })
-  }
-  return { encoders, hosters, attestor }
+  if (!hosters.length === hosterAmount) return log({ type: 'chain', body: [`insufficient matching hosters`] })
+
+  return { encoders, hosters, attestors }
 }
 function getRandom (items) {
   if (!items.length) return
@@ -470,45 +503,29 @@ function validateProof (hashes, signature, storageChallenge) {
   const chunks = storageChallenge.chunks
   if (`${chunks.length}` === `${hashes.length}`) return true
 }
-function select ({ size, idleProviders, amount, doesQualify, avoid, plan, log }) {
+function select ({ idleProviders, role, amount, avoid, plan, log }) {
+  console.log('Starting to select', role)
   idleProviders.sort(() => Math.random() - 0.5) // @TODO: improve randomness
   const selectedProviders = []
-  const indexes = []
   for (var i = 0; i < idleProviders.length; i++) {
     const providerID = idleProviders[i]
     if (avoid[providerID]) continue // if providerID is in avoid, don't select it
     const provider = getUserByID(providerID)
-    if (doesQualify({ size, plan, provider })) {
+    var opts
+    if (role === 'attestor') opts = { providerID, max: 5, jobsType: 'attestorJobs'}
+    if (role === 'encoder') opts = { providerID, max: 3, jobsType: 'encoderJobs'}
+    if (role === 'hoster') opts = { providerID, max: provider.hosterForm.idleStorage, jobsType: 'hosterJobs'}
+    if (doesQualify({ plan, form: provider[`${role}Form`] }) && hasCapacity(opts)) {
       selectedProviders.push(providerID)
       avoid[providerID] = true
-      indexes.push(i)
-      if (indexes.length === amount) {
-        indexes.forEach(index => { idleProviders.splice(index, 1) })
-        return selectedProviders
-      }
+      if (selectedProviders.length === amount) return selectedProviders
     }
   }
   return []
 }
-function doesEncoderQualifyForAJob ({ plan, provider }) {
-  const form = provider.encoderForm
+function doesQualify ({ plan, form }) {
   const { from, until, importance, config, schedules } =  plan
   if (isAvailableFromUntil({ from, until, form })) return true
-}
-function doesHosterQualifyForAJob ({ size, plan, provider }) {
-  const hoster = provider
-  const form = provider.hosterForm
-  const { from, until, importance, config, schedules } =  plan
-  if ((size <= hoster.hosterForm.idleStorage) && (isAvailableFromUntil({ from, until, form }))) {
-    return true
-  }
-}
-function doesAttestorQualifyForAJob ({ plan, provider }) {
-  const form = provider.attestorForm
-  const { from, until, importance, config, schedules } =  plan
-  if (isAvailableFromUntil({ from, until, form })) {
-    return true
-  }
 }
 function isAvailableFromUntil ({ from, until, form: providerForm }) {
   const providerFrom = Date.parse(providerForm.from)
@@ -523,14 +540,7 @@ function isAvailableFromUntil ({ from, until, form: providerForm }) {
     return true
   }
 }
-function reduceIdleStorage (hosters, size) {
-  hosters.forEach(hosterID => {
-    const hoster = getUserByID(hosterID)
-    hoster.hosterForm.idleStorage -= size
-  })
-}
 function giveAttestorNewJob ({ attestorID }, log) {
-  DB.idleAttestors.push(attestorID)
   if (DB.attestorJobs.length) {
     const next = DB.attestorJobs[0]
     console.log('Get new jobs', JSON.stringify(next))
@@ -576,18 +586,7 @@ function makeAvoid ({ plan }) {
   })
   return avoid
 }
-function revertEncoders ({ encoders, log }) {
-  encoders.forEach(encoderID => {
-    DB.idleEncoders.unshift(encoderID)
-  })
-}
-function revertHosters ({ hosters, size }) {
-  hosters.forEach(hosterID => {
-    DB.idleHosters.unshift(hosterID)
-    const hoster = getUserByID(hosterID)
-    hoster.hosterForm.idleStorage += size
-  })
-}
+
 function emitDropHosting ({ feedID, hosterID }, log) {
   // emit event to notify hoster(s) to stop hosting
   const dropHosting = { event: { data: [feedID, hosterID], method: 'DropHosting' } }
@@ -624,11 +623,26 @@ function getAttestorsForChallenge ({ amount, avoid }, log) {
     selectedAttestors.push(attestorID)
     indexes.push(i)
     if (indexes.length === amount) {
-      indexes.forEach(index => { DB.idleAttestors.splice(index, 1) })
+      indexes.forEach(index => {
+        // remove from idleAttestors if no capacity left
+        if (!hasCapacity({ providerID: attestorID, max: 5, jobsType: 'attestorJobs'})) DB.idleAttestors.splice(index, 1) }
+      )
       return selectedAttestors
     }
   }
   return []
+}
+
+function hasCapacity ({ providerID, max, jobsType }) {
+  console.log('Checking if has capacity')
+  const provider = getUserByID(providerID)
+  console.log('jobsType', jobsType, provider[jobsType])
+  if (jobsType === 'attestorJobs' && Object.keys(provider[jobsType]).length < max) return true
+  if (jobsType === 'encoderJobs' && Object.keys(provider[jobsType]).length < max) return true
+  if (jobsType === 'hosterJobs') {
+      const size = setSize*64 //assuming each chunk is 64kb
+    if (provider.hosterForm.idleStorage > size) return true
+  }
 }
 
 
@@ -690,7 +704,8 @@ async function scheduleContractFollowUp ({ plan, contract }, log) {
       const failedHosters = selectedHosters.filter(hoster => !activeHosters.includes(hoster))
       failedHosters.map(hoster => emitDropHosting({ feedID: contract.feed, hosterID: hoster}, log))
       // findAdditionalProviders(contractID, log)
-      giveAttestorNewJob({attestor: contract.providers.attestor}, log)
+      const [attestorID] = contract.providers.attestors
+      giveAttestorNewJob({ attestorID }, log)
     }
   }
   const schedule = await scheduleAction

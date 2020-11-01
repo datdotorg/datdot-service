@@ -41,7 +41,7 @@ async function role (profile, APIS) {
     if (event.method === 'NewContract') {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)
-      const attestorID = contract.providers.attestor
+      const [attestorID] = contract.providers.attestors
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress !== myAddress) return
       log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
