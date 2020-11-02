@@ -1,5 +1,9 @@
 module.exports = registrationForm
 
+// ENCODER cpu => 1 (10%) + 9
+// ATTESTOR bandwidth => 1
+// HOSTER storage, bandwidth => 1
+
 // See example https://pastebin.com/5nAb6XHQ
 function registrationForm (role, settings) {
   const { from, until, region = 'global'} = settings
@@ -10,6 +14,7 @@ function registrationForm (role, settings) {
     registration.storage = 1000000000 //1 GB to bytes is 1e+9
     registration.idleStorage = 1000000000 // at the registration all the storage is idle
   }
+  // @TODO registration.capacity = 2 // in the UI for attestor this means: x CPU, x bandwidth...
   registration.from = from
   registration.until = until
   registration.schedules = [{

@@ -44,7 +44,7 @@ async function role (profile, APIS) {
       const [attestorID] = contract.providers.attestors
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress !== myAddress) return
-      log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+      log({ type: 'chainEvent', body: [`Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`] })
       const { feedKey, encoderKeys, hosterKeys } = await getContractData(contract)
       const results = await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, contractID }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
       log({ type: 'attestor', body: [`Verify encoding done: ${results}`] })
@@ -60,7 +60,7 @@ async function role (profile, APIS) {
       attestors.forEach(async (attestorID) => {
         const attestorAddress = await chainAPI.getUserAddress(attestorID)
         if (attestorAddress === myAddress) {
-          log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+          log({ type: 'chainEvent', body: [`Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}`] })
           const contractID = performanceChallenge.contract
           const contract = await chainAPI.getContractByID(contractID)
           const feedID = contract.feed
@@ -87,7 +87,7 @@ async function role (profile, APIS) {
       const attestorID = storageChallenge.attestor
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress === myAddress) {
-        log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'chainEvent', body: [`Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}`] })
         const data = await getStorageChallengeData(storageChallenge)
         data.account = vaultAPI
         data.attestorKey = attestorKey

@@ -22,11 +22,14 @@ async function role (profile, APIS) {
   await chainAPI.listenToEvents(handleEvent)
 
   // EVENTS
-  async function isForMe (peerids) {
-    for (var i = 0, len = peerids.length; i < len; i++) {
-      const id = peerids[i]
+  async function isForMe (encoders, event) {
+    for (var i = 0, len = encoders.length; i < len; i++) {
+      const id = encoders[i]
       const peerAddress = await chainAPI.getUserAddress(id)
-      if (peerAddress === myAddress) return true
+      if (peerAddress === myAddress) {
+        log({ type: 'chainEvent', body: [`Encoder ${id}:  Event received: ${event.method} ${event.data.toString()}`] })
+        return true
+      }
     }
   }
   async function handleEvent (event) {
@@ -41,8 +44,8 @@ async function role (profile, APIS) {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)
       const encoders = contract.providers.encoders
-      if (!await isForMe(encoders)) return
-      log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+      if (!await isForMe(encoders, event)) return
+      // log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       const { attestorKey, feedKey, ranges } = await getHostingData(contract)
       const data = { contractID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges }
       const encoding = await serviceAPI.encode(data).catch((error) => log({ type: 'error', body: [`error: ${error}`] }))

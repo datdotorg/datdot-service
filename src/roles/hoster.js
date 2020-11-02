@@ -21,11 +21,14 @@ async function role (profile, APIS) {
   await chainAPI.listenToEvents(handleEvent)
 
   // EVENTS
-  async function isForMe (peerIDs) {
-    for (var i = 0, len = peerIDs.length; i < len; i++) {
-      const id = peerIDs[i]
+  async function isForMe (hosters, event) {
+    for (var i = 0, len = hosters.length; i < len; i++) {
+      const id = hosters[i]
       const peerAddress = await chainAPI.getUserAddress(id)
-      if (peerAddress === myAddress) return true
+      if (peerAddress === myAddress) {
+        log({ type: 'hoster', body: [`Hoster ${id}:  Event received: ${event.method} ${event.data.toString()}`] })
+        return true
+      }
     }
   }
   async function handleEvent (event) {
@@ -40,8 +43,8 @@ async function role (profile, APIS) {
       const [contractID] = event.data
       const contract = await chainAPI.getContractByID(contractID)
       const hosters = contract.providers.hosters
-      if (!await isForMe(hosters)) return
-      log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+      if (!await isForMe(hosters, event)) return
+      // log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       const { feedKey, attestorKey, plan } = await getHostingData(contract)
       const data = { contractID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan }
       await serviceAPI.host(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
@@ -52,7 +55,7 @@ async function role (profile, APIS) {
       const [feedID, hosterID] = event.data
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
-        log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'hoster', body: [`Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}`] })
         const feedKey = await chainAPI.getFeedKey(feedID)
         await serviceAPI.removeFeed({ feedKey, account: vaultAPI }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
       }
@@ -65,7 +68,7 @@ async function role (profile, APIS) {
       const hosterID = storageChallenge.hoster
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
-        log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'hoster', body: [`Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}`] })
         const data = await getStorageChallengeData(storageChallenge, contract)
         data.account = vaultAPI
         data.hosterKey = hosterKey

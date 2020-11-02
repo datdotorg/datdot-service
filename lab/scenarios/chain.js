@@ -169,7 +169,7 @@ async function _registerHoster(user, { name, nonce }, status, args) {
   const keyBuf = Buffer.from(hosterKey, 'hex')
   user.hosterKey = keyBuf.toString('hex')
   user.hosterForm = form
-  user.hosterJobs = {}
+  user.hosterJobs = {} // needs identifiers so we can remove cancelled plans
   DB.idleHosters.push(userID)
   tryActivateDraftContracts(log) // see if enough providers for new contract
   // Emit event
@@ -247,6 +247,8 @@ async function _hostingStarts (user, { name, nonce }, status, args) {
   const contract = getContractByID(contractID)
   const plan = getPlanByID(contract.plan)
   const { hosters, attestors, encoders, activeHosters } = contract.providers
+  // @TODO how to store failed hosters so they don't submit hostingStarted later
+  // contract.failedHosters.push...
   if (!hosters.includes(userID)) return log({ type: 'chain', body: [`Error: this user can not call this function`] })
   if (!activeHosters.includes(userID)) activeHosters.push(userID) // store to contract's active hosters
   // Emit event
@@ -255,7 +257,7 @@ async function _hostingStarts (user, { name, nonce }, status, args) {
   handlers.forEach(([name, handler]) => handler(event))
   // remove done jobs for attestor and encoders
   removeJobs({ doneJob: `NewContract${contractID}`, activeHosters, hosters, encoders, attestors }, log)
-  // schedule challenges
+  // schedule challenges @TODO only for not failed hosters
   scheduleChallenges({ plan, user, name, nonce, contractID, status })
 }
 /*----------------------
@@ -506,9 +508,16 @@ function isAvailableFromUntil ({ from, until, provider, role }) {
   ) return true
 }
 function hasCapacity ({ provider, role }) {
+  // @TODO
+  const attestorCap // formResources devided by resources needed for a job
+  const encoderCap
+  const hosterCap
   if (role === 'attestor' && Object.keys(provider['attestorJobs']).length < 10) return true
   if (role === 'encoder' && Object.keys(provider['encoderJobs']).length < 10) return true
   if (role === 'hoster' && (provider.hosterForm.idleStorage > size)) return true
+  // if (role === 'attestor' && Object.keys(provider['attestorJobs']).length < 1) return true
+  // if (role === 'encoder' && Object.keys(provider['encoderJobs']).length < 1) return true
+  // if (role === 'hoster' && (provider.hosterForm.idleStorage > size) && Object.keys(provider['hosterJobs']).length < 1) return true
 }
 function giveAttestorNewJob ({ attestorID }, log) {
   if (DB.attestorsJobQueue.length) {
@@ -615,7 +624,7 @@ function cancelContracts (plan) {
     const contractID = contracts[i]
     const contract = getContractByID(contractID)
     contract.providers.activeHosters.map((hosterID) => emitDropHosting({ contractID, hosterID }, log))
-    for (var j = 0; j < DB.draftContracts; j++) {
+    for (var j = 0; j < DB.draftContractsQueue; j++) {
       const draftContract = draftContract[j]
       if (contractID === draftContract) DB.draftContractsQueue.splice(j, 1)
     }
@@ -635,13 +644,12 @@ async function schedulePlan ({ plan }, log) {
 }
 async function scheduleChallenges ({ plan, user, name, nonce, contractID, status }) {
   const schedulingChallenges = () => {
-    if (!plan.schedules.length) {}
-    else {} // plan schedules based on plan.schedules
-
     // schedule new challenges ONLY while the contract is active (plan.until.time > new Date())
     const planUntil = Date.parse(plan.until.time)
     const timeNow = Date.parse(new Date())
     if (!(planUntil > timeNow)) return
+    // @TODO if (!plan.schedules.length) {}
+    // else {} // plan schedules based on plan.schedules
     const planID = plan.id
     const from = plan.from
     const hosterID = user.id
