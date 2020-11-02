@@ -51,7 +51,7 @@ providers: {
 const storageChallenges = [] // Storage Proof
 /*
 {
-  contract: 'contractID', 
+  contract: 'contractID',
   hoster,
   chunks: [1,4,6]
 }
@@ -79,7 +79,7 @@ const idleHosters = [] // user ids
 const idleEncoders = [] // user ids
 const idleAttestors = [] // user ids
 const draftContractsQueue = [] // { planID, feedID, set }
-const attestorJobs = [] //{ fnName: 'makePerformanceChallenge', opts: contractID ) }
+const attestorsJobQueue = [] //{ fnName: 'makePerformanceChallenge', opts: contractID ) }
 const hostings = {} // userID: [contractID1, contractID2]
 /*****************************************************************************/
 const DB = {
@@ -99,6 +99,6 @@ const DB = {
   idleHosters,
   idleEncoders,
   idleAttestors,
-  attestorJobs
+  attestorsJobQueue
 }
 module.exports = DB

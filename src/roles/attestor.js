@@ -75,14 +75,15 @@ async function role (profile, APIS) {
           const data = { account: vaultAPI, randomChunks, feedKey }
           const report = await serviceAPI.checkPerformance(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
           const nonce = await vaultAPI.getNonce()
+          log({ type: 'attestor', body: [`Submitting performance challenge`] })
           await chainAPI.submitPerformanceChallenge({ performanceChallengeID, report, signer, nonce })
         }
       })
     }
     if (event.method === 'NewStorageChallenge') {
-      log({ type: 'hoster', body: [`NewStorageChallenge event for attestor`] })
       const [storageChallengeID] = event.data
       const storageChallenge = await chainAPI.getStorageChallengeByID(storageChallengeID)
+      log({ type: 'hoster', body: [`NewStorageChallenge event for attestor ${JSON.stringify(storageChallenge)}`] })
       const attestorID = storageChallenge.attestor
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress === myAddress) {
@@ -96,6 +97,7 @@ async function role (profile, APIS) {
           const response = makeResponse({ proofs, storageChallengeID})
           const nonce = vaultAPI.getNonce()
           const opts = { response, signer, nonce }
+          log({ type: 'attestor', body: [`Submitting storage challenge`] })
           await chainAPI.submitStorageChallenge(opts)
         }
       }

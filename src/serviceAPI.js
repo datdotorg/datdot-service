@@ -8,7 +8,7 @@ function datdotService (profile) {
     encode,
     verifyEncoding,
     // getStorageChallenge,
-    removeFeed,    
+    removeFeed,
     sendStorageChallengeToAttestor,
     verifyStorageChallenge,
     checkPerformance
@@ -22,10 +22,8 @@ function datdotService (profile) {
   /* ----------------------------------------------------------------
                  BEFORE HOSTING => ENCODING, VERIFYING, STORING
   ------------------------------------------------------------------ */
-  async function encode (data) {
-    const { contractID, account, attestorKey, encoderKey, feedKey: feedKeyBuffer, ranges } = data
-    log({ type: 'serviceAPI', body: [`Encode`] })
-
+  async function encode ({ contractID, account, attestorKey, encoderKey, feedKey: feedKeyBuffer, ranges }) {
+    log({ type: 'serviceAPI', body: [`Encode!`] })
     return account.encoder.encodeFor(contractID, attestorKey, encoderKey, feedKeyBuffer, ranges)
   }
 
@@ -46,15 +44,16 @@ function datdotService (profile) {
   async function host (data) {
     const { account, contractID, feedKey, hosterKey, attestorKey, plan } = data
     const opts = { contractID, feedKey, hosterKey, attestorKey, plan }
-    log({ type: 'serviceAPI', body: [`Host!`] })
+    log({ type: 'serviceAPI', body: [`Host! ${JSON.stringify(opts)}`] })
 
     return await account.hoster.hostFor(opts)
   }
 
   async function removeFeed ({ feedKey, account }) {
-    log({ type: 'serviceAPI', body: [`DropHosting`] })
     const hasKey = await account.hoster.hasKey(feedKey)
-    if (hasKey) return await account.hoster.removeFeed(feedKey)
+    log({ type: 'serviceAPI', body: [`DropHosting hasKey? ${hasKey}`] })
+    // @TODO fix errors in hoster storage when trying to remove feed
+    // if (hasKey) return await account.hoster.removeFeed(feedKey)
     // @TODO ELSE => cancelHostFor process (disconnect from attestor and removeKey) <= for hosters that didn't start hosting on time
   }
 
@@ -70,11 +69,13 @@ function datdotService (profile) {
 
   async function sendStorageChallengeToAttestor (data) {
     const { account, hosterKey, storageChallenge, feedKey, attestorKey } = data
+    log({ type: 'serviceAPI', body: [`send storage to attestor!`] })
     return account.hoster.sendStorageChallenge({ storageChallenge, hosterKey, feedKey, attestorKey })
   }
 
   async function verifyStorageChallenge (data) {
     const { account, attestorKey, hosterKey, feedKey, storageChallenge } = data
+    log({ type: 'serviceAPI', body: [`verify storage!`] })
     // @TODO prepare the response: hash, proof etc. instead of sending the full chunk
     return await account.attestor.verifyStorageChallenge({ storageChallenge, attestorKey, feedKey, hosterKey })
   }

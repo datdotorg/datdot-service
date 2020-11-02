@@ -43,7 +43,8 @@ async function role (profile, APIS) {
       if (!await isForMe(hosters)) return
       log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       const { feedKey, attestorKey, plan } = await getHostingData(contract)
-      await serviceAPI.host({ contractID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+      const data = { contractID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan }
+      await serviceAPI.host(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
       const nonce = vaultAPI.getNonce()
       await chainAPI.hostingStarts({ contractID, signer, nonce })
     }
@@ -52,7 +53,7 @@ async function role (profile, APIS) {
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
         log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
-        const feedKey = await chainAPI.getFeedByID(feedID).publickey
+        const feedKey = await chainAPI.getFeedKey(feedID)
         await serviceAPI.removeFeed({ feedKey, account: vaultAPI }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
       }
     }

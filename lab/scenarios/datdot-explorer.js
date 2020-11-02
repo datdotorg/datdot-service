@@ -99,8 +99,6 @@ function show (LOG) {
         <div> event HostingStarted: ${isLog('Event received: HostingStarted')} (3 per contract)</div>
         <br>
         <div> Storage challenge emitted: ${isLog('"method":"NewStorageChallenge"')}</div>
-        <div> All NewStorage events for hosters ${isLog('NewStorageChallenge event for hoster')}</div>
-        <div> All NewStorage events for attestors ${isLog('NewStorageChallenge event for attestor')}</div>
         <div> Event received (attestor & hoster) ${isLog('Event received: NewStorageChallenge')}</div>
         <div> Attestor: starting verifyStorageChallenge ${isLog('Starting verifyStorageChallenge')}</div>
         <div> Hoster: starting Starting sendStorageChallenge ${isLog('Starting sendStorageChallenge')}</div>

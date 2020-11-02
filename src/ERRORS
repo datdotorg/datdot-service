@@ -14,3 +14,8 @@ TIMEOUT in the logs
 (node:30200) [DEP0018] DeprecationWarning: Unhandled promise rejections are deprecated. In the future, promise rejections that are not handled will terminate the Node.js process with a non-zero exit code.
 
 ----------------------------------------------
+
+HOSTER Storage
+
+Error: TypeError: existing.filter is not a function
+Error: TypeError: this.feed.destroy() is not a function

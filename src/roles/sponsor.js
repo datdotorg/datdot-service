@@ -18,7 +18,6 @@ async function role (profile, APIS) {
   async function handleEvent (event) {
     if (event.method === 'FeedPublished') {
       const [feedID] = event.data
-      // log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
 
       const nonce = await vaultAPI.getNonce()
@@ -33,7 +32,6 @@ async function role (profile, APIS) {
       const { sponsor: sponsorID } = await chainAPI.getPlanByID(planID)
       const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
       if (sponsorAddress === myAddress) {
-        // log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
         log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       }
     }
@@ -44,9 +42,7 @@ async function role (profile, APIS) {
       const { sponsor: sponsorID } = await chainAPI.getPlanByID(planID)
       const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
       if (sponsorAddress === myAddress) {
-        // log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
         log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
-
       }
     }
     if (event.method === 'PerformanceChallengeConfirmed') {
@@ -92,7 +88,7 @@ async function role (profile, APIS) {
       feeds,
       from       : new Date('October 26, 2020 21:33'), // or new Date('Apr 30, 2000')
       until: {
-        time     : new Date('October 26, 2021 23:55:00'), // date
+        time     : new Date('Nov 26, 2021 23:55:00'), // date
         budget   : '',
         traffic  : '',
         price    : '',

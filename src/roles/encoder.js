@@ -44,7 +44,8 @@ async function role (profile, APIS) {
       if (!await isForMe(encoders)) return
       log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       const { attestorKey, feedKey, ranges } = await getHostingData(contract)
-      const encoding = await serviceAPI.encode({ contractID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges }).catch((error) => log({ type: 'error', body: [`error: ${error}`] }))
+      const data = { contractID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges }
+      const encoding = await serviceAPI.encode(data).catch((error) => log({ type: 'error', body: [`error: ${error}`] }))
       if (!encoding) { return log({ type: 'encoder', body: [`Encoding job could not be finished`] }) }
       log({ type: 'encoder', body: [`Encoding done`] })
     }
