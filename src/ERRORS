@@ -19,3 +19,8 @@ HOSTER Storage
 
 Error: TypeError: existing.filter is not a function
 Error: TypeError: this.feed.destroy() is not a function
+
+-----------------------------------
+
+unhandledRejection Error: You are already receiving this stream
+// when same attestor for 2 contracts (maybe bc paired with same encoder but for different chunks)

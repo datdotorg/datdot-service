@@ -597,15 +597,13 @@ function getAttestorsForChallenge ({ amount, avoid }, log) {
   const selectedAttestors = []
   const indexes = []
   for (var i = 0, len = DB.idleAttestors.length; i < len; i++) {
-    const attestorID = DB.idleAttestors[i]
-    if (avoid[attestorID]) continue // if providerID is in avoid, don't select it
-    selectedAttestors.push(attestorID)
+    const id = DB.idleAttestors[i]
+    if (avoid[id]) continue // if providerID is in avoid, don't select it
+    selectedAttestors.push(id)
     indexes.push(i)
+    const provider = getUserByID(id)
     if (indexes.length === amount) {
-      indexes.forEach(index => {
-        // remove from idleAttestors if no capacity left
-        if (!hasCapacity({ provider: getUserByID(attestorID), role: 'attestor' })) DB.idleAttestors.splice(index, 1) }
-      )
+      indexes.forEach(I => { if (!hasCapacity({ provider, role: 'attestor' })) DB.idleAttestors.splice(I, 1) })
       return selectedAttestors
     }
   }
@@ -623,8 +621,6 @@ function cancelContracts (plan) {
     }
   }
 }
-// SCHEDULING
-
 async function schedulePlan ({ plan }, log) {
   const start = Date.parse(plan.from)
   const now = new Date()
@@ -655,7 +651,7 @@ async function scheduleChallenges ({ plan, user, name, nonce, contractID, status
     schedule({ action: schedulingChallenges, delay: 5, name: 'schedulingChallenges' })
   }
   const schedule = await scheduleAction
-  // challenges should not start before scheduleContractFollowUp runs through as it may drop some failed hosters
+  // @TODO challenges should not start before scheduleContractFollowUp runs through as it may drop some failed hosters
   // failed hosters should be dropped by contractFollowUp action (x blocks after new contract)
   // so scheduleChallenges should start no sooner than x blocks + something, after first hostingStarted is reported
   schedule({ action: schedulingChallenges, delay: 15, name: 'schedulingChallenges' })
