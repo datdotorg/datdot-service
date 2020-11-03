@@ -247,8 +247,6 @@ async function _hostingStarts (user, { name, nonce }, status, args) {
   const contract = getContractByID(contractID)
   const plan = getPlanByID(contract.plan)
   const { hosters, attestors, encoders, activeHosters } = contract.providers
-  // @TODO how to store failed hosters so they don't submit hostingStarted later
-  // contract.failedHosters.push...
   if (!hosters.includes(userID)) return log({ type: 'chain', body: [`Error: this user can not call this function`] })
   if (!activeHosters.includes(userID)) activeHosters.push(userID) // store to contract's active hosters
   // Emit event
@@ -416,7 +414,8 @@ function removeJob ({ id, jobsType, doneJob, idleProviders, action }) {
     action
   }
 }
-function findAdditionalProviders (contractID, log) {
+function findAdditionalProviders (contract, failedHosters, log) {
+  console.log('Additional Providers')
   // @TODO INSTEAD OF NEW CONTRACT rather select new hosters and if activeHosters than they send encoded to attestor
   // example, if you need 1 hoster => 2 activeHosters + new encoder, 1 attestor
   const failedContract = getContractByID(contractID)
@@ -487,38 +486,35 @@ function select ({ idleProviders, role, amount, avoid, plan, log }) {
   return []
 }
 function doesQualify ({ plan, provider, role }) {
-  const { from, until, importance, config, schedules } =  plan
   if (
-    isAvailableFromUntil({ from, until, provider, role }) &&
+    isAvailableFromUntil({ plan, provider, role }) &&
     hasCapacity({ provider, role })
   ) return true
 }
-function isAvailableFromUntil ({ from, until, provider, role }) {
-  const form = provider[`${role}Form`]
-  const providerFrom = Date.parse(form.from)
-  const providerUntil = Date.parse(form.until)
-  const planFrom = Date.parse(from)
-  const planUntil = Date.parse(until.time)
+function isAvailableFromUntil ({ plan, provider, role }) {
+  const providerForm = provider[`${role}Form`]
   const timeNow = Date.parse(new Date())
+  const shouldStartInThePast = ( Date.parse(plan.from) < timeNow)
+  const providerAvailNow = (Date.parse(providerForm.from) <= timeNow)
+  const providerAvailBeforePlanStart = Date.parse(providerForm.from) < Date.parse(plan.from)
+  const providerAvailOpenEnded = (providerForm.until === '')
+  const providerAvailAfterPlanEnd = (Date.parse(providerForm.until) > Date.parse(plan.until.time))
   if (
-    // plan from is in the past & provider is avail from now on || provider avail before or at plan
-    ((planFrom < timeNow && providerFrom <= timeNow) || providerFrom <= planFrom  ) &&
-    // provider avail open ended || provider avail until or after end of plan
-    (form.until === '' || providerUntil >= planUntil)
+    (providerAvailBeforePlanStart || (shouldStartInThePast && providerAvailNow)) &&
+    (providerAvailOpenEnded || providerAvailAfterPlanEnd)
   ) return true
 }
 function hasCapacity ({ provider, role }) {
-  // @TODO
-  const attestorCap // formResources devided by resources needed for a job
-  const encoderCap
-  const hosterCap
-  if (role === 'attestor' && Object.keys(provider['attestorJobs']).length < 10) return true
-  if (role === 'encoder' && Object.keys(provider['encoderJobs']).length < 10) return true
-  if (role === 'hoster' && (provider.hosterForm.idleStorage > size)) return true
-  // if (role === 'attestor' && Object.keys(provider['attestorJobs']).length < 1) return true
-  // if (role === 'encoder' && Object.keys(provider['encoderJobs']).length < 1) return true
-  // if (role === 'hoster' && (provider.hosterForm.idleStorage > size) && Object.keys(provider['hosterJobs']).length < 1) return true
+  const attestorCap = 10 // @TODO form.config.resources divided by resources needed for a job
+  const encoderCap = 10
+  const hosterCap = 1
+  if (role === 'attestor' && jobsLength(provider['attestorJobs']) < attestorCap) return true
+  if (role === 'encoder' && jobsLength(provider['encoderJobs']) < encoderCap) return true
+  if (role === 'hoster' && jobsLength(provider['hosterJobs']) < hosterCap && (provider.hosterForm.idleStorage > size) ) return true
 }
+
+function jobsLength (obj) { return Object.keys(obj).length }
+
 function giveAttestorNewJob ({ attestorID }, log) {
   if (DB.attestorsJobQueue.length) {
     const next = DB.attestorsJobQueue[0]
@@ -573,14 +569,18 @@ function makeAvoid ({ plan }) {
 }
 function emitDropHosting ({ contractID, hosterID }, log) {
   const contract = getContractByID(contractID)
+  const { hosters, activeHosters } = contract.providers
   const feedID = contract.feed
+  if (activeHosters.includes(hosterID)) {
+    activeHosters.map((id, i) => { if (id === hosterID) activeHosters.splice(i, 1) })
+  }
+  const doneJob = `NewContract${contractID}`
+  removeJob({ id: hosterID, jobsType: 'hosterJobs', doneJob, idleProviders: DB.idleHosters, action: tryActivateDraftContracts(log) })
   // emit event to notify hoster(s) to stop hosting
   const dropHosting = { event: { data: [feedID, hosterID], method: 'DropHosting' } }
   const event = [dropHosting]
   handlers.forEach(([name, handler]) => handler(event))
   log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
-  const doneJob = `NewContract${contractID}`
-  removeJob({ id: hosterID, jobsType: 'hosterJobs', doneJob, idleProviders: DB.idleHosters, action: tryActivateDraftContracts(log) })
   // @TODO ACTION find new provider for the contract instead pf tryActivateDraftContracts(log)
 }
 function emitStorageChallenge ({ storageChallengeID }, log) {
@@ -616,7 +616,7 @@ function getAttestorsForChallenge ({ amount, avoid }, log) {
       return selectedAttestors
     }
   }
-  return []
+  return [] // if no attestors, return empty
 }
 function cancelContracts (plan) {
   const contracts = plan.contracts
@@ -662,21 +662,19 @@ async function scheduleChallenges ({ plan, user, name, nonce, contractID, status
   // @TODO challenges should not start before scheduleContractFollowUp runs through as it may drop some failed hosters
   // failed hosters should be dropped by contractFollowUp action (x blocks after new contract)
   // so scheduleChallenges should start no sooner than x blocks + something, after first hostingStarted is reported
-  schedule({ action: schedulingChallenges, delay: 15, name: 'schedulingChallenges' })
+  schedule({ action: schedulingChallenges, delay: 10, name: 'schedulingChallenges' })
 }
 async function scheduleContractFollowUp ({ plan, contract }, log) {
   const schedulingContractFollowUp = () => {
     const contractID = contract.id
     const { activeHosters, hosters, attestors } = contract.providers
     if (activeHosters.length < 3) {
-      log({ type: 'chain', body: [`Making additional contract since we do not have enough hosters`] })
+      log({ type: 'chain', body: [`Contract follow up: not have enough hosters`] })
       const failedHosters = hosters.filter(hoster => !activeHosters.includes(hoster))
-      console.log('hosters', JSON.stringify(hosters))
-      console.log('activeHosters', JSON.stringify(activeHosters))
-      console.log('failedHosters', JSON.stringify(failedHosters))
+      log({ type: 'chain', body: [`Hosters ${JSON.stringify(hosters)}, activeHosters ${JSON.stringify(activeHosters)} failedHosters ${JSON.stringify(failedHosters)}`] })
       failedHosters.map(hoster => emitDropHosting({ contractID, hosterID: hoster}, log))
-      // findAdditionalProviders(contractID, log)
       const [attestorID] = attestors
+      // findAdditionalProviders(contract, failedHosters, log)
       removeJob({
         id: attestorID,
         jobsType: 'attestorJobs',
