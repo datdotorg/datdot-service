@@ -295,7 +295,7 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
     doneJob: `NewStorageChallenge${storageChallengeID}`,
     idleProviders: DB.idleAttestors,
     action: giveAttestorNewJob({ attestorID }, log)
-  })
+  }, log)
 }
 /*----------------------
   PERFORMANCE CHALLENGE
@@ -330,7 +330,7 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
     doneJob: `NewPerformanceChallenge${performanceChallengeID}`,
     idleProviders: DB.idleAttestors,
     action: giveAttestorNewJob({ attestorID: userID }, log)
-  })
+  }, log)
 }
 
 /******************************************************************************
@@ -381,7 +381,7 @@ async function tryActivateDraftContracts (log) {
   }
 }
 
-function removeJob ({ id, jobsType, doneJob, idleProviders, action }) {
+function removeJob ({ id, jobsType, doneJob, idleProviders, action }, log) {
   const provider = getUserByID(id)
   const providerJobs = provider[jobsType]
   if (providerJobs[doneJob]) {
@@ -576,7 +576,13 @@ function emitDropHosting ({ contractID, hosterID }, log) {
     activeHosters.map((id, i) => { if (id === hosterID) activeHosters.splice(i, 1) })
   }
   const doneJob = `NewContract${contractID}`
-  removeJob({ id: hosterID, jobsType: 'hosterJobs', doneJob, idleProviders: DB.idleHosters, action: tryActivateDraftContracts(log) })
+  removeJob({
+    id: hosterID,
+    jobsType: 'hosterJobs',
+    doneJob,
+    idleProviders: DB.idleHosters,
+    action: tryActivateDraftContracts(log)
+  }, log)
   // emit event to notify hoster(s) to stop hosting
   const dropHosting = { event: { data: [feedID, hosterID], method: 'DropHosting' } }
   const event = [dropHosting]
@@ -629,7 +635,7 @@ async function scheduleChallenges ({ plan, user, name, nonce, contractID, status
     // @TODO sort challenge request jobs based on priority (RATIO!) of the sponsors
     _requestStorageChallenge({ user, signingData: { name, nonce }, status, args: [contractID, hosterID] })
     _requestPerformanceChallenge({ user, signingData: { name, nonce }, status, args: [contractID, hosterID] })
-    schedule({ action: schedulingChallenges, delay: 5, name: 'schedulingChallenges' })
+    schedule({ action: schedulingChallenges, delay: 25, name: 'schedulingChallenges' })
   }
   const schedule = await scheduleAction
   // @TODO challenges should not start before scheduleContractFollowUp runs through as it may drop some failed hosters
@@ -653,8 +659,8 @@ async function scheduleContractFollowUp ({ plan, contract }, log) {
         jobsType: 'attestorJobs',
         doneJob: `NewContract${contractID}`,
         idleProviders: DB.idleAttestors,
-        action: giveAttestorNewJob({ attestorID }, log)
-      })
+        action: giveAttestorNewJob({ attestorID })
+      }, log)
     }
   }
   const schedule = await scheduleAction
@@ -669,10 +675,22 @@ function planValid ({ plan }) {
 function removeContractJobs ({ doneJob, activeHosters, hosters, encoders, attestors }, log) {
   if (activeHosters.length === hosters.length) { // if all hosters for that contract started hosting
     attestors.map(id =>
-      removeJob({ id, jobsType: 'attestorJobs', doneJob, idleProviders: DB.idleAttestors, action: giveAttestorNewJob({ attestorID: id }, log) }))
-    }
+      removeJob({
+        id,
+        jobsType: 'attestorJobs',
+        doneJob,
+        idleProviders: DB.idleAttestors,
+        action: giveAttestorNewJob({ attestorID: id })
+      }, log))
+  }
   encoders.map(id =>
-    removeJob({ id, jobsType: 'encoderJobs', doneJob, idleProviders: DB.idleEncoders, action: tryActivateDraftContracts(log)}))
+    removeJob({
+      id,
+      jobsType: 'encoderJobs',
+      doneJob,
+      idleProviders: DB.idleEncoders,
+      action: tryActivateDraftContracts(log)
+    }, log))
 }
 function makeStorageChallenge({ contract, hosterID, plan }, log) {
   var chunks = []
