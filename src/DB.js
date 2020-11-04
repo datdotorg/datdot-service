@@ -43,7 +43,8 @@ providers: {
   encoders,
   hosters,
   attestor,
-  activeHosters
+  activeHosters,
+  failedHosters
 }
 }
 */

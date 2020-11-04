@@ -109,7 +109,7 @@ function show (LOG) {
         <div> Hoster got all reponses: ${isLog('responses received from the attestor')}</div>
         <div> event StorageChallengeConfirmed: ${isLog('Event received: StorageChallengeConfirmed')} (3 per contract)</div>
         <br>
-        <div> Performance challenge requests: ${isLog('Requesting new PerformanceChallenge')}</div>
+        <div> Performance challenge requests: ${isLog('"method":"NewPerformanceChallenge"')}</div>
         <div> event PerformanceChallengeConfirmed: ${isLog('Event received: PerformanceChallengeConfirmed')} (5 per contract)</div>
         <br>
         <div> FAIL_ACK_TIMEOUT: ${isLog('FAIL_ACK_TIMEOUT')}</div>
