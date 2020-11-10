@@ -391,35 +391,39 @@ async function tryNextContractJob (log) {
     // remove contract from contractJobsQueue
     const { type, id } = DB.contractJobsQueue.shift()
     if (type === 'contract') {
-      const contractID = id
-      const contract = getContractByID(contractID)
-      const plan = getPlanByID(contract.plan)
-      const avoid = makeAvoid({ plan })
-      const amounts = { attestorAmount: 1, encoderAmount: 3, hosterAmount: 3 }
-      const providers = getProviders({ plan, avoid, amounts, newJob: `NewContract${contractID}` }, log)
-      log({ type: 'chain', body: [`Providers in tryNextContractJob: ${JSON.stringify(providers)}`] })
-      if (!providers) {
-        addToContractJobsQueue({ type: 'contract', id: contractID }, log)
-        return log({ type: 'chain', body: [`not enough providers available for this contract`] })
-      }
-      contract.providers = providers
-      contract.providers.activeHosters = []
-      contract.providers.failedHosters = []
-      contract.amendments = []
-      plan.contracts.push(contractID) // add contract to the plan
-      // schedule follow up action
-      scheduleContractFollowUp({ contractID }, log)
-      log({ type: 'chain', body: [`New Contract ${JSON.stringify(contract)}`] })
-      // emit event
-      const NewContract = { event: { data: [contractID], method: 'NewContract' } }
-      const event = [NewContract]
-      handlers.forEach(([name, handler]) => handler(event))
-      log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
+      findProvidersAndEmitContract({ contractID: id }, log)
     }
     if (type === 'amendment') {
       console.log('Amendment')
+      findProvidersAndEmitAmendment({}, log)
     }
   }
+}
+
+function findProvidersAndEmitContract ({ contractID }, log) {
+  const contract = getContractByID(contractID)
+  const plan = getPlanByID(contract.plan)
+  const avoid = makeAvoid({ plan })
+  const amounts = { attestorAmount: 1, encoderAmount: 3, hosterAmount: 3 }
+  const providers = getProviders({ plan, avoid, amounts, newJob: `NewContract${contractID}` }, log)
+  log({ type: 'chain', body: [`Providers in tryNextContractJob: ${JSON.stringify(providers)}`] })
+  if (!providers) {
+    addToContractJobsQueue({ type: 'contract', id: contractID }, log)
+    return log({ type: 'chain', body: [`not enough providers available for this contract`] })
+  }
+  contract.providers = providers
+  contract.providers.activeHosters = []
+  contract.providers.failedHosters = []
+  contract.amendments = []
+  plan.contracts.push(contractID) // add contract to the plan
+  // schedule follow up action
+  scheduleContractFollowUp({ contractID }, log)
+  log({ type: 'chain', body: [`New Contract ${JSON.stringify(contract)}`] })
+  // emit event
+  const NewContract = { event: { data: [contractID], method: 'NewContract' } }
+  const event = [NewContract]
+  handlers.forEach(([name, handler]) => handler(event))
+  log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
 }
 
 function removeJob ({ id, jobsType, doneJob, idleProviders, action }, log) {
@@ -683,9 +687,7 @@ async function scheduleContractFollowUp ({ contractID }, log) {
   const contract = getContractByID(contractID)
   const schedulingContractFollowUp = () => {
     const { activeHosters, hosters, attestors, encoders, failedHosters } = contract.providers
-    console.log({ contract })
-    // check only if attestor reported back or not => if not, we assume attestor failed & make new contract
-    if (!activeHosters.length && !failedHosters.length) {
+    if (!activeHosters.length && !failedHosters.length) { // we are checking if attestor reported back or not => if not (then no active or failed hosters) => we assume attestor failed & make new contract
       log({ type: 'chain', body: [`Contract execution was not succesful!`] })
       console.log('Not successful, let us repeat the process')
       // remove jobs from all providers
