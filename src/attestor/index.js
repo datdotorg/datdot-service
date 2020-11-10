@@ -64,10 +64,14 @@ module.exports = class Attestor {
 
       // check the encoded data and if ok, send them to the hosters
       const verifiedAndStored = []
+      var encodedCount = 0
       log2encoder({ type: 'attestor', body: ['Start receiving data from the encoder'] })
+
+      console.log('verifyEncoding for contract:', contractID)
 
       for await (const message of encoderComm.parse$) {
         log2encoder({ type: 'attestor', body: [`${message.index} RECV_MSG ${encoderKey.toString('hex')}`] })
+        encodedCount++
         // @TODO: merkle verify each chunk
         const { type } = message
         if (type === 'ping') continue
@@ -79,9 +83,17 @@ module.exports = class Attestor {
           encoderComm.serialize$.end({ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', ...{ messageType: type } })
         }
       }
-      const results = await Promise.all(verifiedAndStored).catch((error) => attestor.log({ type: 'error', body: [`Error: ${error}`] }))
+      // const results = await Promise.allSettled(verifiedAndStored)
+      // const results = await Promise.allSettled(verifiedAndStored).catch((error) => attestor.log({ type: 'error', body: [`Error: ${error}`] }))
+      const results = await Promise.allSettled(verifiedAndStored).catch((error) => console.log({ type: 'error', body: [`Error: ${error}`] }))
+      const status = this.getStatus(results)
       streams.end()
-      resolve(`All data from encoder: ${encoderKey.toString('hex')} verified and sent to the hoster: ${hosterKey.toString('hex')}`)
+      resolve({
+        contract: contractID,
+        statusOK: status,
+        encoderKey: encoderKey.toString('hex'),
+        hosterKey: hosterKey.toString('hex')
+      })
 
       function compareEncodings (message) {
         return new Promise((resolve, reject) => {
@@ -91,12 +103,11 @@ module.exports = class Attestor {
               encoderComm.serialize$.write({ type: 'encoded:checked', ok: true, index: message.index })
               try {
                 const response = await sendToHoster(message, log2hoster)
-                return resolve(response)
+                return resolve({ index: response.index })
               } catch (err) {
                 // attestor.log('@TODO: hoster response timed out, how to deal with these errors?')
                 return reject(err)
               }
-              resolve([message.index, encoderKey.toString('hex')])
             } else if (err) {
               log2encoder({ type: 'attestor', body: ['encoded checking error'] })
               encoderComm.serialize$.end({ type: 'encoded:error', error: 'INVALID_COMPRESSION', ...{ messageIndex: message.index } })
@@ -239,6 +250,16 @@ module.exports = class Attestor {
         }
       }
     })
+  }
+
+  // HELPERS
+
+  getStatus(results) {
+    var status = true
+    for (var i = 0, len = results.length; i < len; i++) {
+      status = status && (results[i].status === 'fulfilled')
+    }
+    return status
   }
 
 

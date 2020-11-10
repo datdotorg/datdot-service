@@ -139,8 +139,8 @@ async function datdotChain (profile, provider) {
     return await API.query.datVerify.getPerformanceChallengeByID(id)
   }
   async function hostingStarts (opts) {
-    const { contractID, signer, nonce } = opts
-    const tx = await API.tx.datVerify.hostingStarts(contractID)
+    const { contractID, reports, signer, nonce } = opts
+    const tx = await API.tx.datVerify.hostingStarts(contractID, reports)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }

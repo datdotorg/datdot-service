@@ -46,8 +46,13 @@ async function role (profile, APIS) {
       if (attestorAddress !== myAddress) return
       log({ type: 'chainEvent', body: [`Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`] })
       const { feedKey, encoderKeys, hosterKeys } = await getContractData(contract)
-      const results = await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, contractID }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
-      log({ type: 'attestor', body: [`Verify encoding done: ${results}`] })
+      const reports = await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, contractID }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+      log({ type: 'attestor', body: [`Verify encoding done: ${reports}`] })
+      if (reports) {
+        console.log('Sending reports')
+        const nonce = vaultAPI.getNonce()
+        await chainAPI.hostingStarts({ contractID, reports, signer, nonce })
+      }
       // const contract = await getContractData(event.data, isForMe)
       // if (!contract) return
       // const { feedKey, encoderKeys, hosterKeys } = contract

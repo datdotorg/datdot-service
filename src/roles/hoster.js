@@ -44,12 +44,10 @@ async function role (profile, APIS) {
       const contract = await chainAPI.getContractByID(contractID)
       const hosters = contract.providers.hosters
       if (!await isForMe(hosters, event)) return
-      // log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       const { feedKey, attestorKey, plan } = await getHostingData(contract)
       const data = { contractID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan }
       await serviceAPI.host(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
-      const nonce = vaultAPI.getNonce()
-      await chainAPI.hostingStarts({ contractID, signer, nonce })
+      log({ type: 'hoster', body: [`Hosting for Contract ID: ${contractID} started`] })
     }
     if (event.method === 'DropHosting') {
       const [feedID, hosterID] = event.data
