@@ -362,7 +362,8 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
   HELPERS
 ******************************************************************************/
 const setSize = 10 // every contract is for hosting 1 set = 10 chunks
-const size = setSize*64 //assuming each chunk is 64kb
+const size = setSize*64*1024 //assuming each chunk is 64kb
+const blockTime = 6
 
 // split plan into orders with 10 chunks
 function makeContract ({ plan }, log) {
@@ -391,11 +392,12 @@ async function tryNextContractJob (log) {
     // remove contract from contractJobsQueue
     const { type, id } = DB.contractJobsQueue.shift()
     if (type === 'contract') {
+      console.log('tryNextContractJob => contract')
       findProvidersAndEmitContract({ contractID: id }, log)
     }
-    if (type === 'amendment') {
+    if (type === 'tryNextContractJob => amendment') {
       console.log('Amendment')
-      findProvidersAndEmitAmendment({}, log)
+      // findProvidersAndEmitAmendment({}, log)
     }
   }
 }
@@ -406,7 +408,7 @@ function findProvidersAndEmitContract ({ contractID }, log) {
   const avoid = makeAvoid({ plan })
   const amounts = { attestorAmount: 1, encoderAmount: 3, hosterAmount: 3 }
   const providers = getProviders({ plan, avoid, amounts, newJob: `NewContract${contractID}` }, log)
-  log({ type: 'chain', body: [`Providers in tryNextContractJob: ${JSON.stringify(providers)}`] })
+  log({ type: 'chain', body: [`Providers in findProvidersAndEmitContract: ${JSON.stringify(providers)}`] })
   if (!providers) {
     addToContractJobsQueue({ type: 'contract', id: contractID }, log)
     return log({ type: 'chain', body: [`not enough providers available for this contract`] })
@@ -450,11 +452,11 @@ function makeAmendment ({ contractID, avoid, amounts }, log) {
 }
 function getProviders ({ plan, newJob, avoid, amounts }, log) {
   const { attestorAmount, encoderAmount, hosterAmount } = amounts
-  const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: attestorAmount, avoid, plan, log })
+  const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', type: 'contract', newJob, amount: attestorAmount, avoid, plan, log })
   if (!attestors.length) return log({ type: 'chain', body: [`missing attestors`] })
-  const encoders = select({ idleProviders: DB.idleEncoders, role: 'encoder', newJob, amount: encoderAmount, avoid, plan, log })
+  const encoders = select({ idleProviders: DB.idleEncoders, role: 'encoder', type: 'contract', newJob, amount: encoderAmount, avoid, plan, log })
   if (!encoders.length === encoderAmount) return log({ type: 'chain', body: [`missing encoders`] })
-  const hosters = select({ idleProviders: DB.idleHosters, role: 'hoster', newJob, amount: hosterAmount, avoid, plan, log })
+  const hosters = select({ idleProviders: DB.idleHosters, role: 'hoster', type: 'contract', newJob, amount: hosterAmount, avoid, plan, log })
   if (!hosters.length === hosterAmount) return log({ type: 'chain', body: [`missing hosters`] })
   return { encoders, hosters, attestors }
 }
@@ -489,7 +491,7 @@ function validateProof (hashes, signature, storageChallenge) {
   // if (`${chunks.length}` === `${hashes.length}`) return true
   return true
 }
-function select ({ idleProviders, role, newJob, amount, avoid, plan, log }) {
+function select ({ idleProviders, role, type, newJob, amount, avoid, plan, log }) {
   idleProviders.sort(() => Math.random() - 0.5) // @TODO: improve randomness
   const selectedProviders = []
   for (var i = 0; i < idleProviders.length; i++) {
@@ -497,7 +499,7 @@ function select ({ idleProviders, role, newJob, amount, avoid, plan, log }) {
     if (avoid[providerID]) continue // if providerID is in avoid, don't select it
     const provider = getUserByID(providerID)
     // @TODO see how to check if attestor qualifies for the challenge (not asuming we're searching providers for a contract)
-    if (doesQualify({ plan, provider, role })) {
+    if (doesQualify({ plan, provider, role, type })) {
       selectedProviders.push({providerID, index: i, role })
       avoid[providerID] = true
       if (selectedProviders.length === amount) {
@@ -525,32 +527,61 @@ function compare (a, b) {
   return a.index > b.index ? 1 : -1
 }
 
-function doesQualify ({ plan, provider, role }) {
-  if (
-    isScheduleCompatible({ plan, provider, role }) &&
-    hasCapacity({ provider, role })
-    // isLocationCompatible()
-  ) return true
+function doesQualify ({ plan, provider, role, type }) {
+  const form = provider[`${role}Form`]
+  const jobsLen = jobsLength(provider[`${role}Jobs`])
+  if (type === 'storageChallenge') {
+    if (isAvailForJobNow({ type, form })) return true
+  }
+  if (type === 'performanceChallenge') {
+    if (isAvailForJobNow({ type, form })) return true
+  }
+  if (type === 'amendment') {
+    if (isAvailForJobNow({ type, form })) return true
+  }
+  if (type === 'contract') {
+    if (
+      isScheduleCompatible({ type, plan, form, role }) &&
+      hasCapacity({ jobsLen, role, form })
+      // hasEnoughStorage({ role, provider })
+      // isLocationCompatible() &&
+      // positiveRating()
+    ) return true
+  }
 }
-function isScheduleCompatible ({ plan, provider, role }) {
-  const providerForm = provider[`${role}Form`]
+
+function isAvailForJobNow ({ type, form }) {
+  // @TODO replace isAvailNow with this function call
   const timeNow = Date.parse(new Date())
-  const providerAvailNow = (Date.parse(providerForm.from) <= timeNow)
-  const providerAvailOpenEnded = (providerForm.until === '')
-  const providerAvailAfterPlanEnd = (Date.parse(providerForm.until) > Date.parse(plan.until.time))
-  // const shouldStartInThePast = ( Date.parse(plan.from) < timeNow)
-  // const providerAvailBeforePlanStart = Date.parse(providerForm.from) < Date.parse(plan.from)
-  // (providerAvailBeforePlanStart || (shouldStartInThePast && providerAvailNow)) &&
-  if ( providerAvailNow && (providerAvailOpenEnded || providerAvailAfterPlanEnd)) return true
+  const isAvailNow = Date.parse(form.from) <= timeNow
+  // const durationInBlocks = duration for this type of job
+  // const isAvailForJobDuration = (Date.parse(form.until) >= (timeNow + durationInBlocks*blockTime)
+  if (isAvailNow) return true
 }
-function hasCapacity ({ provider, role }) {
+
+function isScheduleCompatible ({ type, plan, form, role }) {
+  if (role === 'encoder' || role === 'attestor') {
+    if (isAvailForJobNow({ type, form })) return true
+  }
+  else if (role === 'hoster') {
+    const isAvailOpenEnded = (form.until === '')
+    const isAvailAfterPlanEnd = (Date.parse(form.until) > Date.parse(plan.until.time))
+    if (isAvailForJobNow({ type, form }) && (isAvailOpenEnded || isAvailAfterPlanEnd)) return true
+  }
+}
+function hasCapacity ({ jobsLen, role, form }) {
   const attestorCap = 10 // @TODO form.config.resources divided by resources needed for a job
   const encoderCap = 10
   const hosterCap = 1
-  if (role === 'attestor' && jobsLength(provider['attestorJobs']) < attestorCap) return true
-  if (role === 'encoder' && jobsLength(provider['encoderJobs']) < encoderCap) return true
-  if (role === 'hoster' && jobsLength(provider['hosterJobs']) < hosterCap && (provider.hosterForm.idleStorage > size) ) return true
+  if (role === 'attestor' && jobsLen < attestorCap) return true
+  if (role === 'encoder' && jobsLen < encoderCap) return true
+  if (role === 'hoster' && jobsLen < hosterCap) return true
 }
+
+function hasEnoughStorage ({ role, provider }) {
+  if (provider[`${role}Form`].idleStorage > size) return true
+}
+
 
 function jobsLength (obj) { return Object.keys(obj).length }
 
@@ -565,7 +596,7 @@ function giveAttestorNewJob ({ attestorID }, log) {
       const avoid = makeAvoid({ plan })
       avoid[hosterID] = true
       const newJob = `NewStorageChallenge${storageChallenge.id}`
-      const [attestorID] = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: 1, avoid, plan, log })
+      const [attestorID] = select({ idleProviders: DB.idleAttestors, role: 'attestor', type: 'storageChallenge', newJob, amount: 1, avoid, plan, log })
       if (attestorID) {
         DB.attestorsJobQueue.shift()
         storageChallenge.attestor = attestorID
@@ -580,7 +611,7 @@ function giveAttestorNewJob ({ attestorID }, log) {
       const avoid = makeAvoid({ plan })
       avoid[hosterID] = true
       const newJob = `NewPerformanceChallenge${performanceChallenge.id}`
-      const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: 5, avoid, plan, log })
+      const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', type: 'performanceChallenge', newJob, amount: 5, avoid, plan, log })
       if (attestors.length) {
         DB.attestorsJobQueue.shift()
         performanceChallenge.attestors = attestors
@@ -739,7 +770,7 @@ function makeStorageChallenge({ contract, hosterID, plan }, log) {
   const avoid = makeAvoid({ plan })
   avoid[hosterID] = true
   const newJob = `NewStorageChallenge${storageChallenge.id}`
-  const [attestorID] = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: 1, avoid, plan, log })
+  const [attestorID] = select({ idleProviders: DB.idleAttestors, role: 'attestor', type: 'storageChallenge', newJob, amount: 1, avoid, plan, log })
   if (!attestorID) return DB.attestorsJobQueue.push({ fnName: 'NewStorageChallenge', opts: { storageChallenge } })
   storageChallenge.attestor = attestorID
   return storageChallenge
@@ -752,7 +783,7 @@ function makePerformanceChallenge ({ contractID, hosterID, plan }, log) {
   const avoid = makeAvoid({ plan })
   avoid[hosterID] = true
   const newJob = `NewPerformanceChallenge${performanceChallenge.id}`
-  const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: 5, avoid, plan, log })
+  const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', type: 'performanceChallenge', newJob, amount: 5, avoid, plan, log })
   if (!attestors.length) return DB.attestorsJobQueue.push({ fnName: 'NewPerformanceChallenge', opts: { performanceChallenge } })
   performanceChallenge.attestors = attestors
   return performanceChallenge

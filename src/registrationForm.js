@@ -8,12 +8,8 @@ module.exports = registrationForm
 function registrationForm (role, settings) {
   const { from, until, region = 'global'} = settings
   const form = {}
-  if (role === 'attestor') {}
-  if (role === 'encoder') {}
-  if (role === 'hoster') {
-    form.storage = 1000000000 //1 GB to bytes is 1e+9
-    form.idleStorage = 1000000000 // at the form all the storage is idle
-  }
+  form.storage = 1000000000 //1 GB to bytes is 1e+9
+  form.idleStorage = 1000000000 // at the form all the storage is idle
   form.from = from
   form.until = until
   form.schedules = [{

@@ -67,8 +67,6 @@ module.exports = class Attestor {
       var encodedCount = 0
       log2encoder({ type: 'attestor', body: ['Start receiving data from the encoder'] })
 
-      console.log('verifyEncoding for contract:', contractID)
-
       for await (const message of encoderComm.parse$) {
         log2encoder({ type: 'attestor', body: [`${message.index} RECV_MSG ${encoderKey.toString('hex')}`] })
         encodedCount++

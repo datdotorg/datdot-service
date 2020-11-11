@@ -49,7 +49,6 @@ async function role (profile, APIS) {
       const reports = await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, contractID }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
       log({ type: 'attestor', body: [`Verify encoding done: ${reports}`] })
       if (reports) {
-        console.log('Sending reports')
         const nonce = vaultAPI.getNonce()
         await chainAPI.hostingStarts({ contractID, reports, signer, nonce })
       }
