@@ -525,11 +525,11 @@ function select ({ idleProviders, role, type, newJob, amount, avoid, plan, log }
 
 function giveUsersContractJob ({ selectedProviders, idleProviders, role, newJob, type }) {
   return selectedProviders.sort((a,b) => a.index > b.index ? 1 : -1).map(({providerID, index, role }) => { // returns an array of providers sorted by their IDs, important because if you splice index 12 first and then try to splice index 6, this 6 is not 6 anymore, but if you splice them sorted, it works
-    return addJobForRole({ providerID, role, newJob, index })
+    return addJobForRole({ providerID, idleProviders, role, newJob, index })
   })
 }
 
-function addJobForRole ({ providerID, role, newJob, index }) {
+function addJobForRole ({ providerID, idleProviders, role, newJob, index }) {
   const provider = getUserByID(providerID)
   provider[role].jobs[newJob] = true
   if (!hasCapacity({ provider, role })) idleProviders.splice(index, 1)
@@ -569,8 +569,7 @@ function isScheduleCompatible ({ type, plan, form, role }) {
 }
 function hasCapacity ({ provider, role }) {
   const jobsLen = jobsLength(provider[role].jobs)
-  const form = provider[role].form
-  if (jobsLen < form.capacity) return true
+  if (jobsLen < provider[role].capacity) return true
 }
 function hasEnoughStorage ({ role, provider }) {
   if (provider[role].idleStorage > size) return true
@@ -709,7 +708,7 @@ async function scheduleContractFollowUp ({ contractID }, log) {
     const { activeHosters, hosters, attestors, encoders, failedHosters } = contract.providers
     if (!activeHosters.length && !failedHosters.length) { // we are checking if attestor reported back or not => if not (then no active or failed hosters) => we assume attestor failed & make new contract
       log({ type: 'chain', body: [`Contract execution was not succesful!`] })
-      console.log('Not successful, let us repeat the process')
+      console.log('Not successful with contract ${contractID}, let us repeat the process')
       // remove jobs from all providers
       removeContractJobs({ contractID, doneJob: `NewContract${contractID}`, failedHosters: contract.providers.failedHosters, encoders, attestors }, log)
       // make amendment

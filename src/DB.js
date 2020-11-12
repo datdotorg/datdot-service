@@ -7,13 +7,13 @@ const users = []
   id, 776
   address: signer,
   hoster: {
-    key, form, idleStorage, jobs
+    key, form, capacity, idleStorage, jobs
   }
   encoder: {
-    key, form, idleStorage, jobs
+    key, form, capacity, idleStorage, jobs
   }
   attestor: {
-    key, form, idleStorage, jobs
+    key, form, capacity, idleStorage, jobs
   }
 }
 */
