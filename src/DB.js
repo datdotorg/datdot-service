@@ -4,15 +4,20 @@
 const users = []
 /*
 {
+  id, 776
   address: signer,
-  attestorKey: Buff,
-  encoderKey: Buff,
-  hosterKey: Buff,
-  attestorForm: {},
-  encoderForm: {},
-  hosterForm: {}
+  hoster: {
+    key, form, idleStorage, jobs
+  }
+  encoder: {
+    key, form, idleStorage, jobs
+  }
+  attestor: {
+    key, form, idleStorage, jobs
+  }
 }
 */
+
 const feeds = []
 /*
 {
@@ -46,7 +51,7 @@ providers: {
   activeHosters,
   failedHosters
 },
-updates: []
+amendments: []
 }
 */
 

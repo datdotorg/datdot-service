@@ -5,11 +5,17 @@ module.exports = registrationForm
 // HOSTER storage, bandwidth => 1
 
 // See example https://pastebin.com/5nAb6XHQ
-function registrationForm (role, settings) {
+function registrationForm (role, settings) { // attestor, encoder, hoster
   const { from, until, region = 'global'} = settings
   const form = {}
   form.storage = 1000000000 //1 GB to bytes is 1e+9
-  form.idleStorage = 1000000000 // at the form all the storage is idle
+  form.capacity = 5 // based on resources needed for one job
+ // resources: {
+ //    bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
+ //    cpu: '',
+ //    storage: '',
+ //    RAM: '',
+ //  },
   form.from = from
   form.until = until
   form.schedules = [{
@@ -21,12 +27,6 @@ function registrationForm (role, settings) {
   }]
   form.config = { // at least 1 region is mandatory (e.g. global)
     // @TODO
-    resources: {
-      bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
-      cpu: '',
-      storage: '',
-      RAM: '',
-    },
     performance: {
       availability: '', // percentage_decimal
       latency: { /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal

@@ -109,18 +109,18 @@ async function datdotChain (profile, provider) {
   }
   async function getHosterKey (id) {
     const user = (await API.query.datVerify.getUserByID(id))
-    return Buffer.from(user.hosterKey, 'hex')
+    return Buffer.from(user.hoster.key, 'hex')
   }
   async function getEncoderKey (id) {
     // return u8aToBuffer(user.noise_key.toU8a().slice(1))
     const user = (await API.query.datVerify.getUserByID(id))
-    return Buffer.from(user.encoderKey, 'hex')
+    return Buffer.from(user.encoder.key, 'hex')
   }
   async function getAttestorKey (id) {
     // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
     // return u8aToBuffer(user.noise_key.toU8a().slice(1))
     const user = (await API.query.datVerify.getUserByID(id))
-    return Buffer.from(user.attestorKey, 'hex')
+    return Buffer.from(user.attestor.key, 'hex')
   }
   async function getContractByID (id) {
     // return (await API.query.datVerify.getContractByID(id)).toJSON()

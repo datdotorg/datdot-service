@@ -166,12 +166,17 @@ async function _registerHoster(user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [hosterKey, form] = args
   const userID = user.id
-  if (DB.users[userID-1].hosterKey) return log({ type: 'chain', body: [`User is already registered as a hoster`] })
+  if (!user.hoster) user.hoster = {}
+  if (user.hoster[hosterKey]) return log({ type: 'chain', body: [`User is already registered as a hoster`] })
   const keyBuf = Buffer.from(hosterKey, 'hex')
-  user.hosterKey = keyBuf.toString('hex')
   DB.userByHosterKey[keyBuf.toString('hex')] = user.id // push to userByHosterKey lookup array
-  user.hosterForm = form
-  user.hosterJobs = {} // needs identifiers so we can remove cancelled plans
+  user.hoster = {
+    key: keyBuf.toString('hex'),
+    form,
+    jobs: {},
+    idleStorage: form.storage,
+    capacity: form.capacity,
+  }
   DB.idleHosters.push(userID)
   tryNextContractJob(log) // see if enough providers for new contract
   // Emit event
@@ -181,8 +186,8 @@ async function _registerHoster(user, { name, nonce }, status, args) {
   // log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
 }
 async function unregisterHoster (user, { name, nonce }, status) {
-  const { id, hosterKey, hosterForm, hosterJobs } = user
-  unregisterRole ({ id, key: hosterKey, form: hosterForm, idleProviders: DB.idleHosters })
+  const { id, hoster: { jobs: hosterJobs, key, form } } = user
+  unregisterRole ({ user, role: 'hoster', idleProviders: DB.idleHosters })
   const jobs = Object.keys(hosterJobs)
   jobs.map(job => {
     const contractID = job.split('NewContract')[1]
@@ -191,7 +196,6 @@ async function unregisterHoster (user, { name, nonce }, status) {
       emitDropHosting({ contractID, hosterID: id}, log)
     }
   })
-  hosterJobs = {}
 }
 /*----------------------
   (UN)REGISTER ENCODER
@@ -200,11 +204,16 @@ async function _registerEncoder (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const userID = user.id
   const [encoderKey, form] = args
-  if (DB.users[userID-1].encoderKey) return log({ type: 'chain', body: [`User is already registered as encoder`] })
+  if (!user.encoder) user.encoder = {}
+  if (user.encoder[encoderKey]) return log({ type: 'chain', body: [`User is already registered as encoder`] })
   const keyBuf = Buffer.from(encoderKey, 'hex')
-  user.encoderKey = keyBuf.toString('hex')
-  user.encoderForm = form
-  user.encoderJobs = {}
+  user.encoder = {
+    key: keyBuf.toString('hex'),
+    form,
+    jobs: {},
+    idleStorage: form.storage,
+    capacity: form.capacity,
+  }
   DB.idleEncoders.push(userID)
   tryNextContractJob(log) // see if enough providers for new contract
   // Emit event
@@ -213,7 +222,7 @@ async function _registerEncoder (user, { name, nonce }, status, args) {
   handlers.forEach(([name, handler]) => handler(event))
 }
 async function unregisterEncoder (user, { name, nonce }, status) {
-  unregisterRole ({ id: user.id, key: user.encoderKey, form: user.encoderForm, idleProviders: DB.idleEncoders })
+  unregisterRole ({ user, role: 'encoder', idleProviders: DB.idleEncoders })
 }
 /*----------------------
   (UN)REGISTER ATTESTOR
@@ -222,21 +231,26 @@ async function _registerAttestor (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [attestorKey, form] = args
   const userID = user.id
-  if (DB.users[userID-1].attestorKey) return log({ type: 'chain', body: [`User is already registered as a attestor`] })
+  if (!user.attestor) user.attestor = {}
+  if (user.attestor[attestorKey]) return log({ type: 'chain', body: [`User is already registered as a attestor`] })
   const keyBuf = Buffer.from(attestorKey, 'hex')
-  user.attestorKey = keyBuf.toString('hex')
-  user.attestorForm = form
-  user.attestorJobs = {}
+  user.attestor = {
+    key: keyBuf.toString('hex'),
+    form,
+    jobs: {},
+    idleStorage: form.storage,
+    capacity: form.capacity,
+  }
   DB.idleAttestors.push(userID)
   tryNextContractJob(log) // see if enough providers for new contract
-  giveAttestorNewJob({ attestorID: userID }, log) // check for attestor only jobs (storage & perf challenge)
+  findAttestorNewJob({ attestorID: userID }, log) // check for attestor only jobs (storage & perf challenge)
   // Emit event
   const confirmation = { event: { data: [userID], method: 'RegisteredForAttesting' } }
   const event = [confirmation]
   handlers.forEach(([name, handler]) => handler(event))
 }
 async function unregisterAttestor (user, { name, nonce }, status) {
-  unregisterRole ({ id: user.id, key: user.attestorKey, form: user.attestorForm, idleProviders: DB.idleAttestors })
+  unregisterRole ({ user, role: 'attestor', idleProviders: DB.idleAttestors })
 }
 /*----------------------
   HOSTING STARTS
@@ -314,12 +328,12 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
   handlers.forEach(([name, handler]) => handler(event))
   log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
   // attestor finished job, add them to idleAttestors again
-  removeJob({
+  removeJobForRole({
     id: attestorID,
-    jobsType: 'attestorJobs',
+    role: 'attestor',
     doneJob: `NewStorageChallenge${storageChallengeID}`,
     idleProviders: DB.idleAttestors,
-    action: giveAttestorNewJob({ attestorID }, log)
+    action: findAttestorNewJob({ attestorID }, log)
   }, log)
 }
 /*----------------------
@@ -349,12 +363,12 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
   handlers.forEach(([name, handler]) => handler(event))
   // log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
   // attestor finished job, add them to idleAttestors again
-  removeJob({
+  removeJobForRole({
     id: userID,
-    jobsType: 'attestorJobs',
+    role: 'attestor',
     doneJob: `NewPerformanceChallenge${performanceChallengeID}`,
     idleProviders: DB.idleAttestors,
-    action: giveAttestorNewJob({ attestorID: userID }, log)
+    action: findAttestorNewJob({ attestorID: userID }, log)
   }, log)
 }
 
@@ -363,7 +377,7 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
 ******************************************************************************/
 const setSize = 10 // every contract is for hosting 1 set = 10 chunks
 const size = setSize*64*1024 //assuming each chunk is 64kb
-const blockTime = 6
+const blockTime = 6000
 
 // split plan into orders with 10 chunks
 function makeContract ({ plan }, log) {
@@ -395,8 +409,8 @@ async function tryNextContractJob (log) {
       console.log('tryNextContractJob => contract')
       findProvidersAndEmitContract({ contractID: id }, log)
     }
-    if (type === 'tryNextContractJob => amendment') {
-      console.log('Amendment')
+    if (type === 'amendment') {
+      console.log('tryNextContractJob => Amendment')
       // findProvidersAndEmitAmendment({}, log)
     }
   }
@@ -428,14 +442,13 @@ function findProvidersAndEmitContract ({ contractID }, log) {
   log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
 }
 
-function removeJob ({ id, jobsType, doneJob, idleProviders, action }, log) {
+function removeJobForRole ({ id, role, doneJob, idleProviders, action }, log) {
   const provider = getUserByID(id)
-  const providerJobs = provider[jobsType]
-  if (providerJobs[doneJob]) {
+  if (provider[role].jobs[doneJob]) {
     log({ type: 'chain', body: [`Removing the job ${doneJob}`] })
-    delete providerJobs[doneJob]
+    delete provider[role].jobs[doneJob]
     idleProviders.push(id)
-    if (jobsType === 'hosterJobs') provider.hosterForm.idleStorage += size
+    provider[role].idleStorage += size
     action
   }
 }
@@ -503,89 +516,68 @@ function select ({ idleProviders, role, type, newJob, amount, avoid, plan, log }
       selectedProviders.push({providerID, index: i, role })
       avoid[providerID] = true
       if (selectedProviders.length === amount) {
-        return addContractJobs({ selectedProviders, idleProviders, provider, role, newJob })
+        return giveUsersContractJob({ selectedProviders, idleProviders, role, newJob })
       }
     }
   }
   return []
 }
 
-function addChallengeJobs ({ idleAttestors, attestor, role, newJob }) {
-  attestor[`${role}Jobs`][newJob] = true
-  if (!hasCapacity({ provider: attestor, role })) idleAttestors.splice(index, 1)
-}
-function addContractJobs ({ selectedProviders, idleProviders, provider, role, newJob }) {
-  return selectedProviders.sort(compare).map(({providerID, index, role }) => {
-    provider[`${role}Jobs`][newJob] = true
-    if (!hasCapacity({ provider, role })) idleProviders.splice(index, 1)
-    if (role === 'hoster') provider.hosterForm.idleStorage -= size
-    return providerID
+function giveUsersContractJob ({ selectedProviders, idleProviders, role, newJob, type }) {
+  return selectedProviders.sort((a,b) => a.index > b.index ? 1 : -1).map(({providerID, index, role }) => { // returns an array of providers sorted by their IDs, important because if you splice index 12 first and then try to splice index 6, this 6 is not 6 anymore, but if you splice them sorted, it works
+    return addJobForRole({ providerID, role, newJob, index })
   })
 }
 
-function compare (a, b) {
-  return a.index > b.index ? 1 : -1
+function addJobForRole ({ providerID, role, newJob, index }) {
+  const provider = getUserByID(providerID)
+  provider[role].jobs[newJob] = true
+  if (!hasCapacity({ provider, role })) idleProviders.splice(index, 1)
+  provider[role].idleStorage -= size // @TODO currently we reduce idleStorage for all providers and for all jobs (also challenge)
+  return providerID // returns array of selected providers for select function
 }
-
 function doesQualify ({ plan, provider, role, type }) {
-  const form = provider[`${role}Form`]
-  const jobsLen = jobsLength(provider[`${role}Jobs`])
-  if (type === 'storageChallenge') {
-    if (isAvailForJobNow({ type, form })) return true
-  }
-  if (type === 'performanceChallenge') {
-    if (isAvailForJobNow({ type, form })) return true
-  }
-  if (type === 'amendment') {
-    if (isAvailForJobNow({ type, form })) return true
-  }
-  if (type === 'contract') {
-    if (
-      isScheduleCompatible({ type, plan, form, role }) &&
-      hasCapacity({ jobsLen, role, form })
-      // hasEnoughStorage({ role, provider })
-      // isLocationCompatible() &&
-      // positiveRating()
-    ) return true
-  }
+  const form = provider[role].form
+  if (
+    isScheduleCompatible({ type, plan, form, role }) &&
+    hasCapacity({ provider, role }) &&
+    hasEnoughStorage({ role, provider })
+  ) return true
 }
-
-function isAvailForJobNow ({ type, form }) {
-  // @TODO replace isAvailNow with this function call
+function isAvailNow ({ form }) {
   const timeNow = Date.parse(new Date())
-  const isAvailNow = Date.parse(form.from) <= timeNow
-  // const durationInBlocks = duration for this type of job
-  // const isAvailForJobDuration = (Date.parse(form.until) >= (timeNow + durationInBlocks*blockTime)
-  if (isAvailNow) return true
+  if (Date.parse(form.from) <= timeNow) return true
 }
-
+function isAvailForJobDuration ({ role, form }) {
+  if (form.until === '') return true // open ended
+  const timeNow_mili = Date.now() // in milliseconds
+  const until_mili = Date.parse(form.until) // in milliseconds
+  var jobDuration
+  if (role === 'attestor') jobDuration = 24000
+  if (role === 'encoder') jobDuration = 12000 // duration in blocks * blocktime (2 * 6000)
+  if (until_mili >= (timeNow_mili + jobDuration)) return true
+}
 function isScheduleCompatible ({ type, plan, form, role }) {
   if (role === 'encoder' || role === 'attestor') {
-    if (isAvailForJobNow({ type, form })) return true
+    if (isAvailNow({ type, form }) && isAvailForJobDuration({ role, form })) return true
   }
   else if (role === 'hoster') {
     const isAvailOpenEnded = (form.until === '')
     const isAvailAfterPlanEnd = (Date.parse(form.until) > Date.parse(plan.until.time))
-    if (isAvailForJobNow({ type, form }) && (isAvailOpenEnded || isAvailAfterPlanEnd)) return true
+    if (isAvailNow({ type, form }) && (isAvailOpenEnded || isAvailAfterPlanEnd)) return true
   }
 }
-function hasCapacity ({ jobsLen, role, form }) {
-  const attestorCap = 10 // @TODO form.config.resources divided by resources needed for a job
-  const encoderCap = 10
-  const hosterCap = 1
-  if (role === 'attestor' && jobsLen < attestorCap) return true
-  if (role === 'encoder' && jobsLen < encoderCap) return true
-  if (role === 'hoster' && jobsLen < hosterCap) return true
+function hasCapacity ({ provider, role }) {
+  const jobsLen = jobsLength(provider[role].jobs)
+  const form = provider[role].form
+  if (jobsLen < form.capacity) return true
 }
-
 function hasEnoughStorage ({ role, provider }) {
-  if (provider[`${role}Form`].idleStorage > size) return true
+  if (provider[role].idleStorage > size) return true
 }
-
-
 function jobsLength (obj) { return Object.keys(obj).length }
 
-function giveAttestorNewJob ({ attestorID }, log) {
+function findAttestorNewJob ({ attestorID }, log) {
   if (DB.attestorsJobQueue.length) {
     const next = DB.attestorsJobQueue[0]
     if (next.fnName === 'NewStorageChallenge' && DB.idleAttestors.length) {
@@ -620,11 +612,8 @@ function giveAttestorNewJob ({ attestorID }, log) {
     }
   }
 }
-function unregisterRole ({ id, key, form, idleProviders }) {
-  if (key && form) {
-    key = void 0
-    form = void 0
-  }
+function unregisterRole ({ user, role, idleProviders }) {
+  user[role] = void 0
   for (var i = 0; i < idleProviders.length; i++) {
     const providerID = idleProviders[i]
     if (providerID === id) idleProviders.slice(i, 1)
@@ -647,9 +636,9 @@ function emitDropHosting ({ contractID, hosterID }, log) {
     activeHosters.map((id, i) => { if (id === hosterID) activeHosters.splice(i, 1) })
   }
   const doneJob = `NewContract${contractID}`
-  removeJob({
+  removeJobForRole({
     id: hosterID,
-    jobsType: 'hosterJobs',
+    role: 'hoster',
     doneJob,
     idleProviders: DB.idleHosters,
     action: tryNextContractJob(log)
@@ -744,17 +733,17 @@ function planValid ({ plan }) {
 function removeContractJobs ({ contractID, doneJob, failedHosters, encoders, attestors }, log) {
   failedHosters.map(hoster => emitDropHosting({ contractID, hosterID: hoster}, log))
   attestors.map(id =>
-    removeJob({
+    removeJobForRole({
       id,
-      jobsType: 'attestorJobs',
+      role: 'attestor',
       doneJob,
       idleProviders: DB.idleAttestors,
-      action: giveAttestorNewJob({ attestorID: id })
+      action: findAttestorNewJob({ attestorID: id })
     }, log))
   encoders.map(id =>
-    removeJob({
+    removeJobForRole({
       id,
-      jobsType: 'encoderJobs',
+      role: 'encoder',
       doneJob,
       idleProviders: DB.idleEncoders,
       action: tryNextContractJob(log)
