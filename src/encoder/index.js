@@ -41,10 +41,12 @@ module.exports = class Encoder {
     this.publicKey = noiseKeyPair.publicKey
   }
 
-  async encodeFor (contractID, attestorKey, encoderKey, feedKey, ranges) {
+  async encodeFor (amendmentID, attestorKey, encoderKey, feedKey, ranges) {
     const encoder = this
     return new Promise(async (resolve, reject) => {
       if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
+      const rangesCount = getRangesCount(ranges)
+
       const feed = encoder.Hypercore(feedKey)
 
       const opts = {
@@ -52,7 +54,7 @@ module.exports = class Encoder {
         senderKey: encoderKey,
         feedKey,
         receiverKey: attestorKey,
-        id: contractID,
+        id: amendmentID,
         myKey: encoderKey,
       }
       const log2Attestor = encoder.log.sub(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
@@ -64,7 +66,7 @@ module.exports = class Encoder {
 
       log2Attestor({ type: 'encoder', body: [`Start encoding and sending data to attestor`] })
       for (const range of ranges) {
-        const rangeRes = sendDataToAttestor({ encoder, range, feed, feedKey, streams, log: log2Attestor })
+        const rangeRes = sendDataToAttestor({ rangesCount, encoder, range, feed, feedKey, streams, log: log2Attestor })
         allChunks.push(...rangeRes)
       }
       try {
@@ -82,10 +84,21 @@ module.exports = class Encoder {
   }
 }
 
-function sendDataToAttestor ({ encoder, range, feed, feedKey, streams, log }) {
+function getRangesCount (ranges) {
+  let counter = 0
+  for (var i = 0, len = ranges.length; i < len; i++) {
+    const [min, max] = ranges[i]
+    for (var j = min; j < max + 1; j++) {
+      counter++
+    }
+  }
+  return counter
+}
+
+function sendDataToAttestor ({ rangesCount, encoder, range, feed, feedKey, streams, log }) {
   const rangeRes = []
   for (let index = range[0], len = range[1] + 1; index < len; index++) {
-    const message = encode(encoder, index, feed, feedKey)
+    const message = encode(encoder, index, feed, feedKey, rangesCount)
     const chunkRes = send(message, { encoder, range, feed, feedKey, streams, log })
     rangeRes.push(chunkRes)
   }
@@ -95,7 +108,7 @@ async function send (msg, { encoder, range, feed, feedKey, streams, log }) {
   const message = await msg
   return requestResponse({ message, sendStream: streams.serialize$, receiveStream: streams.parse$, log })
 }
-async function encode (encoder, index, feed, feedKey) {
+async function encode (encoder, index, feed, feedKey, rangesCount) {
   const data = await feed.get(index)
   const encoded = await encoder.EncoderDecoder.encode(data)
   const { nodes, signature } = await feed.proof(index)
@@ -109,5 +122,5 @@ async function encode (encoder, index, feed, feedKey) {
   encoded.copy(toSign, varint.encode.bytes)
   // Sign the data with our signing secret key and write it to the proof buffer
   sodium.crypto_sign_detached(proof, toSign, encoder.signingSecretKey)
-  return { type: 'encoded', feed: feedKey, index, encoded, proof, nodes, signature }
+  return { type: 'encoded', feed: feedKey, rangesCount, index, encoded, proof, nodes, signature }
 }

@@ -38,19 +38,29 @@ async function role (profile, APIS) {
         log({ type: 'attestor', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       }
     }
-    if (event.method === 'NewContract') {
-      const [contractID] = event.data
-      const contract = await chainAPI.getContractByID(contractID)
-      const [attestorID] = contract.providers.attestors
+    if (event.method === 'NewAmendment') {
+      const [amendmentID] = event.data
+      const amendment = await chainAPI.getAmendmentByID(amendmentID)
+      const contract = await chainAPI.getContractByID(amendment.contract)
+      const [attestorID] = amendment.providers.attestors
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress !== myAddress) return
       log({ type: 'chainEvent', body: [`Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`] })
-      const { feedKey, encoderKeys, hosterKeys } = await getContractData(contract)
-      const reports = await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, contractID }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
-      log({ type: 'attestor', body: [`Verify encoding done: ${reports}`] })
-      if (reports) {
+      const { feedKey, encoderKeys, hosterKeys } = await getContractData(amendment, contract)
+      const responses = await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+      log({ type: 'attestor', body: [`Verify encoding done: ${responses}`] })
+      if (responses) {
+        const failed = []
+        for (var i = 0, len = responses.length; i < len; i++) {
+          const [key] = responses[i]
+          if (key) {
+            const id = await chainAPI.getUserIDByKey(key)
+            failed.push(id)
+          }
+        }
+        const report = { id: amendmentID, failed }
         const nonce = vaultAPI.getNonce()
-        await chainAPI.hostingStarts({ contractID, reports, signer, nonce })
+        await chainAPI.amendmentReport({ report, signer, nonce })
       }
       // const contract = await getContractData(event.data, isForMe)
       // if (!contract) return
@@ -133,14 +143,13 @@ async function role (profile, APIS) {
     return { hosterKey, feedKey, storageChallenge }
   }
 
-  async function getContractData (contract) {
-    const encoders = contract.providers.encoders
+  async function getContractData (amendment, contract) {
+    const { encoders, hosters } = amendment.providers
     const encoderKeys = []
     encoders.forEach(async (id) => {
       const key = await chainAPI.getEncoderKey(id)
       encoderKeys.push(key)
     })
-    const hosters = contract.providers.hosters
     const hosterKeys = []
     hosters.forEach(async (id) => {
       const key = await chainAPI.getHosterKey(id)

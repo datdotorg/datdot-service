@@ -48,15 +48,15 @@ module.exports = class Hoster {
     return hoster
   }
 
-  async hostFor ({ contractID, feedKey, hosterKey, attestorKey, plan }) {
+  async hostFor ({ amendmentID, feedKey, hosterKey, attestorKey, plan }) {
     await this.setOpts(feedKey, plan)
     await this.addKey(feedKey, plan)
     await this.loadFeedData(feedKey)
-    await this.getEncodedDataFromAttestor(contractID, hosterKey, attestorKey, feedKey)
+    await this.getEncodedDataFromAttestor(amendmentID, hosterKey, attestorKey, feedKey)
     this.log({ type: 'hoster', body: ['All done'] })
   }
 
-  async getEncodedDataFromAttestor (contractID, hosterKey, attestorKey, feedKey) {
+  async getEncodedDataFromAttestor (amendmentID, hosterKey, attestorKey, feedKey) {
     const hoster = this
     return new Promise(async (resolve, reject) => {
       const opts = {
@@ -64,7 +64,7 @@ module.exports = class Hoster {
         senderKey: attestorKey,
         feedKey,
         receiverKey: hosterKey,
-        id: contractID,
+        id: amendmentID,
         myKey: hosterKey,
       }
       var counter = 0

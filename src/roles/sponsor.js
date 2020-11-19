@@ -84,6 +84,7 @@ async function role (profile, APIS) {
         }
       }/*, ...*/]
     }
+    // @TODO should times be converted into blocks??
     return {
       feeds,
       from       : new Date('October 26, 2020 21:33'), // or new Date('Apr 30, 2000')

@@ -22,7 +22,7 @@ async function datdotChain (profile, provider) {
     registerAttestor,
     publishFeed,
     publishPlan,
-    hostingStarts,
+    amendmentReport,
     requestStorageChallenge,
     submitStorageChallenge,
     requestPerformanceChallenge,
@@ -30,11 +30,13 @@ async function datdotChain (profile, provider) {
     listenToEvents,
     getFeedByID,
     getPlanByID,
+    getAmendmentByID,
     getContractByID,
     getStorageChallengeByID,
     getPerformanceChallengeByID,
     getFeedKey,
     getUserAddress,
+    getUserIDByKey,
     getHosterKey,
     getEncoderKey,
     getAttestorKey
@@ -101,6 +103,11 @@ async function datdotChain (profile, provider) {
     const feed = (await API.query.datVerify.getFeedByID(feedID))
     return feed
   }
+  async function getUserIDByKey (key) {
+    // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
+    // return user.address.toString()
+    return await API.query.datVerify.getUserIDByKey(key)
+  }
   async function getUserAddress (id) {
     // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
     // return user.address.toString()
@@ -126,6 +133,10 @@ async function datdotChain (profile, provider) {
     // return (await API.query.datVerify.getContractByID(id)).toJSON()
     return await API.query.datVerify.getContractByID(id)
   }
+  async function getAmendmentByID (id) {
+    // return (await API.query.datVerify.getAmendmentByID(id)).toJSON()
+    return await API.query.datVerify.getAmendmentByID(id)
+  }
   async function getPlanByID (id) {
     // return (await API.query.datVerify.getPlanByID(id)).toJSON()
     return await API.query.datVerify.getPlanByID(id)
@@ -138,9 +149,9 @@ async function datdotChain (profile, provider) {
     // return (await API.query.datVerify.getPerformanceChallengeByID(id)).toJSON()
     return await API.query.datVerify.getPerformanceChallengeByID(id)
   }
-  async function hostingStarts (opts) {
-    const { contractID, reports, signer, nonce } = opts
-    const tx = await API.tx.datVerify.hostingStarts(contractID, reports)
+  async function amendmentReport (opts) {
+    const { report, signer, nonce } = opts
+    const tx = await API.tx.datVerify.amendmentReport(report)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }

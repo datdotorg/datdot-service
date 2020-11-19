@@ -44,27 +44,24 @@ id,
 feed,
 plan: planID,
 ranges: selectedPlan.ranges,
-providers: {
-  encoders,
-  hosters,
-  attestor,
-  activeHosters,
-  failedHosters
-},
-amendments: []
+activeHosters: [],
+amendments: [],
+status: {
+  schedulerID: integer
+}
 }
 */
 
 const amendments = []
 /*
 {
+id,
 contract: contractID,
 providers: {
-  hosters,
   encoders,
-  attestor,
-  hostersAsEncoders
-}
+  hosters,
+  attestors,
+},
 }
 */
 const storageChallenges = [] // Storage Proof
@@ -82,7 +79,13 @@ const performanceChallenges = [] // Performance Proof
   attestor: 'attestorID',
   contract: 'contractID'
 }
+
 */
+const failedJobs = {
+  /*
+  userID: [{ type: 'contract', id: 17},{ type: 'amendment', id: 6}]
+  */
+}
 /******************************************************************************
   LOOKUP
 ******************************************************************************/
@@ -90,7 +93,7 @@ const userByAddress = {} // address
 const feedByKey = {
   // { key: id }
 }
-const userByHosterKey = {}
+const userIDByKey = {}
 
 /******************************************************************************
   STATUS
@@ -98,7 +101,7 @@ const userByHosterKey = {}
 const idleHosters = [] // user ids
 const idleEncoders = [] // user ids
 const idleAttestors = [] // user ids
-const contractJobsQueue = [] // { planID, feedID, set }
+const pendingAmendments = [] // { planID, feedID, set }
 const attestorsJobQueue = [] //{ fnName: 'makePerformanceChallenge', opts: contractID ) }
 const hostings = {} // userID: [contractID1, contractID2]
 /*****************************************************************************/
@@ -107,7 +110,7 @@ const DB = {
   users,
   feeds,
   plans,
-  contractJobsQueue,
+  pendingAmendments,
   contracts,
   amendments,
   hostings,
@@ -115,7 +118,7 @@ const DB = {
   performanceChallenges,
   // lookups
   userByAddress,
-  userByHosterKey,
+  userIDByKey,
   feedByKey,
   // status
   idleHosters,

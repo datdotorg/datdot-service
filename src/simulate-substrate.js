@@ -14,9 +14,11 @@ module.exports = {
         system: { events: handler => handlers.push(handler) },
         datVerify: {
           getUserByID: getUserByID.bind(name),
+          getUserIDByKey: getUserIDByKey.bind(name),
           getFeedByID: getFeedByID.bind(name),
           getFeedByKey: getFeedByKey.bind(name),
           getPlanByID: getPlanByID.bind(name),
+          getAmendmentByID: getAmendmentByID.bind(name),
           getContractByID: getContractByID.bind(name),
           getStorageChallengeByID: getStorageChallengeByID.bind(name),
           getPerformanceChallengeByID: getPerformanceChallengeByID.bind(name),
@@ -30,7 +32,7 @@ module.exports = {
         registerHoster: registerHoster.bind(name),
         publishFeed: publishFeed.bind(name),
         publishPlan: publishPlan.bind(name),
-        hostingStarts: hostingStarts.bind(name),
+        amendmentReport: amendmentReport.bind(name),
         requestStorageChallenge: requestStorageChallenge.bind(name),
         requestPerformanceChallenge: requestPerformanceChallenge.bind(name),
         submitStorageChallenge: submitStorageChallenge.bind(name),
@@ -76,7 +78,7 @@ async function registerAttestor (...args) { return { signAndSend: signAndSend.bi
 async function registerHoster (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'registerHoster' }) } }
 async function publishFeed (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'publishFeed'}) } }
 async function publishPlan (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'publishPlan'}) } }
-async function hostingStarts (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'hostingStarts'}) } }
+async function amendmentReport (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'amendmentReport'}) } }
 async function requestStorageChallenge (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'requestStorageChallenge'}) } }
 async function requestPerformanceChallenge (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'requestPerformanceChallenge'}) } }
 async function submitStorageChallenge (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'submitStorageChallenge'}) } }
@@ -111,6 +113,15 @@ function getUserByID (id) {
     instance.ws.send(JSON.stringify({ flow, type: 'getUserByID', body: id }))
   })
 }
+function getUserIDByKey (key) {
+  const name = this
+  return new Promise(resolve => {
+    const msgid = instance.counter++
+    const flow = [instance.name, msgid]
+    requests[msgid] = resolve
+    instance.ws.send(JSON.stringify({ flow, type: 'getUserIDByKey', body: key }))
+  })
+}
 function getPlanByID (id) {
   const name = this
   return new Promise(resolve => {
@@ -118,6 +129,15 @@ function getPlanByID (id) {
     const flow = [instance.name, msgid]
     requests[msgid] = resolve
     instance.ws.send(JSON.stringify({ flow, type: 'getPlanByID', body: id }))
+  })
+}
+function getAmendmentByID (id) {
+  const name = this
+  return new Promise(resolve => {
+    const msgid = instance.counter++
+    const flow = [instance.name, msgid]
+    requests[msgid] = resolve
+    instance.ws.send(JSON.stringify({ flow, type: 'getAmendmentByID', body: id }))
   })
 }
 function getContractByID (id) {

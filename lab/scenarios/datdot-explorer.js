@@ -95,7 +95,7 @@ function show (LOG) {
   }
   function showStatus (LOG) {
     return `<div style="color: gray; padding: 10px 40px;"> STATUS
-        <div> event NewContract: ${isLog('Event received: NewContract')} (7 per contract)</div>
+        <div> event NewAmendment: ${isLog('Event received: NewAmendment')} (7 per contract)</div>
         <div> event HostingStarted: ${isLog('Event received: HostingStarted')} (3 per contract)</div>
         <br>
         <div> Storage challenge emitted: ${isLog('"method":"NewStorageChallenge"')}</div>

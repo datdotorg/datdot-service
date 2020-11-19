@@ -40,14 +40,15 @@ async function role (profile, APIS) {
         log({ type: 'encoder', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       }
     }
-    if (event.method === 'NewContract') {
-      const [contractID] = event.data
-      const contract = await chainAPI.getContractByID(contractID)
-      const encoders = contract.providers.encoders
+    if (event.method === 'NewAmendment') {
+      const [amendmentID] = event.data
+      const amendment = await chainAPI.getAmendmentByID(amendmentID)
+      const contract = await chainAPI.getContractByID(amendment.contract)
+      const { encoders, attestors } = amendment.providers
       if (!await isForMe(encoders, event)) return
       // log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
-      const { attestorKey, feedKey, ranges } = await getHostingData(contract)
-      const data = { contractID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges }
+      const { attestorKey, feedKey, ranges } = await getHostingData(attestors,contract)
+      const data = { amendmentID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges }
       const encoding = await serviceAPI.encode(data).catch((error) => log({ type: 'error', body: [`error: ${error}`] }))
       if (!encoding) { return log({ type: 'encoder', body: [`Encoding job could not be finished`] }) }
       log({ type: 'encoder', body: [`Encoding done`] })
@@ -56,12 +57,12 @@ async function role (profile, APIS) {
 
   // HELPERS
 
-  async function getHostingData (contract) {
+  async function getHostingData (attestors, contract) {
     const ranges = contract.ranges
     const planID = contract.plan
     const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
-    const [attestorID] = contract.providers.attestors
+    const [attestorID] = attestors
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
     return { attestorKey, feedKey, ranges }
   }

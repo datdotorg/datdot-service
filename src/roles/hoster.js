@@ -39,15 +39,16 @@ async function role (profile, APIS) {
         log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       }
     }
-    if (event.method === 'NewContract') {
-      const [contractID] = event.data
-      const contract = await chainAPI.getContractByID(contractID)
-      const hosters = contract.providers.hosters
+    if (event.method === 'NewAmendment') {
+      const [amendmentID] = event.data
+      const amendment = await chainAPI.getAmendmentByID(amendmentID)
+      const contract = await chainAPI.getContractByID(amendment.contract)
+      const { hosters, attestors } = amendment.providers
       if (!await isForMe(hosters, event)) return
-      const { feedKey, attestorKey, plan } = await getHostingData(contract)
-      const data = { contractID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan }
+      const { feedKey, attestorKey, plan } = await getHostingData(attestors, contract)
+      const data = { amendmentID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan }
       await serviceAPI.host(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
-      log({ type: 'hoster', body: [`Hosting for Contract ID: ${contractID} started`] })
+      log({ type: 'hoster', body: [`Hosting for the amendment ${amendmentID} started`] })
     }
     if (event.method === 'DropHosting') {
       const [feedID, hosterID] = event.data
@@ -81,9 +82,9 @@ async function role (profile, APIS) {
 
   // HELPERS
 
-  async function getHostingData (contract) {
+  async function getHostingData (attestors, contract) {
     const ranges = contract.ranges
-    const [attestorID] = contract.providers.attestors
+    const [attestorID] = attestors
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
     const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)

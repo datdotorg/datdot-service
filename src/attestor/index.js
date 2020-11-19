@@ -39,14 +39,14 @@ module.exports = class Attestor {
   async verifyEncodingFor (opts) {
     const attestor = this
     return new Promise(async (resolve, reject) => {
-      const { contractID, attestorKey, encoderKey, hosterKey, feedKey, cb: compare } = opts
+      const { amendmentID, attestorKey, encoderKey, hosterKey, feedKey, cb: compare } = opts
 
       const opts1 = {
         plex: this.communication,
         senderKey: encoderKey,
         feedKey,
         receiverKey: attestorKey,
-        id: contractID,
+        id: amendmentID,
         myKey: attestorKey,
       }
       const log2encoder = attestor.log.sub(`<-Encoder ${encoderKey.toString('hex').substring(0,5)}`)
@@ -56,14 +56,16 @@ module.exports = class Attestor {
         senderKey: attestorKey,
         feedKey,
         receiverKey: hosterKey,
-        id: contractID,
+        id: amendmentID,
         myKey: attestorKey,
       }
       const log2hoster = attestor.log.sub(`->Hoster ${hosterKey.toString('hex').substring(0,5)}`)
       const streams = await peerConnect(opts2, log2hoster)
 
       // check the encoded data and if ok, send them to the hosters
+      const verified = []
       const verifiedAndStored = []
+      var expectedMessageCount
       var encodedCount = 0
       log2encoder({ type: 'attestor', body: ['Start receiving data from the encoder'] })
 
@@ -71,27 +73,26 @@ module.exports = class Attestor {
         log2encoder({ type: 'attestor', body: [`${message.index} RECV_MSG ${encoderKey.toString('hex')}`] })
         encodedCount++
         // @TODO: merkle verify each chunk
-        const { type } = message
+        const { type, rangesCount } = message
+        expectedMessageCount = rangesCount
         if (type === 'ping') continue
         if (type === 'encoded') {
           // verify if all encodings are same size
+          verified.push({ message})
           verifiedAndStored.push(compareEncodings(message))
         } else {
           log2encoder({ type: 'attestor', body: [`encoded checking UNKNOWN_MESSAGE MESSAGE TYPE ${type} `] })
           encoderComm.serialize$.end({ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', ...{ messageType: type } })
         }
       }
-      // const results = await Promise.allSettled(verifiedAndStored)
-      // const results = await Promise.allSettled(verifiedAndStored).catch((error) => attestor.log({ type: 'error', body: [`Error: ${error}`] }))
+      // prepare the report
+      const failed = []
       const results = await Promise.allSettled(verifiedAndStored).catch((error) => console.log({ type: 'error', body: [`Error: ${error}`] }))
       const status = this.getStatus(results)
+      if (verified.length !== expectedMessageCount) failed.push(encoderKey)
+      else if (!status) failed.push(hosterKey)
       streams.end()
-      resolve({
-        contract: contractID,
-        statusOK: status,
-        encoderKey: encoderKey.toString('hex'),
-        hosterKey: hosterKey.toString('hex')
-      })
+      resolve(failed)
 
       function compareEncodings (message) {
         return new Promise((resolve, reject) => {

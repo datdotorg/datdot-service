@@ -22,19 +22,19 @@ function datdotService (profile) {
   /* ----------------------------------------------------------------
                  BEFORE HOSTING => ENCODING, VERIFYING, STORING
   ------------------------------------------------------------------ */
-  async function encode ({ contractID, account, attestorKey, encoderKey, feedKey: feedKeyBuffer, ranges }) {
+  async function encode ({ amendmentID, account, attestorKey, encoderKey, feedKey: feedKeyBuffer, ranges }) {
     log({ type: 'serviceAPI', body: [`Encode!`] })
-    return account.encoder.encodeFor(contractID, attestorKey, encoderKey, feedKeyBuffer, ranges)
+    return account.encoder.encodeFor(amendmentID, attestorKey, encoderKey, feedKeyBuffer, ranges)
   }
 
   async function verifyEncoding (data) {
-    const { account, contractID, feedKey, hosterKeys, attestorKey, encoderKeys } = data
+    const { account, amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys } = data
     const messages = []
     const responses = []
     for (var i = 0, len = encoderKeys.length; i < len; i++) {
       const encoderKey = encoderKeys[i]
       const hosterKey = hosterKeys[i]
-      const opts = { contractID, attestorKey, encoderKey, hosterKey, feedKey, cb: (msg, cb) => compareEncodings(messages, msg, cb) }
+      const opts = { amendmentID, attestorKey, encoderKey, hosterKey, feedKey, cb: (msg, cb) => compareEncodings(messages, msg, cb) }
       log({ type: 'serviceAPI', body: [`Verify encodings!`] })
       responses.push(account.attestor.verifyEncodingFor(opts))
     }
@@ -42,8 +42,8 @@ function datdotService (profile) {
   }
 
   async function host (data) {
-    const { account, contractID, feedKey, hosterKey, attestorKey, plan } = data
-    const opts = { contractID, feedKey, hosterKey, attestorKey, plan }
+    const { account, amendmentID, feedKey, hosterKey, attestorKey, plan } = data
+    const opts = { amendmentID, feedKey, hosterKey, attestorKey, plan }
     log({ type: 'serviceAPI', body: [`Host! ${JSON.stringify(opts)}`] })
 
     return await account.hoster.hostFor(opts)

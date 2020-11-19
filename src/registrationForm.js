@@ -4,6 +4,8 @@ module.exports = registrationForm
 // ATTESTOR bandwidth => 1
 // HOSTER storage, bandwidth => 1
 
+// @TODO should times be converted into blocks??
+
 // See example https://pastebin.com/5nAb6XHQ
 function registrationForm (role, settings) { // attestor, encoder, hoster
   const { from, until, region = 'global'} = settings
