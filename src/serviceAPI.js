@@ -28,13 +28,13 @@ function datdotService (profile) {
   }
 
   async function verifyEncoding (data) {
-    const { account, amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys } = data
+    const { account, amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges } = data
     const messages = []
     const responses = []
     for (var i = 0, len = encoderKeys.length; i < len; i++) {
       const encoderKey = encoderKeys[i]
       const hosterKey = hosterKeys[i]
-      const opts = { amendmentID, attestorKey, encoderKey, hosterKey, feedKey, cb: (msg, cb) => compareEncodings(messages, msg, cb) }
+      const opts = { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, cb: (msg, cb) => compareEncodings(messages, msg, cb) }
       log({ type: 'serviceAPI', body: [`Verify encodings!`] })
       responses.push(account.attestor.verifyEncodingFor(opts))
     }

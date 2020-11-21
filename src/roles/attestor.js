@@ -1,4 +1,5 @@
 const registrationForm = require('../registrationForm')
+const dateToBlockNumber = require('../dateToBlockNumber')
 /******************************************************************************
   ROLE: Attestor
 ******************************************************************************/
@@ -16,7 +17,11 @@ async function role (profile, APIS) {
   log({ type: 'attestor', body: [`My address ${myAddress}`] })
   const signer = vaultAPI.chainKeypair
   const nonce = await vaultAPI.getNonce()
-  const settings = { from: new Date(), until: new Date('Nov 26, 2021 23:55:00') }
+
+  const blockNow = await chainAPI.getBlockNumber()
+  const until = new Date('Dec 26, 2021 23:55:00')
+  const untilBlock = dateToBlockNumber ({ dateNow: new Date(), blockNow, date: until })
+  const settings = { from: blockNow, until: untilBlock }
   const form = registrationForm('attestor', settings)
   await chainAPI.registerAttestor({ form, attestorKey, signer, nonce })
   chainAPI.listenToEvents(handleEvent)
@@ -46,8 +51,8 @@ async function role (profile, APIS) {
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress !== myAddress) return
       log({ type: 'chainEvent', body: [`Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`] })
-      const { feedKey, encoderKeys, hosterKeys } = await getContractData(amendment, contract)
-      const responses = await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+      const { feedKey, encoderKeys, hosterKeys, ranges } = await getData(amendment, contract)
+      const responses = await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
       log({ type: 'attestor', body: [`Verify encoding done: ${responses}`] })
       if (responses) {
         const failed = []
@@ -62,7 +67,7 @@ async function role (profile, APIS) {
         const nonce = vaultAPI.getNonce()
         await chainAPI.amendmentReport({ report, signer, nonce })
       }
-      // const contract = await getContractData(event.data, isForMe)
+      // const contract = await getData(event.data, isForMe)
       // if (!contract) return
       // const { feedKey, encoderKeys, hosterKeys } = contract
       // await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, contractID })
@@ -143,7 +148,7 @@ async function role (profile, APIS) {
     return { hosterKey, feedKey, storageChallenge }
   }
 
-  async function getContractData (amendment, contract) {
+  async function getData (amendment, contract) {
     const { encoders, hosters } = amendment.providers
     const encoderKeys = []
     encoders.forEach(async (id) => {
@@ -157,7 +162,8 @@ async function role (profile, APIS) {
     })
     const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
-    return { feedKey, encoderKeys, hosterKeys }
+    const ranges = contract.ranges
+    return { feedKey, encoderKeys, hosterKeys, ranges }
   }
 
   function getRandomInt (min, max) {

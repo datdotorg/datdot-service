@@ -16,6 +16,7 @@ async function datdotChain (profile, provider) {
   // provider = new WsProvider(`${address}:${port}`)
   const API = await rerun(() => ApiPromise.create({ name, provider, types }))
   const chainAPI = {
+    getBlockNumber,
     newUser,
     registerHoster,
     registerEncoder,
@@ -50,6 +51,11 @@ async function datdotChain (profile, provider) {
         log({ type: 'chainAPI', body: ['\t', phase.toString(), `: ${section}.${method}`, data.toString()] })
       })
     }
+  }
+
+  async function getBlockNumber () {
+    const header = await API.derive.chain.getHeader()
+    return header.number
   }
 
   async function makeNonce (nonce) {

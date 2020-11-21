@@ -1,4 +1,5 @@
 const registrationForm = require('../registrationForm')
+const dateToBlockNumber = require('../dateToBlockNumber')
 /******************************************************************************
   ROLE: Encoder
 ******************************************************************************/
@@ -16,7 +17,11 @@ async function role (profile, APIS) {
   log({ type: 'encoder', body: [`My address ${myAddress}`] })
   const signer = vaultAPI.chainKeypair
   const nonce = await vaultAPI.getNonce()
-  const settings = { from: new Date(), until: '' }
+
+  const blockNow = await chainAPI.getBlockNumber()
+  const until = new Date('Dec 26, 2021 23:55:00')
+  const untilBlock = dateToBlockNumber ({ dateNow: new Date(), blockNow, date: until })
+  const settings = { from: blockNow, until: untilBlock }
   const form = registrationForm('encoder', settings)
   await chainAPI.registerEncoder({ form, encoderKey, signer, nonce })
   await chainAPI.listenToEvents(handleEvent)

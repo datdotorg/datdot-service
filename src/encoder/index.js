@@ -34,7 +34,7 @@ module.exports = class Encoder {
     sodium.crypto_sign_seed_keypair(signingPublicKey, signingSecretKey, signingSeed)
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
     const noiseKeyPair = seedKeygen(noiseSeed)
-    this.communication = p2plex({ keyPair: noiseKeyPair })
+    this.communication = p2plex({ keyPair: noiseKeyPair, opts: {maxPeers: 0 } })
     this.signingPublicKey = signingPublicKey
     this.signingSecretKey = signingSecretKey
     this.replicationPublicKey = replicationPublicKey
@@ -45,7 +45,6 @@ module.exports = class Encoder {
     const encoder = this
     return new Promise(async (resolve, reject) => {
       if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
-      const rangesCount = getRangesCount(ranges)
 
       const feed = encoder.Hypercore(feedKey)
 
@@ -66,7 +65,7 @@ module.exports = class Encoder {
 
       log2Attestor({ type: 'encoder', body: [`Start encoding and sending data to attestor`] })
       for (const range of ranges) {
-        const rangeRes = sendDataToAttestor({ rangesCount, encoder, range, feed, feedKey, streams, log: log2Attestor })
+        const rangeRes = sendDataToAttestor({ encoder, range, feed, feedKey, streams, log: log2Attestor })
         allChunks.push(...rangeRes)
       }
       try {
@@ -84,21 +83,10 @@ module.exports = class Encoder {
   }
 }
 
-function getRangesCount (ranges) {
-  let counter = 0
-  for (var i = 0, len = ranges.length; i < len; i++) {
-    const [min, max] = ranges[i]
-    for (var j = min; j < max + 1; j++) {
-      counter++
-    }
-  }
-  return counter
-}
-
-function sendDataToAttestor ({ rangesCount, encoder, range, feed, feedKey, streams, log }) {
+function sendDataToAttestor ({ encoder, range, feed, feedKey, streams, log }) {
   const rangeRes = []
   for (let index = range[0], len = range[1] + 1; index < len; index++) {
-    const message = encode(encoder, index, feed, feedKey, rangesCount)
+    const message = encode(encoder, index, feed, feedKey)
     const chunkRes = send(message, { encoder, range, feed, feedKey, streams, log })
     rangeRes.push(chunkRes)
   }
@@ -108,7 +96,7 @@ async function send (msg, { encoder, range, feed, feedKey, streams, log }) {
   const message = await msg
   return requestResponse({ message, sendStream: streams.serialize$, receiveStream: streams.parse$, log })
 }
-async function encode (encoder, index, feed, feedKey, rangesCount) {
+async function encode (encoder, index, feed, feedKey) {
   const data = await feed.get(index)
   const encoded = await encoder.EncoderDecoder.encode(data)
   const { nodes, signature } = await feed.proof(index)
@@ -122,5 +110,5 @@ async function encode (encoder, index, feed, feedKey, rangesCount) {
   encoded.copy(toSign, varint.encode.bytes)
   // Sign the data with our signing secret key and write it to the proof buffer
   sodium.crypto_sign_detached(proof, toSign, encoder.signingSecretKey)
-  return { type: 'encoded', feed: feedKey, rangesCount, index, encoded, proof, nodes, signature }
+  return { type: 'encoded', feed: feedKey, index, encoded, proof, nodes, signature }
 }

@@ -6,6 +6,7 @@ const WebSocket = require('ws')
 const connections = {}
 const handlers = []
 const scheduler = init()
+var header = 0
 
 async function init () {
   const [json, logport] = process.argv.slice(2)
@@ -45,6 +46,7 @@ async function init () {
     })
   })
   return blockgenerator(log.sub('blockgenerator'), blockMessage => {
+    header = blockMessage.body
     Object.entries(connections).forEach(([name, channel]) => {
       channel.ws.send(JSON.stringify(blockMessage))
     })
@@ -270,23 +272,22 @@ async function unregisterAttestor (user, { name, nonce }, status) {
   unregisterRole ({ user, role: 'attestor', idleProviders: DB.idleAttestors })
 }
 /*----------------------
-  HOSTING STARTS
+  AMENDMENT REPORT
 ------------------------*/
 async function _amendmentReport (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [ report ] = args
   console.log({report})
   const { id: amendmentID, failed } = report
-  const attestorID = user.id
-  const userID = user.id
   const amendment = getAmendmentByID(amendmentID)
-  const contract = getContractByID(amendment.contract)
-  const contractID = contract.id
-  const plan = getPlanByID(contract.plan)
-  const { hosters, attestors, encoders } = amendment.providers
+  const { providers: { hosters, attestors, encoders }, contract: contractID } = amendment
+  const contract = getContractByID(contractID)
+  const { status: { schedulerID }, plan: planID } = contract
+  console.log({schedulerID})
+  const plan = getPlanByID(planID)
   var hosterID
   const { scheduleAction, cancelAction } = await scheduler
-  cancelAction(contract.status.schedulerID)
+  cancelAction(schedulerID)
   if (!failed.length) {
     contract.activeHosters = hosters
     hosters.forEach(startChallengePhase)
@@ -306,7 +307,7 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
     if (!failed.includes(encoderID)) reuse.encoders.push(encoderID)
   }
   // cancel amendment schedule
-  cancelAction(contract.status.schedulerID)
+  cancelAction(schedulerID)
   removeContractJobs({ amendment, doneJob: `NewAmendment${amendmentID}` }, log)
   const newID = makeDraftAmendment({ contractID, reuse: null}, log)
   addToPendingAmendments({ amendmentID: newID }, log)
@@ -318,7 +319,6 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
     const confirmation = { event: { data: [contractID, hosterID], method: 'HostingStarted' } }
     const event = [confirmation]
     handlers.forEach(([name, handler]) => handler(event))
-    // schedule challenges @TODO only for not failed hosters
     scheduleChallenges({ plan, user: getUserByID(hosterID), name, nonce, contractID, status })
   }
 }
@@ -414,10 +414,8 @@ async function makeContractsAndScheduleAmendments ({ plan }, log) {
       const newID = makeDraftAmendment({ contractID, reuse: null}, log)
       addToPendingAmendments({ amendmentID: newID }, log)
     }
-    const start = Date.parse(plan.from)
-    const now = new Date()
-    const difference = (start - now)/1000
-    const delay = Math.round(difference/6)
+    const blockNow = header.number
+    const delay = plan.from - blockNow
     const { scheduleAction, cancelAction } = await scheduler
     scheduleAction({ action: schedulingAmendment, delay, name: 'schedulingAmendment' })
   }
@@ -458,7 +456,6 @@ function makeDraftAmendment ({ contractID, reuse}, log) {
   return id
 }
 function addToPendingAmendments ({ amendmentID }, log) {
-  console.log('Pushing ID to pendingAmendments', amendmentID)
   DB.pendingAmendments.push({ amendmentID }) // @TODO sort pendingAmendments based on priority (RATIO!)
   tryNextAmendments(log)
 }
@@ -552,7 +549,6 @@ function select ({ idleProviders, role, newJob, amount, avoid, plan, log }) {
     const providerID = idleProviders[i]
     if (avoid[providerID]) continue // if providerID is in avoid, don't select it
     const provider = getUserByID(providerID)
-    // @TODO see how to check if attestor qualifies for the challenge (not asuming we're searching providers for a contract)
     if (doesQualify({ plan, provider, role })) {
       selectedProviders.push({providerID, index: i, role })
       avoid[providerID] = true
@@ -614,16 +610,15 @@ function doesQualify ({ plan, provider, role }) {
     hasEnoughStorage({ role, provider })
   ) return true
 }
-function isScheduleCompatible ({ plan, form, role }) {
-  const isOpenEnded = form.until === ''
-  const timeNow = Date.now() // in milliseconds
-  const isAvialableNow = Date.parse(form.from) <= timeNow
-  const until = Date.parse(form.until) // in milliseconds
+async function isScheduleCompatible ({ plan, form, role }) {
+  const blockNow = header.number
+  const isAvialableNow = form.from <= blockNow
+  const until = form.until
   var jobDuration
-  if (role === 'attestor') jobDuration = 24000
-  if (role === 'encoder') jobDuration = 12000 // duration in blocks * blocktime (2 * 6000)
-  if (role === 'hoster') jobDuration = Date.parse(plan.until.time) -  timeNow
-  if (isAvialableNow && (until >= (timeNow + jobDuration) || isOpenEnded)) return true
+  if (role === 'attestor') jobDuration = 3
+  if (role === 'encoder') jobDuration = 2 // duration in blocks
+  if (role === 'hoster') jobDuration = plan.until.time -  blockNow
+  if (isAvialableNow && (until >= (blockNow + jobDuration) || isOpenEnded)) return true
 }
 function hasCapacity ({ provider, role }) {
   const jobs = provider[role].jobs
@@ -699,7 +694,7 @@ function emitDropHosting ({ amendmentID, hosterID }, log) {
   const event = [dropHosting]
   handlers.forEach(([name, handler]) => handler(event))
   log({ type: 'chain', body: [`emit chain event ${JSON.stringify(event)}`] })
-  // @TODO ACTION find new provider for the contract instead pf tryNextAmendments(log)
+  // @TODO ACTION find new provider for the contract (makeAmendment(reuse))
 }
 function emitChallenge ({ method, challengeID }, log) {
   const newChallenge = { event: { data: [challengeID], method } }
@@ -725,11 +720,11 @@ function cancelContracts (plan) {
   }
 }
 async function scheduleChallenges ({ plan, user, name, nonce, contractID, status }) {
-  const schedulingChallenges = () => {
+  const schedulingChallenges = async () => {
     // schedule new challenges ONLY while the contract is active (plan.until.time > new Date())
-    const planUntil = Date.parse(plan.until.time)
-    const timeNow = Date.parse(new Date())
-    if (!(planUntil > timeNow)) return
+    const planUntil = plan.until.time
+    const blockNow = header.number
+    if (!(planUntil > blockNow)) return
     // @TODO if (!plan.schedules.length) {}
     // else {} // plan schedules based on plan.schedules
     const planID = plan.id
@@ -741,9 +736,6 @@ async function scheduleChallenges ({ plan, user, name, nonce, contractID, status
     scheduleAction({ action: schedulingChallenges, delay: 5, name: 'schedulingChallenges' })
   }
   const { scheduleAction, cancelAction } = await scheduler
-  // @TODO challenges should not start before scheduleContractFollowUp runs through as it may drop some failed hosters
-  // failed hosters should be dropped by contractFollowUp action (x blocks after new contract)
-  // so scheduleChallenges should start no sooner than x blocks + something, after first hostingStarted is reported
   scheduleAction({ action: schedulingChallenges, delay: 1, name: 'schedulingChallenges' })
 }
 
@@ -761,11 +753,9 @@ async function scheduleAmendmentFollowUp ({ amendmentID }, log) {
   return scheduleAction({ action: schedulingContractFollowUp, delay: 5, name: 'schedulingContractFollowUp' })
 }
 
-function planValid ({ plan }) {
-  const planFrom = Date.parse(plan.from) // verify if plan from/until times are valid @TODO see that all dates translate to same timezone
-  const planUntil = Date.parse(plan.until.time)
-  const timeNow = Date.parse(new Date())
-  if ((planUntil > planFrom) && ( planUntil > timeNow)) return true
+async function planValid ({ plan }) {
+  const blockNow = header.number
+  if ((plan.until.time > plan.from) && ( plan.until.time > blockNow)) return true
 }
 function makeStorageChallenge({ contract, hosterID, plan }, log) {
   var chunks = []

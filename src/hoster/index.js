@@ -32,7 +32,7 @@ module.exports = class Hoster {
   async init () {
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
     const noiseKeyPair = seedKeygen(noiseSeed)
-    this.communication = p2plex({ keyPair: noiseKeyPair })
+    this.communication = p2plex({ keyPair: noiseKeyPair, opts: {maxPeers: 0 } })
     this.publicKey = noiseKeyPair.publicKey
     const keys = await this.listKeys()
     for (const { key, options } of keys) {

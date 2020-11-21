@@ -6,6 +6,7 @@ const { performance } = require('perf_hooks')
 const peerConnect = require('../p2plex-connection')
 const requestResponse = require('../requestResponse')
 const EncoderDecoder = require('../EncoderDecoder')
+const getRangesCount = require('../getRangesCount')
 
 const NAMESPACE = 'datdot-attestor'
 const NOISE_NAME = 'noise'
@@ -27,7 +28,7 @@ module.exports = class Attestor {
   async init () {
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
     const noiseKeyPair = seedKeygen(noiseSeed)
-    this.communication = p2plex({ keyPair: noiseKeyPair })
+    this.communication = p2plex({ keyPair: noiseKeyPair, opts: {maxPeers: 0 } })
     this.communication.on('connection', (peer) => { this.log({ type: 'attestor', body: [`new connection`]}) })
     this.publicKey = noiseKeyPair.publicKey
   }
@@ -39,7 +40,7 @@ module.exports = class Attestor {
   async verifyEncodingFor (opts) {
     const attestor = this
     return new Promise(async (resolve, reject) => {
-      const { amendmentID, attestorKey, encoderKey, hosterKey, feedKey, cb: compare } = opts
+      const { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, cb: compare } = opts
 
       const opts1 = {
         plex: this.communication,
@@ -65,7 +66,7 @@ module.exports = class Attestor {
       // check the encoded data and if ok, send them to the hosters
       const verified = []
       const verifiedAndStored = []
-      var expectedMessageCount
+      const expectedMessageCount = getRangesCount(ranges)
       var encodedCount = 0
       log2encoder({ type: 'attestor', body: ['Start receiving data from the encoder'] })
 
@@ -73,8 +74,7 @@ module.exports = class Attestor {
         log2encoder({ type: 'attestor', body: [`${message.index} RECV_MSG ${encoderKey.toString('hex')}`] })
         encodedCount++
         // @TODO: merkle verify each chunk
-        const { type, rangesCount } = message
-        expectedMessageCount = rangesCount
+        const { type } = message
         if (type === 'ping') continue
         if (type === 'encoded') {
           // verify if all encodings are same size

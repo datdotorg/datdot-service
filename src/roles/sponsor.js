@@ -1,3 +1,4 @@
+const dateToBlockNumber = require('../dateToBlockNumber')
 /******************************************************************************
   ROLE: sponsor
 ******************************************************************************/
@@ -23,7 +24,10 @@ async function role (profile, APIS) {
       const nonce = await vaultAPI.getNonce()
       const feed1 = { id: feedID, ranges: [[0,3], [5,8], [10,14]] }
       const feeds = [feed1 /*, ... */]
-      const plan = makePlan({ feeds })
+      const blockNow = await chainAPI.getBlockNumber()
+      const until = new Date('Nov 26, 2021 23:55:00')
+      const untilBlock = dateToBlockNumber ({ dateNow: new Date(), blockNow, date: until })
+      const plan = makePlan({ feeds, blockNow, untilBlock })
       await chainAPI.publishPlan({ plan, signer, nonce })
     }
     if (event.method === 'HostingStarted') {
@@ -63,11 +67,12 @@ async function role (profile, APIS) {
 
  // See example https://pastebin.com/5nAb6XHQ
  // all feeds under one Plan have same hosting settings
-  function makePlan ({ feeds }) {
+  function makePlan ({ feeds, blockNow, untilBlock }) {
     for (var i = 0; i < feeds.length; i++) {
       const size = getSize(feeds[i].ranges)
       feeds[i].size = size
     }
+
     // @TODO make sponsor go check the actual feed size
     const config = {
       performance: {
@@ -87,9 +92,9 @@ async function role (profile, APIS) {
     // @TODO should times be converted into blocks??
     return {
       feeds,
-      from       : new Date('October 26, 2020 21:33'), // or new Date('Apr 30, 2000')
+      from       : blockNow, // or new Date('Apr 30, 2000')
       until: {
-        time     : new Date('Nov 26, 2021 23:55:00'), // date
+        time     : untilBlock, // date
         budget   : '',
         traffic  : '',
         price    : '',

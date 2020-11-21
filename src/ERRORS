@@ -6,6 +6,10 @@
 
 ----------------------------------------------
 
+getIdentity is being deprecated and will be removed in version 3.x.x, please use sdk.keyPair instead
+
+-----------------------------------------------------
+
 HOSTER Storage
 
 Error: TypeError: existing.filter is not a function
