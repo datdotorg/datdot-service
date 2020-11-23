@@ -47,7 +47,7 @@ module.exports = class Account {
   async init () {
     if (this.persist) await fs.ensureDir(this.storageLocation)
 
-    this.sdkIdentity = await this.sdk.getIdentity()
+    this.sdkIdentity = this.sdk.keyPair
 
     const accountSecret = await this.sdk.deriveSecret(NAMESPACE, IDENTITY_NAME)
     const accountUri = `0x${accountSecret.toString('hex')}`

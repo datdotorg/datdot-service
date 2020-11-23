@@ -27,7 +27,7 @@ module.exports = class Encoder {
   }
 
   async init () {
-    const { publicKey: replicationPublicKey } = await this.sdk.getIdentity()
+    const { publicKey: replicationPublicKey } = this.sdk.keyPair
     const signingSeed = await this.sdk.deriveSecret(NAMESPACE, IDENITY_NAME)
     const signingPublicKey = Buffer.alloc(sodium.crypto_sign_PUBLICKEYBYTES)
     const signingSecretKey = Buffer.alloc(sodium.crypto_sign_SECRETKEYBYTES)
