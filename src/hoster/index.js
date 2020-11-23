@@ -129,8 +129,9 @@ module.exports = class Hoster {
     if (this.storages.has(stringKey)) {
       const storage = await this.getStorage(key)
       await storage.destroy()
+      this.storages.delete(stringKey)
     }
-    await this.set
+    await this.setOpts(stringKey, null)
     await this.removeKey(key)
   }
 
