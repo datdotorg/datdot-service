@@ -124,6 +124,7 @@ module.exports = class Hoster {
   }
 
   async removeFeed (key) {
+    this.log({ type: 'hoster', body: [`Removing the feed`] })
     const stringKey = key.toString('hex')
     if (this.storages.has(stringKey)) {
       const storage = await this.getStorage(key)
@@ -273,10 +274,12 @@ module.exports = class Hoster {
   }
 
   async removeKey (key) {
+    this.log({ type: 'hoster', body: [`Removing the key`] })
     const stringKey = key.toString('hex')
     const existing = await this.listKeys()
     const final = existing.filter((data) => data.key !== stringKey)
     await this.saveKeys(final)
+    this.log({ type: 'hoster', body: [`Key removed`] })
   }
 
   async setOpts (key, options) {

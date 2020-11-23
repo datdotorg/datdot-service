@@ -95,29 +95,29 @@ function show (LOG) {
   }
   function showStatus (LOG) {
     return `<div style="color: gray; padding: 10px 40px;"> STATUS
-        <div> event NewAmendment: ${isLog('Event received: NewAmendment')} (7 per contract)</div>
-        <div> event HostingStarted: ${isLog('Event received: HostingStarted')} (3 per contract)</div>
+        <div> event NewAmendment: ${countPresence('Event received: NewAmendment')} (7 roles per contract)</div>
+        <div> event HostingStarted: ${countPresence('Event received: HostingStarted')} (3 per contract)</div>
         <br>
-        <div> Storage challenge emitted: ${isLog('"method":"NewStorageChallenge"')}</div>
-        <div> Event received (attestor & hoster) ${isLog('Event received: NewStorageChallenge')}</div>
-        <div> Attestor: starting verifyStorageChallenge ${isLog('Starting verifyStorageChallenge')}</div>
-        <div> Hoster: starting Starting sendStorageChallenge ${isLog('Starting sendStorageChallenge')}</div>
-        <div> Hoster Storage fetching data ${isLog('Fetching data for index')}</div>
-        <div> Hoster -> Attestor: sending proof of storage ${isLog('Sending proof of storage chunk')}</div>
-        <div> Attestor received proof ${isLog('Storage Proof received')}</div>
-        <div> Attestor -> Hoster: storage is verified ${isLog('Storage verified for chunk')}</div>
-        <div> Hoster got all reponses: ${isLog('responses received from the attestor')}</div>
-        <div> event StorageChallengeConfirmed: ${isLog('Event received: StorageChallengeConfirmed')} (3 per contract)</div>
+        <div> Storage challenge emitted: ${countPresence('"method":"NewStorageChallenge"')}</div>
+        <div> Event received (attestor & hoster) ${countPresence('Event received: NewStorageChallenge')}</div>
+        <div> Attestor: starting verifyStorageChallenge ${countPresence('Starting verifyStorageChallenge')}</div>
+        <div> Hoster: starting Starting sendStorageChallenge ${countPresence('Starting sendStorageChallenge')}</div>
+        <div> Hoster Storage fetching data ${countPresence('Fetching data for index')}</div>
+        <div> Hoster -> Attestor: sending proof of storage ${countPresence('Sending proof of storage chunk')}</div>
+        <div> Attestor received proof ${countPresence('Storage Proof received')}</div>
+        <div> Attestor -> Hoster: storage is verified ${countPresence('Storage verified for chunk')}</div>
+        <div> Hoster got all reponses: ${countPresence('responses received from the attestor')}</div>
+        <div> event StorageChallengeConfirmed: ${countPresence('Event received: StorageChallengeConfirmed')} (3 per contract)</div>
         <br>
-        <div> Performance challenge requests: ${isLog('"method":"NewPerformanceChallenge"')}</div>
-        <div> event PerformanceChallengeConfirmed: ${isLog('Event received: PerformanceChallengeConfirmed')} (5 per contract)</div>
+        <div> Performance challenge requests: ${countPresence('"method":"NewPerformanceChallenge"')}</div>
+        <div> event PerformanceChallengeConfirmed: ${countPresence('Event received: PerformanceChallengeConfirmed')} (5 per contract)</div>
         <br>
-        <div> FAIL_ACK_TIMEOUT: ${isLog('FAIL_ACK_TIMEOUT')}</div>
-        <div> uncaughtException Error: Channel destroyed uncaughtException ${isLog('uncaughtException Error: Channel destroyed uncaughtException')}</div>
+        <div> FAIL_ACK_TIMEOUT: ${countPresence('FAIL_ACK_TIMEOUT')}</div>
+        <div> uncaughtException Error: Channel destroyed uncaughtException ${countPresence('uncaughtException Error: Channel destroyed uncaughtException')}</div>
         <div></div>
       </div>`
 
-      function isLog (phrase) {
+      function countPresence (phrase) {
         const results = []
         for (var i = 0; i < LOG.length; i ++) {
           const body = LOG[i][3][0].body[0]

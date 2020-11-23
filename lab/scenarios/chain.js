@@ -3,6 +3,7 @@ const makeSets = require('../../src/makeSets')
 const blockgenerator = require('../../src/scheduleAction')
 const logkeeper = require('./logkeeper')
 const WebSocket = require('ws')
+
 const connections = {}
 const handlers = []
 const scheduler = init()
@@ -32,7 +33,7 @@ async function init () {
         }))
       }
       const _log = connections[from].log
-      _log({ type: 'chain', body: [`${type} ${flow}`] })
+      _log({ type: 'chain', body: [`${JSON.stringify(type)} ${JSON.stringify(flow)}`] })
       const method = queries[type] || signAndSend
       if (!method) return ws.send({ cite: [flow], type: 'error', body: 'unknown type' })
       const result = await method(body, from, body => {
@@ -277,17 +278,19 @@ async function unregisterAttestor (user, { name, nonce }, status) {
 async function _amendmentReport (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [ report ] = args
+  console.log('-----------------------------')
   console.log({report})
   const { id: amendmentID, failed } = report
   const amendment = getAmendmentByID(amendmentID)
   const { providers: { hosters, attestors, encoders }, contract: contractID } = amendment
   const contract = getContractByID(contractID)
   const { status: { schedulerID }, plan: planID } = contract
-  console.log({schedulerID})
   const plan = getPlanByID(planID)
   var hosterID
+  // cancel amendment schedule
   const { scheduleAction, cancelAction } = await scheduler
   cancelAction(schedulerID)
+
   if (!failed.length) {
     contract.activeHosters = hosters
     hosters.forEach(startChallengePhase)
@@ -295,22 +298,26 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
     return
   }
   const reuse = { hosters: [], encoders: [], attestors }
-  for (var i = 0, len = hosters.length; i < len; i++) {
+  for (var len = encoders.length; i < len; i++) {
+    const encoderID = encoders[i]
+    if (!failed.includes(encoderID)) reuse.encoders.push(encoderID)
+  }
+  if (!reuse.encoders.length) for (var i = 0, len = hosters.length; i < len; i++) {
     const hosterID = hosters[i]
     if (!failed.includes(hosterID)) {
       reuse.hosters.push(hosterID)
       startChallengePhase(hosterID)
     }
   }
-  if (!reuse.hosters.length) for (var len = encoders.length; i < len; i++) {
-    const encoderID = encoders[i]
-    if (!failed.includes(encoderID)) reuse.encoders.push(encoderID)
-  }
-  // cancel amendment schedule
-  cancelAction(schedulerID)
+  // @TODO better naming, so that it's clear wat it does
   removeContractJobs({ amendment, doneJob: `NewAmendment${amendmentID}` }, log)
-  const newID = makeDraftAmendment({ contractID, reuse: null}, log)
-  addToPendingAmendments({ amendmentID: newID }, log)
+  // if still not enough hosters, make new amendment
+  if (contract.activeHosters.length < 3) {
+    console.log('Need more hosters')
+    const newID = makeDraftAmendment({ contractID, reuse}, log)
+    addToPendingAmendments({ amendmentID: newID }, log)
+    tryNextAmendments(log)
+  }
 
   function startChallengePhase (hosterID) {
     contract.activeHosters.push(hosterID)
@@ -319,7 +326,7 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
     const confirmation = { event: { data: [contractID, hosterID], method: 'HostingStarted' } }
     const event = [confirmation]
     handlers.forEach(([name, handler]) => handler(event))
-    scheduleChallenges({ plan, user: getUserByID(hosterID), name, nonce, contractID, status })
+    scheduleChallenges({ plan, user, hosterID, name, nonce, contractID, status })
   }
 }
 
@@ -411,8 +418,10 @@ async function makeContractsAndScheduleAmendments ({ plan }, log) {
   for (var i = 0, len = contractIDs.length; i < len; i++) {
     const contractID = contractIDs[i]
     const schedulingAmendment = () => {
-      const newID = makeDraftAmendment({ contractID, reuse: null}, log)
+      const reuse = { encoders: [], attestors: [], hosters: [] }
+      const newID = makeDraftAmendment({ contractID, reuse}, log)
       addToPendingAmendments({ amendmentID: newID }, log)
+      tryNextAmendments(log)
     }
     const blockNow = header.number
     const delay = plan.from - blockNow
@@ -451,19 +460,21 @@ function makeDraftAmendment ({ contractID, reuse}, log) {
   const amendment = { contract: contractID }
   const id = DB.amendments.push(amendment)
   amendment.id = id
+  console.log('New draft amendment', id)
   amendment.providers = reuse
   contract.amendments.push(id)
   return id
 }
 function addToPendingAmendments ({ amendmentID }, log) {
   DB.pendingAmendments.push({ amendmentID }) // @TODO sort pendingAmendments based on priority (RATIO!)
-  tryNextAmendments(log)
 }
 async function tryNextAmendments (log) {
+  const failed = []
   for (var start = new Date(); DB.pendingAmendments.length && new Date() - start < 4000;) {
     const { amendmentID } = DB.pendingAmendments.shift()
-    executeAmendment({ amendmentID }, log)
+    const x = await executeAmendment({ amendmentID }, log)
   }
+  failed.forEach(x => addToPendingAmendments(x, log))
 }
 async function executeAmendment ({ amendmentID }, log) {
   const amendment = getAmendmentByID(amendmentID)
@@ -474,9 +485,8 @@ async function executeAmendment ({ amendmentID }, log) {
     reused: amendment.providers,
     newJob: `NewAmendment${amendmentID}` }, log)
   if (!providers) {
-    // push amendment back to pendingAmendments
-    addToPendingAmendments({ amendmentID }, log)
-    return log({ type: 'chain', body: [`not enough providers available for this amendment`] })
+    log({ type: 'chain', body: [`not enough providers available for this amendment`] })
+    return { amendmentID }
   }
   amendment.providers = providers
   // schedule follow up action
@@ -499,6 +509,7 @@ function getProviders ({ plan, newJob, reused }, log) {
     const reusedArr = [...reused.attestors, ...reused.hosters, ...reused.encoders]
     reusedArr.forEach(id => avoid[id] = true)
   }
+  // @TODO backtracking!! try all the options before returning no providers available
   const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: attestorAmount, avoid, plan, log })
   if (!attestors.length) return log({ type: 'chain', body: [`missing attestors`] })
   const encoders = select({ idleProviders: DB.idleEncoders, role: 'encoder',  newJob, amount: encoderAmount, avoid, plan, log })
@@ -526,7 +537,7 @@ function getRandomPos(ranges) {
   }
   return Math.floor(Math.random() * (max - min)) + min; //The maximum is exclusive and the minimum is inclusive
 }
-function getRandomChunks ({ ranges, chunks }) {
+function getRandomChunks ({ ranges, chunks }) { // [[0,3], [5,7]]
   var pos = getRandomPos(ranges)
   counter = 0
   for (var j = 0, N = ranges.length; j < N; j++) {
@@ -719,7 +730,7 @@ function cancelContracts (plan) {
     }
   }
 }
-async function scheduleChallenges ({ plan, user, name, nonce, contractID, status }) {
+async function scheduleChallenges ({ plan, user, hosterID, name, nonce, contractID, status }) {
   const schedulingChallenges = async () => {
     // schedule new challenges ONLY while the contract is active (plan.until.time > new Date())
     const planUntil = plan.until.time
@@ -729,7 +740,6 @@ async function scheduleChallenges ({ plan, user, name, nonce, contractID, status
     // else {} // plan schedules based on plan.schedules
     const planID = plan.id
     const from = plan.from
-    const hosterID = user.id
     // @TODO sort challenge request jobs based on priority (RATIO!) of the sponsors
     _requestStorageChallenge({ user, signingData: { name, nonce }, status, args: [contractID, hosterID] })
     _requestPerformanceChallenge({ user, signingData: { name, nonce }, status, args: [contractID, hosterID] })
@@ -740,9 +750,12 @@ async function scheduleChallenges ({ plan, user, name, nonce, contractID, status
 }
 
 async function scheduleAmendmentFollowUp ({ amendmentID }, log) {
-  const schedulingContractFollowUp = () => {
+  const scheduling = () => {
+    console.log('scheduleAmendmentFollowUp', sid)
     const amendment = getAmendmentByID(amendmentID)
     const { providers: { encoders, hosters, attestors: [attestorID] }, contract: contractID } = amendment
+    const contract = getContractByID(contractID)
+    if (contract.activeHosters.length >= 3) return
     removeContractJobs({ amendment, doneJob: `NewAmendment${amendmentID}` }, log)
     const reuse = { attestors: [], encoders, hosters }
     const newID = makeDraftAmendment({ contractID, reuse}, log)
@@ -750,7 +763,8 @@ async function scheduleAmendmentFollowUp ({ amendmentID }, log) {
     return amendmentID
   }
   const { scheduleAction, cancelAction } = await scheduler
-  return scheduleAction({ action: schedulingContractFollowUp, delay: 5, name: 'schedulingContractFollowUp' })
+  var sid = scheduleAction({ action: scheduling, delay: 5, name: 'scheduleAmendmentFollowUp' })
+  return sid
 }
 
 async function planValid ({ plan }) {

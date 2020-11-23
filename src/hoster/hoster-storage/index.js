@@ -137,8 +137,8 @@ module.exports = class HosterStorage {
   }
 
   async destroy () {
-    // await this.feed.destroy()
-    await this.feed.destroyStorage()
+    await this.feed.destroy()
+    // await this.feed.destroyStorage()
     await this.db.clear()
     await this.db.close()
   }

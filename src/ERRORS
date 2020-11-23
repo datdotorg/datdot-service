@@ -10,10 +10,17 @@ getIdentity is being deprecated and will be removed in version 3.x.x, please use
 
 -----------------------------------------------------
 
-HOSTER Storage
+HOSTER REMOVE FEED from Storage (DropHosting)
+
+1. HOSTER.removeFeed
 
 Error: TypeError: existing.filter is not a function
 Error: TypeError: this.feed.destroy() is not a function
+
+2. if we replace `await this.feed.destroy()` with `await this.feed.destroyStorage()` then it fails on HOSTER.removeKey
+
+Error: TypeError: existing.filter is not a function
+Error: ReadError: Database is not open
 
 -----------------------------------
 
@@ -30,19 +37,27 @@ poppy Error: �z&�]��6�տu�(`ՖI���=W��~,��@11 Timed 
 
 ---------------------------------------------------------------
 
+poppy Error: ��-}�,y���EY�sz3��Z}^�`j�@13 Database is not open
+
+--------------------------------------------------------------
+
 (node:5278) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 connection listeners added to [P2Plex]. Use emitter.setMaxListeners() to increase limit
 
 ----------------------------------------------------------------------
-
+UNCAUGHT EXCEPTIONS
 
 uncaughtException Error: Channel destroyed uncaughtException
 
 uncaughtException Error: Cannot call write after a stream was destroyed
+
+"uncaughtException Error: Remote closed without sen…NISH tag (possible MITM vector) uncaughtException"
 -----------------------------------------------------------------------
 
 Error: �d�c:/�If/L#���R	a�X6��o��V]@13 Feed is closed
 
 ------------------------------------------------------------------------
+
+IN CHALLENGES PHASE (looks like connected to Performance Challenges)
 
 dave Error: �/�D
 !�B�
@@ -50,6 +65,8 @@ dave Error: �/�D
 
 ----------------------------------------------------------------------
 
-TIMEOUT in the logs
+TIMEOUT in the logs (in storage challenges only) => maybe closing stream too fast once attestor has all the data, but hoster still waiting for ack
+
+Timeout error for message index 0: 0,FAIL_ACK_TIMEOUT
 
 -----------------------------------------------------------------------

@@ -53,7 +53,7 @@ function datdotService (profile) {
     const hasKey = await account.hoster.hasKey(feedKey)
     log({ type: 'serviceAPI', body: [`DropHosting hasKey? ${hasKey}`] })
     // @TODO fix errors in hoster storage when trying to remove feed
-    // if (hasKey) return await account.hoster.removeFeed(feedKey)
+    if (hasKey) return await account.hoster.removeFeed(feedKey)
     // @TODO ELSE => cancelHostFor process (disconnect from attestor and removeKey) <= for hosters that didn't start hosting on time
   }
 
