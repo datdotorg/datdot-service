@@ -35,7 +35,7 @@ function blockgenerator (log, emit) {
     const item = { name, action, executeBlock: currentBlock + delay/*currentBlock? currentBlock + delay : delay*/ }
     const id = item.id = total = total + 1
     actions.push(item)
-    log({ type: 'block', body: [`Pushing new action: ${name}`] })
+    log({ type: 'schedule', body: [`Pushing new action: ${name}`] })
     return id
   }
   function cancelAction (id) {

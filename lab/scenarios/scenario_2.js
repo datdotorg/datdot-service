@@ -20,3 +20,12 @@ module.exports = [
   { "name": "alfie", "roles": ["peer", "encoder", "hoster", "attestor"] },
   { "name": "poppy", "roles": ["peer", "encoder", "hoster", "attestor"] },
 ]
+
+// { "name": "iva", "roles": ["peer", "encoder", "hoster", "attestor"] },
+// { "name": "luigi", "roles": ["peer", "encoder", "hoster", "attestor"] },
+// { "name": "rok", "roles": ["peer", "encoder", "hoster", "attestor"] },
+// { "name": "bianca", "roles": ["peer", "encoder", "hoster", "attestor"] },
+// { "name": "bent", "roles": ["peer", "encoder", "hoster", "attestor"] },
+// { "name": "felix", "roles": ["peer", "encoder", "hoster", "attestor"] },
+// { "name": "elfi", "roles": ["peer", "encoder", "hoster", "attestor"] },
+// { "name": "clemens", "roles": ["peer", "encoder", "hoster", "attestor"] },

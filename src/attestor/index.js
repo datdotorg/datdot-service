@@ -39,9 +39,9 @@ module.exports = class Attestor {
 
   async verifyEncodingFor (opts) {
     const attestor = this
+
     return new Promise(async (resolve, reject) => {
       const { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, cb: compare } = opts
-
       const opts1 = {
         plex: this.communication,
         senderKey: encoderKey,
@@ -64,11 +64,24 @@ module.exports = class Attestor {
       const streams = await peerConnect(opts2, log2hoster)
 
       // check the encoded data and if ok, send them to the hosters
+      log2encoder({ type: 'attestor', body: ['Start receiving data from the encoder'] })
+
+      // set timeout
       const verified = []
       const verifiedAndStored = []
       const expectedMessageCount = getRangesCount(ranges)
       var encodedCount = 0
-      log2encoder({ type: 'attestor', body: ['Start receiving data from the encoder'] })
+      const failed = []
+      var timeout
+      var timeoutID = setTimeout(() => {
+        if (verified.length !== expectedMessageCount) {
+          console.log('Encoder failed',  verified.length, expectedMessageCount)
+          failed.push(encoderKey)
+        }
+        resolve(failed)
+        timeout = true
+        streams.end()
+      }, 11000)
 
       for await (const message of encoderComm.parse$) {
         log2encoder({ type: 'attestor', body: [`${message.index} RECV_MSG ${encoderKey.toString('hex')}`] })
@@ -86,11 +99,15 @@ module.exports = class Attestor {
         }
       }
       // prepare the report
-      const failed = []
+      if (timeout) return
+      else clearTimeout(timeoutID)
       const results = await Promise.allSettled(verifiedAndStored).catch((error) => console.log({ type: 'error', body: [`Error: ${error}`] }))
       const status = this.getStatus(results)
-      if (verified.length !== expectedMessageCount) failed.push(encoderKey)
-      else if (!status) failed.push(hosterKey)
+      if (!status) {
+        console.log(`Hoster failed (${verified.length}/${expectedMessageCount})`)
+        log2encoder({ type: 'attestor', body: [`Hoster failed (${verified.length}/${expectedMessageCount})`] })
+        failed.push(hosterKey)
+      }
       streams.end()
       resolve(failed)
 
