@@ -6,11 +6,11 @@
 
 ----------------------------------------------
 
-getIdentity is being deprecated and will be removed in version 3.x.x, please use sdk.keyPair instead
+getIdentity is being deprecated and will be removed in version 3.x.x, please use sdk.keyPair instead ////////////  DONE
 
 -----------------------------------------------------
 
-HOSTER REMOVE FEED from Storage (DropHosting)
+HOSTER REMOVE FEED from Storage (DropHosting)  //// => DONE
 
 1. HOSTER.removeFeed
 
@@ -29,6 +29,11 @@ unhandledRejection Error: You are already receiving this stream
 
 ---------------------------------------------------------------
 
+// @TODO
+// log stack trace
+// rewrite example.js for all the encoder/attestor/hoster modules with tape testing module
+
+
 browser logs:
 unhandledRejection Error: invalid type
 
@@ -36,10 +41,6 @@ terminal:
 poppy Error: �z&�]��6�տu�(`ՖI���=W��~,��@11 Timed out
 
 ---------------------------------------------------------------
-
-poppy Error: ��-}�,y���EY�sz3��Z}^�`j�@13 Database is not open
-
---------------------------------------------------------------
 
 (node:5278) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 connection listeners added to [P2Plex]. Use emitter.setMaxListeners() to increase limit
 

@@ -41,7 +41,9 @@ async function logkeeper (name, PORT) {
       }
       const { encode, decode } = codec(path, '*')
       function log (...args) {
-        if (args.length > 1 || args.length === 0 || (args.length === 1 && !args[0])) {
+        const stack = new Error().stack
+        args.push(stack)
+        if (args.length > 2 || args.length === 0 || (args.length === 1 && !args[0])) {
           console.log(name, args.length, args)
           throw new Error('invalid logs')
         }

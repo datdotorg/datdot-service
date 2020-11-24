@@ -28,7 +28,8 @@ module.exports = class Attestor {
   async init () {
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
     const noiseKeyPair = seedKeygen(noiseSeed)
-    this.communication = p2plex({ keyPair: noiseKeyPair, opts: {maxPeers: 0 } })
+    this.communication = p2plex({ keyPair: noiseKeyPair, maxPeers: Infinity })
+    this.communication.setMaxListeners(128)
     this.communication.on('connection', (peer) => { this.log({ type: 'attestor', body: [`new connection`]}) })
     this.publicKey = noiseKeyPair.publicKey
   }

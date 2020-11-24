@@ -34,7 +34,8 @@ module.exports = class Encoder {
     sodium.crypto_sign_seed_keypair(signingPublicKey, signingSecretKey, signingSeed)
     const noiseSeed = await this.sdk.deriveSecret(NAMESPACE, NOISE_NAME)
     const noiseKeyPair = seedKeygen(noiseSeed)
-    this.communication = p2plex({ keyPair: noiseKeyPair, opts: {maxPeers: 0 } })
+    this.communication = p2plex({ keyPair: noiseKeyPair, maxPeers: Infinity })
+    this.communication.setMaxListeners(128)
     this.signingPublicKey = signingPublicKey
     this.signingSecretKey = signingSecretKey
     this.replicationPublicKey = replicationPublicKey

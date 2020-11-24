@@ -43,6 +43,28 @@ function show (LOG) {
   const nums = []
   const names = {}
   LOG.sort((a, b) => a[2] - b[2])
+
+  window.toggleStack = function onclick (el, i) {
+    if (el.children.length === 1) el.removeChild(el.lastChild)
+    else {
+      const [name, id, time, message] = LOG[i]
+      const [{ type, body }, _stack] = message
+      var segment = ''
+      const stack = _stack.split('\n').map(x=>x.trim()).slice(2).map((line, idx) => {
+        if (!idx) {
+          const [start, rest] = line.split('(')
+          segment = rest.split('/lab/scenarios/logkeeper')[0]
+          return [start, rest.replace(segment, '')].join('')
+        } else {
+          return line.replace(segment, '')
+        }
+      })
+      const pre = document.createElement('pre')
+      pre.style='color:lime;'
+      pre.innerHTML = JSON.stringify(stack, 0, 2)
+      el.append(pre)
+    }
+  }
   for (var i = 0, len = LOG.length; i < len; i++) {
     const [name, id, time, message] = LOG[i]
     const stamp = `${time}`.split('.')[0]
@@ -51,9 +73,9 @@ function show (LOG) {
     }
     parser.innerHTML = `<div class="item" style="background-color: ${ i%2 ? '#282828' : '#202020'};">
       <div class="name" style="color: ${color()};">
-        <span>${name}</span> <span style="font-size: 9px">(${id})</span>
+        <span>${name}</span> <span style="font-size: 9px">(this, ${id})</span>
       </div>
-      <div class="message">${format(message)}</div>
+      <div class="message">${format(i, message)}</div>
     </div>`
     const [element] = parser.children
     log.append(element)
@@ -65,29 +87,29 @@ function show (LOG) {
     nums.push(num)
     return `hsla(${num}, 100%, 70%, 1)`
   }
-  function format (message) {
+  function format (id, message) {
     if (message && typeof message === 'object') {
       const [{ type, body }] = message
-      if (type === 'error') return `<span style="color: red">${body}</span>`
-      if (type === 'chainEvent') return `<span style="color: orange">${body}</span>`
-      if (type === 'block') return `<span style="color: green">${body}</span>`
-      if (type === 'chain') return `<span style="color: white">${body}</span>`
-      if (type === 'user') return `<span style="color: maroon">${body}</span>`
-      if (type === 'peer') return `<span style="color: blue">${body}</span>`
-      if (type === 'publisher') return `<span style="color: purple">${body}</span>`
-      if (type === 'sponsor') return `<span style="color: lime">${body}</span>`
-      if (type === 'author') return `<span style="color: fuchsia">${body}</span>`
-      if (type === 'hoster') return `<span style="color: pink">${body}</span>`
-      if (type === 'attestor') return `<span style="color: olive">${body}</span>`
-      if (type === 'encoder') return `<span style="color: turquoise">${body}</span>`
-      if (type === 'serviceAPI') return `<span style="color: teal"> ${body}</span>`
-      if (type === 'chat') return `<span style="color: silver"> ${body}</span>`
-      if (type === 'p2plex') return `<span style="color: SlateBlue"> ${body}</span>`
-      if (type === 'chainAPI') return `<span style="color: white"> ${body}</span>`
-      if (type === 'requestResponse') return `<span style="color: aqua"> ${body}</span>`
-      if (type === 'feed') return `<span style="color: salmon"> ${body}</span>`
-      if (type === 'log') return `<span style="color: gray">${body}</span>`
-      if (Array.isArray(message)) return message.reduce((all, x) => all + `<span style="color: gray">${x}</span>`, '')
+      if (type === 'error') return `<span onclick="toggleStack(this, ${id})" style="color: red">${body}</span>`
+      if (type === 'chainEvent') return `<span onclick="toggleStack(this, ${id})" style="color: orange">${body}</span>`
+      if (type === 'block') return `<span onclick="toggleStack(this, ${id})" style="color: green">${body}</span>`
+      if (type === 'chain') return `<span onclick="toggleStack(this, ${id})" style="color: white">${body}</span>`
+      if (type === 'user') return `<span onclick="toggleStack(this, ${id})" style="color: maroon">${body}</span>`
+      if (type === 'peer') return `<span onclick="toggleStack(this, ${id})" style="color: blue">${body}</span>`
+      if (type === 'publisher') return `<span onclick="toggleStack(this, ${id})" style="color: purple">${body}</span>`
+      if (type === 'sponsor') return `<span onclick="toggleStack(this, ${id})" style="color: lime">${body}</span>`
+      if (type === 'author') return `<span onclick="toggleStack(this, ${id})" style="color: fuchsia">${body}</span>`
+      if (type === 'hoster') return `<span onclick="toggleStack(this, ${id})" style="color: pink">${body}</span>`
+      if (type === 'attestor') return `<span onclick="toggleStack(this, ${id})" style="color: olive">${body}</span>`
+      if (type === 'encoder') return `<span onclick="toggleStack(this, ${id})" style="color: turquoise">${body}</span>`
+      if (type === 'serviceAPI') return `<span onclick="toggleStack(this, ${id})" style="color: teal"> ${body}</span>`
+      if (type === 'chat') return `<span onclick="toggleStack(this, ${id})" style="color: silver"> ${body}</span>`
+      if (type === 'p2plex') return `<span onclick="toggleStack(this, ${id})" style="color: SlateBlue"> ${body}</span>`
+      if (type === 'chainAPI') return `<span onclick="toggleStack(this, ${id})" style="color: white"> ${body}</span>`
+      if (type === 'requestResponse') return `<span onclick="toggleStack(this, ${id})" style="color: aqua"> ${body}</span>`
+      if (type === 'feed') return `<span onclick="toggleStack(this, ${id})" style="color: salmon"> ${body}</span>`
+      if (type === 'log') return `<span onclick="toggleStack(this, ${id})" style="color: gray">${body}</span>`
+      if (Array.isArray(message)) return message.reduce((all, x) => all + `<span onclick="onclick(this, ${id})" style="color: gray">${x}</span>`, '')
       return console.log('error', message)
     } else {
       return message
