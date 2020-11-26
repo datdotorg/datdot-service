@@ -30,7 +30,6 @@ async function peerConnect ({ plex, feedKey, senderKey, receiverKey, myKey, id }
     try {
       peer = await plex.findByTopicAndPublicKey(topic, peerKey, SWARM_OPTS)
       log({ type: 'p2plex', body: [`Got a peer`] })
-      peer.peerKey = peerKey
     } catch (error) {
       log({ type: 'p2plex', body: [`timeout "findByTopicAndPublicKey" ${error} `] })
     }
@@ -45,16 +44,13 @@ async function peerConnect ({ plex, feedKey, senderKey, receiverKey, myKey, id }
   // pump
   pump(serialize$, duplex$, ...(myKey === receiverKey) ? [parse$, obj$] : [parse$], async (err) => {
     // @NOTE no need to destroy each stream manually as pump already takes care of this
-    // log('Streams closed and destroyed', err)
-    log({ type: 'p2plex', body: [`Streams closed and destroyed`] })
+    log({ type: 'p2plex', body: [`Streams successfully closed and destroyed`] })
     peer.disconnect()
   })
 
   // listen
   peer.on('disconnected', function () {
-    const peerKey = this.peerKey
-    if (myKey === receiverKey) log({ type: 'p2plex', body: ['Peer disconnected', peerKey.toString('hex').substring(0,5), myKey.toString('hex').substring(0,5)] })
-    else log({ type: 'p2plex', body: ['Peer disconnected', myKey.toString('hex').substring(0,5), peerKey.toString('hex').substring(0,5)] })
+    log({ type: 'p2plex', body: [`Peer disconnected, PeerKey: ${peerKey.toString('hex').substring(0,5)}, MyKey: ${myKey.toString('hex').substring(0,5)}`] })
   })
   peer.on('error', (err) => { 'p2plex error', err })
 

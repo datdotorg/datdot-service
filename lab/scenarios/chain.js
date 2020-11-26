@@ -289,35 +289,34 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
   var hosterID
   // cancel amendment schedule
   const { scheduleAction, cancelAction } = await scheduler
+  if (!schedulerID) console.log('No scheduler in', JSON.stringify(contract))
   cancelAction(schedulerID)
 
   if (!failed.length) {
-    contract.activeHosters = hosters
     hosters.forEach(startChallengePhase)
-    removeContractJobs({ amendment, doneJob: `NewAmendment${amendmentID}` }, log)
+    removeContractJobs({ failedHosters: [], amendment, doneJob: `NewAmendment${amendmentID}` }, log)
     return
   }
-  const reuse = { hosters: [], encoders: [], attestors }
+  const reuse = { attestors, hosters: [], encoders: [] } // RESUMING PREV WORK BY GOOD ACTORS
   for (var len = encoders.length; i < len; i++) {
     const encoderID = encoders[i]
     if (!failed.includes(encoderID)) reuse.encoders.push(encoderID)
   }
-  if (!reuse.encoders.length) for (var i = 0, len = hosters.length; i < len; i++) {
+  const failedHosters = []
+  for (var i = 0, len = hosters.length; i < len; i++) {
     const hosterID = hosters[i]
     if (!failed.includes(hosterID)) {
       reuse.hosters.push(hosterID)
       startChallengePhase(hosterID)
+    } else {
+      failedHosters.push(hosterID)
     }
   }
-  // @TODO better naming, so that it's clear wat it does
-  removeContractJobs({ amendment, doneJob: `NewAmendment${amendmentID}` }, log)
-  // if still not enough hosters, make new amendment
-  if (contract.activeHosters.length < 3) {
-    console.log('Need more hosters')
-    const newID = makeDraftAmendment({ contractID, reuse}, log)
-    addToPendingAmendments({ amendmentID: newID }, log)
-    tryNextAmendments(log)
-  }
+  removeContractJobs({ failedHosters, amendment, doneJob: `NewAmendment${amendmentID}` }, log)
+  // make new amendment
+  const newID = makeDraftAmendment({ contractID, reuse}, log)
+  addToPendingAmendments({ amendmentID: newID }, log)
+  tryNextAmendments(log)
 
   function startChallengePhase (hosterID) {
     contract.activeHosters.push(hosterID)
@@ -456,6 +455,7 @@ function makeContracts ({ plan }, log) {
 // find providers for each contract (+ new providers if selected ones fail)
 function makeDraftAmendment ({ contractID, reuse}, log) {
   const contract = getContractByID(contractID)
+  if (!contract) return log({ type: 'chain', body: [`No contract with this ID: ${contractID}`] })
   log({ type: 'chain', body: [`Searching additional providers for contract: ${contractID}`] })
   const amendment = { contract: contractID }
   const id = DB.amendments.push(amendment)
@@ -575,10 +575,10 @@ function giveUsersContractJob ({ selectedProviders, idleProviders, role, newJob,
     return addJobForRole({ providerID, idleProviders, role, newJob, index })
   })
 }
-function removeContractJobs ({ amendment, doneJob }, log) {
+function removeContractJobs ({ failedHosters, amendment, doneJob }, log) {
   //@TODO payments: for each successfull hosting we pay attestor(1/3), this hoster (full), encoders (full, but just once)
-  const { providers: { hosters, attestors, encoders } } = amendment
-  hosters.forEach((hosterID, i) => emitDropHosting({ amendmentID: amendment.id, hosterID }, log))
+  const { providers: { attestors, encoders } } = amendment
+  failedHosters.forEach((hosterID, i) => emitDropHosting({ amendmentID: amendment.id, hosterID }, log))
   attestors.map(id =>
     removeJobForRole({
       id,
@@ -755,8 +755,8 @@ async function scheduleAmendmentFollowUp ({ amendmentID }, log) {
     const amendment = getAmendmentByID(amendmentID)
     const { providers: { encoders, hosters, attestors: [attestorID] }, contract: contractID } = amendment
     const contract = getContractByID(contractID)
-    if (contract.activeHosters.length >= 3) return
-    removeContractJobs({ amendment, doneJob: `NewAmendment${amendmentID}` }, log)
+    // if (contract.activeHosters.length >= 3) return
+    removeContractJobs({ failedHosters: [], amendment, doneJob: `NewAmendment${amendmentID}` }, log)
     const reuse = { attestors: [], encoders, hosters }
     const newID = makeDraftAmendment({ contractID, reuse}, log)
     addToPendingAmendments({ amendmentID: newID }, log)

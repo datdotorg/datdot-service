@@ -62,8 +62,9 @@ module.exports = class Attestor {
         myKey: attestorKey,
       }
       const log2hoster = attestor.log.sub(`->Hoster ${hosterKey.toString('hex').substring(0,5)}`)
+      var id_streams2 = setTimeout(() => { log2hoster({ type: 'attestor', body: [`peerConnect timeout, ${JSON.stringify(opts2)}`] }) }, 500)
       const streams = await peerConnect(opts2, log2hoster)
-
+      clearTimeout(id_streams2)
       // check the encoded data and if ok, send them to the hosters
       log2encoder({ type: 'attestor', body: ['Start receiving data from the encoder'] })
 
@@ -164,14 +165,16 @@ module.exports = class Attestor {
         myKey: attestorKey,
       }
       const log2hosterChallenge = attestor.log.sub(`<-HosterChallenge ${hosterKey.toString('hex').substring(0,5)}`)
+      var id_streams = setTimeout(() => { log2hosterChallenge({ type: 'attestor', body: [`peerConnect timeout, ${JSON.stringify(opts3)}`] }) }, 500)
       const streams = await peerConnect(opts3, log2hosterChallenge)
+      clearTimeout(id_streams)
 
       const all = []
       for await (const message of streams.parse$) {
-        log2hosterChallenge({ type: 'attestor', body: [`Storage Proof received, ${message.index}`]})
         const { type } = message
         if (type === 'StorageChallenge') {
           const { storageChallengeID, data, index } = message
+          log2hosterChallenge({ type: 'attestor', body: [`Storage Proof received, ${message.index}`]})
           // console.log(`Attestor received ${storageChallenge.chunks[index]}`)
           if (id === storageChallengeID) {
             if (proofIsVerified(message, feedKey, storageChallenge)) {
@@ -193,6 +196,7 @@ module.exports = class Attestor {
 
       async function proofIsVerified (message,feedKey, storageChallenge) {
         const { data, index } = message
+        if (!data) console.log('No data')
         // console.log('verifying index', storageChallenge.chunks[index])
         // const feed = attestor.Hypercore(feedKey, { persist: false })
         // await feed.ready()
@@ -201,7 +205,6 @@ module.exports = class Attestor {
         // console.log('PROOF', data.proof)
         const encoded = Buffer.from(data.encoded)
         const decoded = await EncoderDecoder.decode(encoded)
-        // console.log('decoded', decoded.toString('binary'))
         // proof.encoded
         // @TODO: merkle verify each chunk (to see if it belongs to the feed) && verify the signature
         // check the proof

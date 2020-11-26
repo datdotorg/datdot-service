@@ -47,12 +47,15 @@ function show (LOG) {
   window.toggleStack = function onclick (el, i) {
     if (el.children.length === 1) el.removeChild(el.lastChild)
     else {
-      const [name, id, time, message] = LOG[i]
-      const [{ type, body }, _stack] = message
+      const [name, id, time, message, type, _stack] = LOG[i]
       var segment = ''
       const stack = _stack.split('\n').map(x=>x.trim()).slice(2).map((line, idx) => {
         if (!idx) {
-          const [start, rest] = line.split('(')
+          var [start, rest] = line.split('(')
+          if (!rest) {
+            rest = start
+            start = ''
+          }
           segment = rest.split('/lab/scenarios/logkeeper')[0]
           return [start, rest.replace(segment, '')].join('')
         } else {
@@ -68,12 +71,10 @@ function show (LOG) {
   for (var i = 0, len = LOG.length; i < len; i++) {
     const [name, id, time, message] = LOG[i]
     const stamp = `${time}`.split('.')[0]
-    const color = () => {
-      return names[name] || (names[name] = getRandomColor())
-    }
+    const color = () => (names[name] || (names[name] = getRandomColor()))
     parser.innerHTML = `<div class="item" style="background-color: ${ i%2 ? '#282828' : '#202020'};">
       <div class="name" style="color: ${color()};">
-        <span>${name}</span> <span style="font-size: 9px">(this, ${id})</span>
+        <span>${name}</span><span style="font-size: 9px"> (${id})</span>
       </div>
       <div class="message">${format(i, message)}</div>
     </div>`
@@ -89,29 +90,31 @@ function show (LOG) {
   }
   function format (id, message) {
     if (message && typeof message === 'object') {
-      const [{ type, body }] = message
-      if (type === 'error') return `<span onclick="toggleStack(this, ${id})" style="color: red">${body}</span>`
-      if (type === 'chainEvent') return `<span onclick="toggleStack(this, ${id})" style="color: orange">${body}</span>`
-      if (type === 'block') return `<span onclick="toggleStack(this, ${id})" style="color: green">${body}</span>`
-      if (type === 'chain') return `<span onclick="toggleStack(this, ${id})" style="color: white">${body}</span>`
-      if (type === 'user') return `<span onclick="toggleStack(this, ${id})" style="color: maroon">${body}</span>`
-      if (type === 'peer') return `<span onclick="toggleStack(this, ${id})" style="color: blue">${body}</span>`
-      if (type === 'publisher') return `<span onclick="toggleStack(this, ${id})" style="color: purple">${body}</span>`
-      if (type === 'sponsor') return `<span onclick="toggleStack(this, ${id})" style="color: lime">${body}</span>`
-      if (type === 'author') return `<span onclick="toggleStack(this, ${id})" style="color: fuchsia">${body}</span>`
-      if (type === 'hoster') return `<span onclick="toggleStack(this, ${id})" style="color: pink">${body}</span>`
-      if (type === 'attestor') return `<span onclick="toggleStack(this, ${id})" style="color: olive">${body}</span>`
-      if (type === 'encoder') return `<span onclick="toggleStack(this, ${id})" style="color: turquoise">${body}</span>`
-      if (type === 'serviceAPI') return `<span onclick="toggleStack(this, ${id})" style="color: teal"> ${body}</span>`
-      if (type === 'chat') return `<span onclick="toggleStack(this, ${id})" style="color: silver"> ${body}</span>`
-      if (type === 'p2plex') return `<span onclick="toggleStack(this, ${id})" style="color: SlateBlue"> ${body}</span>`
-      if (type === 'chainAPI') return `<span onclick="toggleStack(this, ${id})" style="color: white"> ${body}</span>`
-      if (type === 'requestResponse') return `<span onclick="toggleStack(this, ${id})" style="color: aqua"> ${body}</span>`
-      if (type === 'feed') return `<span onclick="toggleStack(this, ${id})" style="color: salmon"> ${body}</span>`
-      if (type === 'log') return `<span onclick="toggleStack(this, ${id})" style="color: gray">${body}</span>`
-      if (Array.isArray(message)) return message.reduce((all, x) => all + `<span onclick="onclick(this, ${id})" style="color: gray">${x}</span>`, '')
+      var { type, body } = message
+      if (typeof body !== 'string') body = JSON.stringify(body)
+      if (type === 'error') return `<span onclick="toggleStack(this, ${id})" style="color: red">${type}:${body}</span>`
+      if (type === 'chainEvent') return `<span onclick="toggleStack(this, ${id})" style="color: orange">${type}:${body}</span>`
+      if (type === 'block') return `<span onclick="toggleStack(this, ${id})" style="color: green">${type}:${body}</span>`
+      if (type === 'chain') return `<span onclick="toggleStack(this, ${id})" style="color: white">${type}:${body}</span>`
+      if (type === 'user') return `<span onclick="toggleStack(this, ${id})" style="color: maroon">${type}:${body}</span>`
+      if (type === 'peer') return `<span onclick="toggleStack(this, ${id})" style="color: blue">${type}:${body}</span>`
+      if (type === 'publisher') return `<span onclick="toggleStack(this, ${id})" style="color: purple">${type}:${body}</span>`
+      if (type === 'sponsor') return `<span onclick="toggleStack(this, ${id})" style="color: lime">${type}:${body}</span>`
+      if (type === 'author') return `<span onclick="toggleStack(this, ${id})" style="color: fuchsia">${type}:${body}</span>`
+      if (type === 'hoster') return `<span onclick="toggleStack(this, ${id})" style="color: pink">${type}:${body}</span>`
+      if (type === 'attestor') return `<span onclick="toggleStack(this, ${id})" style="color: olive">${type}:${body}</span>`
+      if (type === 'encoder') return `<span onclick="toggleStack(this, ${id})" style="color: turquoise">${type}:${body}</span>`
+      if (type === 'serviceAPI') return `<span onclick="toggleStack(this, ${id})" style="color: teal"> ${type}:${body}</span>`
+      if (type === 'chat') return `<span onclick="toggleStack(this, ${id})" style="color: silver"> ${type}:${body}</span>`
+      if (type === 'p2plex') return `<span onclick="toggleStack(this, ${id})" style="color: SlateBlue"> ${type}:${body}</span>`
+      if (type === 'chainAPI') return `<span onclick="toggleStack(this, ${id})" style="color: white"> ${type}:${body}</span>`
+      if (type === 'requestResponse') return `<span onclick="toggleStack(this, ${id})" style="color: aqua"> ${type}:${body}</span>`
+      if (type === 'feed') return `<span onclick="toggleStack(this, ${id})" style="color: salmon"> ${type}:${body}</span>`
+      if (type === 'log') return `<span onclick="toggleStack(this, ${id})" style="color: gray">${type}:${body}</span>`
+      if (type === 'schedule') return `<span onclick="toggleStack(this, ${id})" style="color: seagreen">${type}:${body}</span>`
       return console.log('error', message)
     } else {
+      console.error('weirdly formatted message', message)
       return message
     }
   }
@@ -142,8 +145,10 @@ function show (LOG) {
       function countPresence (phrase) {
         const results = []
         for (var i = 0; i < LOG.length; i ++) {
-          const body = LOG[i][3][0].body[0]
+          var [name, id, time, { type = '', body = '' }] = LOG[i]
+          if (typeof body !== 'string') body = JSON.stringify(body)
           if (body && body.includes(phrase)) results.push(LOG)
+          else if (type.includes(phrase)) results.push(LOG)
         }
         return results.length
       }
@@ -159,16 +164,13 @@ function explorer (PORTS) {
       window.LOG = []
       function logger (port, message) {
         const msgs = connections[port].msgs
-        const { flow: [from, into, id, time], type, body } = message
+        const { flow: [from, into, id, time], type, body, meta: { stack } } = message
 
         if (type !== 'log') return console.error('unknown message type', message)
         if (!from) return console.error('missing sender', message)
-        if (!into) return console.error('missing recipient', message)
+        if (!into || into !== '*') return console.error('missing recipient', message)
 
-        const path = \`\${from\}:\${into\}\${id\}\`
-        msgs[path] = message
-
-        LOG.push([from, id, time, body])
+        LOG.push([from, id, time, body, type, stack])
       }
       for (var i = 0, len = PORTS.length; i < len; i++) connect(PORTS[i])
       function connect (port) {

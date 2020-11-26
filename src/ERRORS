@@ -6,22 +6,17 @@
 
 ----------------------------------------------
 
-getIdentity is being deprecated and will be removed in version 3.x.x, please use sdk.keyPair instead ////////////  DONE
-
------------------------------------------------------
-
-HOSTER REMOVE FEED from Storage (DropHosting)  //// => DONE
+HOSTER REMOVE FEED from Storage (DropHosting)
 
 1. HOSTER.removeFeed
 
 Error: TypeError: existing.filter is not a function
 Error: TypeError: this.feed.destroy() is not a function
 
-2. if we replace `await this.feed.destroy()` with `await this.feed.destroyStorage()` then it fails on HOSTER.removeKey
+2. we replaced `await this.feed.destroy()` with `await this.feed.destroyStorage()` => storage challenge stops working
 
-Error: TypeError: existing.filter is not a function
-Error: ReadError: Database is not open
-
+// Error: TypeError: existing.filter is not a function
+// Error: ReadError: Database is not open
 -----------------------------------
 
 unhandledRejection Error: You are already receiving this stream
@@ -30,7 +25,6 @@ unhandledRejection Error: You are already receiving this stream
 ---------------------------------------------------------------
 
 // @TODO
-// log stack trace
 // rewrite example.js for all the encoder/attestor/hoster modules with tape testing module
 
 
@@ -58,11 +52,25 @@ Error: �d�c:/�If/L#���R	a�X6��o��V]@13 Feed is closed
 
 ------------------------------------------------------------------------
 
+
+unhandledRejection TypeError: Cannot read property 'encoded' of undefined
+
+-----------------------------------------------------------------------
+
 IN CHALLENGES PHASE (looks like connected to Performance Challenges)
 
-dave Error: �/�D
-!�B�
-]    �*���{�0@�kːp�@13 Key not found in database [
+Caught new error in getStorageChallenge Error [NotFoundError]: Key not found in database []
+    at /home/ninabreznik/Documents/code/play/datdotorg/datdot/service/node_modules/levelup/lib/levelup.js:188:15
+    at /home/ninabreznik/Documents/code/play/datdotorg/datdot/service/node_modules/encoding-down/index.js:75:21
+    at Immediate.callNext (/home/ninabreznik/Documents/code/play/datdotorg/datdot/service/node_modules/memdown/memdown.js:204:7)
+    at processImmediate (node:internal/timers:463:21)
+
+
+FAILES HERE:
+hoster.js
+const data = await hoster.getStorageChallenge(feedKey, index)
+
+https://github.com/Level/levelup/issues/94
 
 ----------------------------------------------------------------------
 

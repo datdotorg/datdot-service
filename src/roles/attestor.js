@@ -102,7 +102,6 @@ async function role (profile, APIS) {
     if (event.method === 'NewStorageChallenge') {
       const [storageChallengeID] = event.data
       const storageChallenge = await chainAPI.getStorageChallengeByID(storageChallengeID)
-      log({ type: 'hoster', body: [`NewStorageChallenge event for attestor ${JSON.stringify(storageChallenge)}`] })
       const attestorID = storageChallenge.attestor
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress === myAddress) {

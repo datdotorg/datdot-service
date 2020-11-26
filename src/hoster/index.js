@@ -70,7 +70,9 @@ module.exports = class Hoster {
       }
       var counter = 0
       const log2attestor = hoster.log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
+      var id_streams2 = setTimeout(() => { log2attestor({ type: 'hoster', body: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, 500)
       const streams = await peerConnect(opts, log2attestor)
+      clearTimeout(id_streams2)
 
       for await (const message of streams.parse$) {
         // log2attestor(message.index, 'RECV_MSG',attestorKey.toString('hex'))
@@ -80,6 +82,13 @@ module.exports = class Hoster {
         if (type === 'ping') continue
         if (type === 'verified') {
           const { feed, index, encoded, proof, nodes, signature } = message
+          if (!await isValidData(message)) return
+
+          async function isValidData (message) {
+            const { feed, index, encoded, proof, nodes, signature } = message
+            if (feed && index && encoded && proof && nodes && signature) return true
+          }
+
           const key = Buffer.from(feed)
           const isExisting = await hoster.hasKey(key)
           // Fix up the JSON serialization by converting things to buffers
@@ -188,11 +197,19 @@ module.exports = class Hoster {
 
   async getStorageChallenge (key, index) {
     const storage = await this.getStorage(key)
-    return storage.getStorageChallenge(index)
+    // const _db = storage.db
+    // console.log({_db})
+    const data = await storage.getStorageChallenge(index)
+    return data
   }
 
   async sendStorageChallenge ({ storageChallenge, hosterKey, feedKey, attestorKey }) {
     const hoster = this
+    var timeout
+    var timeoutID = setTimeout(() => {
+      timeout = true
+      streams.end()
+    }, 20000)
     hoster.log({ type: 'hoster', body: [`Starting sendStorageChallenge`] })
     const storageChallengeID = storageChallenge.id
     const chunks = storageChallenge.chunks
@@ -207,22 +224,27 @@ module.exports = class Hoster {
         myKey: hosterKey,
       }
       const log2attestor4Challenge = hoster.log.sub(`<-Attestor4challenge ${attestorKey.toString('hex').substring(0,5)}`)
+      var id_streams = setTimeout(() => { log2attestor4Challenge({ type: 'hoster', body: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, 500)
       const streams = await peerConnect(opts, log2attestor4Challenge)
+      clearTimeout(id_streams)
+      hoster.log({ type: 'hoster', body: [`Got the streams`] })
 
 
       const all = []
       for (var i = 0; i < chunks.length; i++) {
         const index = chunks[i]
         const data = await hoster.getStorageChallenge(feedKey, index)
+        if (!data) return
         // console.log('Got data for', index)
-        const message = { type: 'StorageChallenge', feedKey, storageChallengeID, data}
-        message.index = i
-        log2attestor4Challenge({ type: 'hoster', body: [`Sending proof of storage chunk ${chunks[i]}, message index: ${message.index}`] })
+        const message = { type: 'StorageChallenge', storageChallengeID, data, index }
+        log2attestor4Challenge({ type: 'hoster', body: [`Sending proof of storage chunk with value ${chunks[i]}, message index: ${message.index}, all chunks in this challenge ${chunks.length}`] })
         const dataSent = requestResponse({ message, sendStream: streams.serialize$, receiveStream: streams.parse$, log: log2attestor4Challenge })
         all.push(dataSent)
       }
       try {
-        const results = await Promise.all(all).catch((error) => log2attestor4Challenge({ type: 'error', body: [`error: ${error}`] }))
+        if (timeout) return
+        else clearTimeout(timeoutID)
+        const results = await Promise.allSettled(all).catch((error) => log2attestor4Challenge({ type: 'error', body: [`error: ${error}`] }))
         log2attestor4Challenge({ type: 'hoster', body: [`${all.length} responses received from the attestor`] })
         log2attestor4Challenge({ type: 'hoster', body: [`Destroying communication with the attestor`] })
         streams.end()

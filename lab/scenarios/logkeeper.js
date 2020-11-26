@@ -8,9 +8,9 @@ const docs = {
 
 function codec (from, into, counter = 0) {
   function decode (json) { return JSON.parse(json) }
-  function encode (type, body, cite) {
+  function encode (type, [body, stack], cite) {
     const flow = [from, into, counter++, performance.now()]
-    const message = { flow, cite, type, body }
+    const message = { flow, cite, type, body, meta: { stack } }
     return JSON.stringify(message)
   }
   return { encode, decode }
@@ -43,7 +43,7 @@ async function logkeeper (name, PORT) {
       function log (...args) {
         const stack = new Error().stack
         args.push(stack)
-        if (args.length > 2 || args.length === 0 || (args.length === 1 && !args[0])) {
+        if (args.length > 2 || args.length === 0 ||!args[0]) {
           console.log(name, args.length, args)
           throw new Error('invalid logs')
         }
@@ -52,17 +52,18 @@ async function logkeeper (name, PORT) {
           throw new Error('invalid type')
         }
         const message = encode('log', args)
-        // console.log(`New logkeeper message: ${message} ${args}`)
         history.push(message)
         for (var i = 0, len = connections.length; i < len; i++) {
           const client = connections[i]
           if (client) client.send(message)
         }
       }
+      log.path = path
       log.sub = subname => {
         if (!subname || typeof subname !== 'string') throw new Error('invalid logger name')
         return makelog(names.concat(subname))
       }
+      Object.freeze(log)
       return loggers[path] = log
     }
     const wss = new WebSocket.Server({ port: PORT }, after)

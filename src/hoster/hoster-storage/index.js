@@ -4,6 +4,9 @@ const ENCODED_PREFIX = 0
 const DECODED_PREFIX = 1
 const PROOF_PREFIX = 2
 var stuff = { storeEnc: [], storeDec: [], getEnc: [], getDec: [] }
+
+const DB = {}
+
 module.exports = class HosterStorage {
   /**
   EncoderDecoder is an object with `async encode(rawData)` and `async decode(encodedData)`
@@ -47,22 +50,74 @@ module.exports = class HosterStorage {
     // If it's the same save the encoded data
     // and delete the decoded data if it exists
     await this._putEncoded(index, encoded)
+
     await this._delDecoded(index)
     await this._putProof(index, proof)
+
+
+    const test_enc = await this.db.get(makeKey(ENCODED_PREFIX, index))
+    const test_proof = await this.db.get(makeKey(PROOF_PREFIX, index))
+    const data = {
+        name: this.log.path,
+        encoded: { index, original: encoded, fromdb: test_enc },
+        proof:  { index, original: proof, fromdb: test_proof },
+    }
+    console.log('STORING', data)
+    DB[index] = data
   }
 
   // Invoked by whoever to test that the hoster is actually hosting stuff
   async getStorageChallenge (index) {
-    const [encoded, proof] = await Promise.all([
-      this._getEncoded(index),
-      this._getProof(index)
-    ])
-    this.log({ type: 'hoster', body: [`Fetching data for index: ${index}`] })
-    return {
-      index,
-      encoded,
-      proof
+    try {
+      var proof, encoded, test_enc2, test_proof2, err1, err2
+      try {
+        encoded = await this._getEncoded(index)
+      } catch (e) {
+        console.log(e)
+        try {
+          test_enc2 = await this.db.get(makeKey(ENCODED_PREFIX, index))
+        } catch (e2) {
+          console.log(e2)
+        }
+        err1 = true
+        console.error(`ENCODED ${index} from DB failed!`)
+      }
+
+      try {
+        proof = await this._getProof(index)
+      } catch (e) {
+        console.log(e)
+        try {
+          test_proof2 = await this.db.get(makeKey(PROOF_PREFIX, index))
+        } catch (e2) {
+          console.log(e2)
+        }
+        err2 = true
+        console.error(`PROOF ${index} from DB failed!`)
+      }
+
+      const NOW = { name: this.log.path, index, proof, encoded, test_enc2, test_proof2 }
+      const OLD = DB[index]
+
+      if (err1 || err2) {
+        console.log('NOW', {NOW})
+        console.log('OLD', {OLD})
+      }
+
+      return {
+        index,
+        encoded,
+        proof
+      }
+    } catch (err) {
+      console.log(err)
+      // console.log('Caught new error in getStorageChallenge', index, err)
+      // this.log({ type: 'hoster', body: [`New error in getStorageChallenge:${index} ${err.message}`] })
+      // const _enc = await this.db.get(makeKey(ENCODED_PREFIX, index))
+      // const _proof = await this.db.get(makeKey(PROOF_PREFIX, index))
+      // this.log({ type: 'hoster', body: [`New error in getStorageChallenge:${index} ${err.message}`] })
     }
+
   }
 
   // Meant to be used by the hypercore storage
@@ -76,7 +131,6 @@ module.exports = class HosterStorage {
       }, async () => {
         // Key doesn't exist? Try to get decoded version
         const decoded = await this._getDecoded(index)
-
         // If it exists, return it
         return decoded
       }).then((decoded) => {
@@ -100,11 +154,13 @@ module.exports = class HosterStorage {
   }
 
   async _getEncoded (index) {
-    return this.db.get(makeKey(ENCODED_PREFIX, index))
+    const encoded = await this.db.get(makeKey(ENCODED_PREFIX, index))
+    return encoded
   }
 
   async _getDecoded (index) {
-    return this.db.get(makeKey(DECODED_PREFIX, index))
+    const decoded = await this.db.get(makeKey(DECODED_PREFIX, index))
+    return decoded
   }
 
   async _putEncoded (index, data) {
@@ -124,7 +180,8 @@ module.exports = class HosterStorage {
   }
 
   async _getProof (index) {
-    return this.db.get(makeKey(PROOF_PREFIX, index))
+    const proof = await this.db.get(makeKey(PROOF_PREFIX, index))
+    return proof
   }
 
   async _putProof (index, proof) {
@@ -137,6 +194,7 @@ module.exports = class HosterStorage {
   }
 
   async destroy () {
+    // await this.feed.destroy()
     await this.feed.destroyStorage()
     await this.db.clear()
     await this.db.close()

@@ -1,6 +1,6 @@
 module.exports = requestResponse
 
-async function requestResponse ({ message, sendStream, receiveStream, log, wait = 5000 }) {
+async function requestResponse ({ message, sendStream, receiveStream, log, wait = 10000 }) {
   return new Promise((resolve, reject) => {
 
     // receiveStream.on('data', (data) => {
