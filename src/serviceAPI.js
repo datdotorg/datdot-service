@@ -6,7 +6,7 @@ function datdotService (profile) {
   const serviceAPI = {
     host,
     encode,
-    verifyEncoding,
+    verifyAndForwardEncodings,
     // getStorageChallenge,
     removeFeed,
     sendStorageChallengeToAttestor,
@@ -27,18 +27,19 @@ function datdotService (profile) {
     return account.encoder.encodeFor(amendmentID, attestorKey, encoderKey, feedKeyBuffer, ranges)
   }
 
-  async function verifyEncoding (data) {
+  async function verifyAndForwardEncodings (data) {
     const { account, amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges } = data
-    const messages = []
+    const messages = {}
     const responses = []
     for (var i = 0, len = encoderKeys.length; i < len; i++) {
       const encoderKey = encoderKeys[i]
       const hosterKey = hosterKeys[i]
-      const opts = { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, cb: (msg, cb) => compareEncodings(messages, msg, cb) }
+      const opts = { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, compareCB: (msg, key, cb) => compareEncodings({messages, key, msg}, cb) }
       log({ type: 'serviceAPI', body: [`Verify encodings!`] })
-      responses.push(account.attestor.verifyEncodingFor(opts))
+      responses.push(account.attestor.verifyAndForwardFor(opts))
     }
-    return Promise.all(responses)
+    const failedKeys = await Promise.all(responses)
+    return failedKeys
   }
 
   async function host (data) {
@@ -92,41 +93,80 @@ function datdotService (profile) {
   /******************************************************************************
     HELPER FUNCTIONS
   ******************************************************************************/
+  // FLOW:
+  // // STEP 0: ATTESTOR
+  // if (event.method === 'NewAmendment') {
+  //   // ...
+  //   const failed = await serviceAPI.verifyAndForwardEncodings(opts, signal)
+  //   // ...
+  //   const report = { id: amendmentID, failed }
+  //   await chainAPI.amendmentReport({ report })
+  // }
+  //  // STEP 1
+  //  async function verifyEncodings ({ account, amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges }) {
+  //    const messages = {}
+  //    const responses = []
+  //    for (var i = 0, len = encoderKeys.length; i < len; i++) {
+  //      const encoderKey = encoderKeys[i]
+  //      const hosterKey = hosterKeys[i]
+  //      const opts = { /*...*/ compareCB: (msg, cb) => compareEncodings(messages, msg, cb) }
+  //      responses.push(account.attestor.verifyEncodingFor(opts))
+  //    }
+  //    return await Promise.all(responses) // failedKeys
+  //  }
+  //  // STEP 2
+  //  async verifyEncodingFor (opts) {
+  //    // ...
+  //    for await (const message of encoderComm.parse$) {
+  //      //...
+  //      verifiedAndStored.push(compareEncodingsPromise(message).catch(err => {  ...  }))
+  //      //...
+  //   }
+  //   // ...
+  // }
+  // // STEP 3
+  //  function compareEncodingsPromise (message) {
+  //    return new Promise((resolve, reject) => {
+  //      compareCB(message, async (err, res) => {
+  //        if (!err) await sendToHoster(message, log2hoster)
+  //        else reject(err)
+  //      })
+  //    })
+  //  }
+  //  // STEP 4
 
-  function compareEncodings (messages, msg, cb) {
+  function compareEncodings ({messages, key, msg}, cb) {
     const { index } = msg
     // get all three chunks from different encoders, compare and then respond to each
     log({ type: 'serviceAPI', body: [`comparing encoding for index: ${index} (${messages[index] ? messages[index].length : 'none'}/3)`] })
 
-    if (messages[index]) messages[index].push({ msg, cb })
-    else messages[index] = [{ msg, cb }]
+    const size = Buffer.from(msg.encoded).length // @TODO or .bytelength
+    if (messages[index]) messages[index].push({ key, size, cb })
+    else messages[index] = [{ key, size, cb }]
     if (messages[index].length === 3) {
       log({ type: 'serviceAPI', body: [`Have 3 encodings, comparing them now!`] })
-
-      const sizes = messages[index].map(message => {
-        return Buffer.from(message.msg.encoded).length
-      })
-      // const sizes = [12,13,13] // => test usecase for when chunk sizes not same
-      const allEqual = sizes.every((val, i, arr) => val === arr[0])
-      if (allEqual === true) messages[index].forEach(chunk => chunk.cb(null, msg))
-      else findInvalidEncoding(sizes, messages, cb)
+      findInvalidEncoding(messages)
     }
   }
-  function findInvalidEncoding (sizes, messages, cb) {
-    var smallest = sizes[0]
-    for (var i = 0, len = sizes.length; i < len; i++) {
+  function findInvalidEncoding (messages) {
+    const failedEncoders = []
+    // const { key, size, cb } =
+    var smallest = messages[0].size
+    for (var i = 0, len = messages.length; i < len; i++) {
       for (var k = i + 1; k < len; k++) {
-        const [a, b] = [sizes[i], sizes[k]]
-        const err = 'Encoding denied'
+        const [a, b] = [messages[i].size, messages[k].size]
         if (a !== b) {
           if (a < b) {
             smallest = a
-            cb(err, messages[k])
+            failedEncoders.push(messages[k].key)
+            const err = { type: 'Encoding failed', failedEncoders }
+            cb(err)
           } else {
             smallest = b
-            cb(err, messages[i])
+            cb(err)
           }
         }
+        else cb()
       }
     }
   }

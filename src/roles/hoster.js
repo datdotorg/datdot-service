@@ -63,7 +63,7 @@ async function role (profile, APIS) {
         // @TODO close all the connections related to this feed
         log({ type: 'hoster', body: [`Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}`] })
         const feedKey = await chainAPI.getFeedKey(feedID)
-        await serviceAPI.removeFeed({ feedKey, account: vaultAPI }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+        // await serviceAPI.removeFeed({ feedKey, account: vaultAPI }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
         // @TODO cancel hosting = remove feed, get out of swarm...
       }
     }

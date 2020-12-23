@@ -30,15 +30,6 @@ async function role (profile, APIS) {
       const plan = makePlan({ feeds, blockNow, untilBlock })
       await chainAPI.publishPlan({ plan, signer, nonce })
     }
-    if (event.method === 'HostingStarted') {
-      const [contractID, userID] = event.data
-      const { plan: planID } = await chainAPI.getContractByID(contractID)
-      const { sponsor: sponsorID } = await chainAPI.getPlanByID(planID)
-      const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
-      if (sponsorAddress === myAddress) {
-        log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
-      }
-    }
     if (event.method === 'StorageChallengeConfirmed') {
       const [storageChallengeID] = event.data
       const { contract: contractID } = await chainAPI.getStorageChallengeByID(storageChallengeID)
@@ -64,57 +55,83 @@ async function role (profile, APIS) {
   }
 
   // HELPERS
-
  // See example https://pastebin.com/5nAb6XHQ
  // all feeds under one Plan have same hosting settings
-  function makePlan ({ feeds, blockNow, untilBlock }) {
-    for (var i = 0; i < feeds.length; i++) {
-      const size = getSize(feeds[i].ranges)
-      feeds[i].size = size
-    }
+ function sponsorPlan () {
+   const sponsorship = {
+     planID,
+     importance : '', // 1-3? 1-10?
+     budget     : '',
+     traffic    : '',
+     price      : '',
+   }
+   return { type: 'start', data: sponsorship }
+ }
+ function updateSponsorship () {
+   return { type: 'pause', data: id }
+   return { type: 'resume', data: id }
+   return { type: 'cancel', data: id }
+   return { type: 'update', data: { id, update: { importance, budget } } }
 
-    // @TODO make sponsor go check the actual feed size
-    const config = {
-      performance: {
-        availability: '', // percentage_decimal
-        bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
-        latency: { /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
-      },
-      regions: [{
-        region: '',  // at least 1 region is mandatory (defaults to global)
-        performance: {
-          availability: '', // percentage_decimal
-          bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
-          latency: {  /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
-        }
-      }/*, ...*/]
-    }
+    if ( type === 'update') sponsorships[data.id] = Object.assign(sponsorships[data.id], data.update)
+ }
+  function makePlan ({ feeds, blockNow, untilBlock }) {
+    const feeds = [feed_id0, feed_pk1, feed_pk2, feed_id2]
+    const dataset = [{ id, ranges }]
+    const performances = [{ // OPTIONAL
+      availability: '', // percentage_decimal
+      bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
+      latency: { /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
+    }],
+    const timetable = [{ // OPTIONAL
+      delay    : '', // milliseconds // default: 0
+      duration : '', // milliseconds // default: until - from
+      pause    : '', // milliseconds // default: none
+      repeat   : '', // number // default: none
+    }],
+    const regions = [['X3F', 'A0K']],  // at least 1 region is mandatory (defaults to global)
     // @TODO should times be converted into blocks??
     return {
-      feeds,
-      from       : blockNow, // or new Date('Apr 30, 2000')
-      until: {
-        time     : untilBlock, // date
-        budget   : '',
-        traffic  : '',
-        price    : '',
-      },
-      importance : '', // 1-3? 1-10?
-      config, // general config
-      schedules: [],
-      // schedules  : [{
-      //   duration : '', // milliseconds
-      //   delay    : '', // milliseconds
-      //   interval : '', // milliseconds
-      //   repeat   : '', // number
-      //   config // specialized config for each schedule
-      // }]
+      components: { feeds, dataset, performance, timetable, regions },
+      from     : blockNow, // or new Date('Apr 30, 2000')
+      until    : untilBlock, // date
+      program  : [
+        { plans: [234] },
+        {
+          // @TODO: if you publish a few local components (e.g. 5)
+          // and you want to reference the global component with id=3
+          // how to figure out if thats local ID or global ID
+          // e.g. positive vs. negative numbers to differentiate
+          dataset, // [0, 1]
+          regions, // [0, 1]
+          timetable, // [0]
+          performance: 0,
+        },
+        { dataset, regions, performance, times },
+        { dataset, regions, performance, times }
+      ]
+    }
+  }
+  function makePlanUpdate ({ }) {
+    // - pause plan (define max, after that resume or drop) - maybe pause only performance challenges
+    //   -> hosters can pause seeding and dont get paid for seeding, only storing,  while paused
+    // ...
+    const { program: { add, del, put } } = plan
+    Object.entries(put).map(([i, val]) => Object.assign(program[i], val))
+    del.map(i, => program.splice(i, 1))
+    program.push(...add)
+
+    return {
+      id,
+      components,
+      from,
+      until,
+      program: {
+        add: [{ dataset, regions, performance, timetable }, { plans: [33] }],
+        del: [0],
+        put: {2: { dataset, regions }},
+      }
     }
   }
 
-  function getSize (ranges) { // [[0,3], [5,8], [10,14]]
-    var size = 0
-    for (var i = 0; i < ranges.length; i++) { size = size + (ranges[i][1] - ranges[i][0]) } // [0,3]
-    return size*64 // each chunk is 64kb
-  }
 }

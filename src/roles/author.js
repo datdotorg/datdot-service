@@ -12,7 +12,7 @@ module.exports = role
 
 async function role (profile, APIS) {
   const { log } = profile
-  const getChatAPI = require('../../lab/scenarios/chatAPI')
+  const getChatAPI = require('../../lab/simulations/chatAPI')
   const chatAPI = await getChatAPI(profile, ['ws://localhost', '8000'].join(':'))
 
   log({ type: 'author', body: [`Make a feed and share it`] })

@@ -14,11 +14,11 @@ if (flag === '--production') {
   const command1 = path.join(__dirname, '../datdot-substrate/target/release/datdot-node')
   const child = spawn(command1, ['--dev'], { stdio: 'inherit' })
 } else {
-  const args1 = [path.join(__dirname, 'lab/scenarios/chain.js'), config, 9001]
+  const args1 = [path.join(__dirname, 'lab/simulations/chain.js'), config, 9001]
   const chain = spawn('node', args1, { stdio: 'inherit' })
 }
 
-const args2 = [path.join(__dirname, 'lab/scenarios/chatserver.js'), config, 9002]
+const args2 = [path.join(__dirname, 'lab/simulations/chatserver.js'), config, 9002]
 const chatserver = spawn('node', args2, { stdio: 'inherit' })
 
 const users = scenario

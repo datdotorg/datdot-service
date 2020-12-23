@@ -62,8 +62,9 @@ module.exports = class HosterStorage {
         encoded: { index, original: encoded, fromdb: test_enc },
         proof:  { index, original: proof, fromdb: test_proof },
     }
-    console.log('STORING', data)
+    // console.log('STORING', data)
     DB[index] = data
+    // console.log({DB})
   }
 
   // Invoked by whoever to test that the hoster is actually hosting stuff
@@ -101,6 +102,7 @@ module.exports = class HosterStorage {
 
       if (err1 || err2) {
         console.log('NOW', {NOW})
+        console.log({DB})
         console.log('OLD', {OLD})
       }
 

@@ -121,7 +121,7 @@ function show (LOG) {
   function showStatus (LOG) {
     return `<div style="color: gray; padding: 10px 40px;"> STATUS
         <div> event NewAmendment: ${countPresence('Event received: NewAmendment')} (7 roles per contract)</div>
-        <div> event HostingStarted: ${countPresence('Event received: HostingStarted')} (3 per contract)</div>
+        <div> Hosting OK, Starting Challenge Phase: ${countPresence('Starting Challenge Phase')} (3 per contract)</div>
         <br>
         <div> Storage challenge emitted: ${countPresence('"method":"NewStorageChallenge"')}</div>
         <div> Event received (attestor & hoster) ${countPresence('Event received: NewStorageChallenge')}</div>

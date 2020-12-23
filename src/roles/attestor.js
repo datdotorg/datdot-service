@@ -1,5 +1,7 @@
 const registrationForm = require('../registrationForm')
 const dateToBlockNumber = require('../dateToBlockNumber')
+const tempDB = require('../tempdb')
+
 /******************************************************************************
   ROLE: Attestor
 ******************************************************************************/
@@ -11,12 +13,15 @@ async function role (profile, APIS) {
   const { serviceAPI, chainAPI, vaultAPI } = APIS
 
   log({ type: 'attestor', body: [`Register as attestor`] })
+
   await vaultAPI.initAttestor({}, log)
   const attestorKey = vaultAPI.attestor.publicKey
   const myAddress = vaultAPI.chainKeypair.address
-  log({ type: 'attestor', body: [`My address ${myAddress}`] })
   const signer = vaultAPI.chainKeypair
   const nonce = await vaultAPI.getNonce()
+  log({ type: 'attestor', body: [`My address ${myAddress}`] })
+
+  const jobsDB = await tempDB(attestorKey)
 
   const blockNow = await chainAPI.getBlockNumber()
   const until = new Date('Dec 26, 2021 23:55:00')
@@ -24,6 +29,7 @@ async function role (profile, APIS) {
   const settings = { from: blockNow, until: untilBlock }
   const form = registrationForm('attestor', settings)
   await chainAPI.registerAttestor({ form, attestorKey, signer, nonce })
+
   chainAPI.listenToEvents(handleEvent)
 
   // EVENTS
@@ -43,6 +49,48 @@ async function role (profile, APIS) {
         log({ type: 'attestor', body: [`Event received: ${event.method} ${event.data.toString()}`] })
       }
     }
+
+    // function unpublishedPlan_jobIDs (planID) {
+    //   const plan = getPlanById(planID)
+    //   const jobIDs = plan.contracts.map(contractID => {
+    //     const contract = getContractByID(contractID)
+    //     const amendmentIDs = contract.ammendments
+    //     const lastID = amendmentIDs[ammendments.length - 1]
+    //     return lastID
+    //   }).filter(async jobID => {
+    //     const ammendment = getAmmendmentByID(jobID)
+    //     const [attestorID] = ammendment.providers.attestors
+    //     const attestorAddress = await chainAPI.getUserAddress(attestorID)
+    //     if (attestorAddress === myAddress) return true
+    //   })
+    //   return jobIDs
+    // }
+    if (event.method === 'UnpublishPlan') {
+      const [planID] = event.data
+      const jobIDs = unpublishedPlan_jobIDs(planID)
+      jobIDs.forEach(jobID => {
+
+        const job = jobsDB.get(jobID)
+        if (job) { /* @TODO: ... */ }
+
+      })
+    }
+    if (event.method === 'DropHosting') {
+
+      attestorAddress
+
+      const [planID] = event.data
+      const jobIDs = unpublishedPlan_jobIDs(planID)
+
+      jobIDs.forEach(jobID => {
+
+        const job = jobsDB.get(jobID)
+        if (job) { /* @TODO: ... */ }
+
+      })
+    }
+
+
     if (event.method === 'NewAmendment') {
       const [amendmentID] = event.data
       const amendment = await chainAPI.getAmendmentByID(amendmentID)
@@ -52,20 +100,46 @@ async function role (profile, APIS) {
       if (attestorAddress !== myAddress) return
       log({ type: 'chainEvent', body: [`Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`] })
       const { feedKey, encoderKeys, hosterKeys, ranges } = await getData(amendment, contract)
-      const responses = await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
-      log({ type: 'attestor', body: [`Verify encoding done: ${responses}`] })
-      if (responses) {
+
+      const task = { account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges }
+      const ref = amendmentID
+      jobsDB.put(ref, task)
+
+      jobsDB.list().forEach((ref, currentState => {
+
+        var controller = new AbortController()
+        // controller.abort()
+        var signal = controller.signal
+
+        resume(ref, currentState, signal)
+      })
+      // @TODO: what if process crash and restart?
+      // @TODO: how to lookup and abort on another event?
+      var controller = new AbortController()
+      // controller.abort()
+      var signal = controller.signal
+      signal.onabort = event => {}
+
+
+      const failedKeys = await serviceAPI.verifyAndForwardEncodings(task, {}, signal)
+      // .catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+      log({ type: 'attestor', body: [`Resolved all the responses for amendment: ${amendmentID}: ${failedKeys}`] })
+      if (failedKeys) {
         const failed = []
-        for (var i = 0, len = responses.length; i < len; i++) {
-          const [key] = responses[i]
-          if (key) {
-            const id = await chainAPI.getUserIDByKey(key)
-            failed.push(id)
+        if (failedKeys.length) {
+          for (var i = 0, len = failedKeys.length; i < len; i++) {
+            const key = failedKeys[i]
+            if (key) {
+              const id = await chainAPI.getUserIDByKey(key)
+              failed.push(id)
+            }
           }
         }
         const report = { id: amendmentID, failed }
+        const encoders = amendment.encoders
         const nonce = vaultAPI.getNonce()
         await chainAPI.amendmentReport({ report, signer, nonce })
+        jobsDB.del(ref)
       }
       // const contract = await getData(event.data, isForMe)
       // if (!contract) return

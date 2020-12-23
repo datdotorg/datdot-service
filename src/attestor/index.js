@@ -38,11 +38,15 @@ module.exports = class Attestor {
                             VERIFY ENCODING
 ---------------------------------------------------------------------- */
 
-  async verifyEncodingFor (opts) {
+  async verifyAndForwardFor (opts, currentState, abortSignal) {
     const attestor = this
 
+    abortSignal.onabort = event => {
+      // @TODO: cancel ongoing operations
+    }
+
     return new Promise(async (resolve, reject) => {
-      const { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, cb: compare } = opts
+      const { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, compareCB } = opts
       const opts1 = {
         plex: this.communication,
         senderKey: encoderKey,
@@ -52,7 +56,11 @@ module.exports = class Attestor {
         myKey: attestorKey,
       }
       const log2encoder = attestor.log.sub(`<-Encoder ${encoderKey.toString('hex').substring(0,5)}`)
+
+      // var id_streams1 = setTimeout(() => { log2encoder({ type: 'attestor', body: [`peerConnect timeout, ${JSON.stringify(opts2)}`] }) }, 500)
       const encoderComm = await peerConnect(opts1, log2encoder)
+      // clearTimeout(id_streams1)
+
       const opts2 = {
         plex: this.communication,
         senderKey: attestorKey,
@@ -62,75 +70,118 @@ module.exports = class Attestor {
         myKey: attestorKey,
       }
       const log2hoster = attestor.log.sub(`->Hoster ${hosterKey.toString('hex').substring(0,5)}`)
-      var id_streams2 = setTimeout(() => { log2hoster({ type: 'attestor', body: [`peerConnect timeout, ${JSON.stringify(opts2)}`] }) }, 500)
+
+      // var id_streams2 = setTimeout(() => { log2hoster({ type: 'attestor', body: [`peerConnect timeout, ${JSON.stringify(opts2)}`] }) }, 500)
       const streams = await peerConnect(opts2, log2hoster)
-      clearTimeout(id_streams2)
+      // clearTimeout(id_streams2)
+
       // check the encoded data and if ok, send them to the hosters
       log2encoder({ type: 'attestor', body: ['Start receiving data from the encoder'] })
-
-      // set timeout
-      const verified = []
-      const verifiedAndStored = []
+      const encodedReceived = []
+      const comparedAndHosted = []
       const expectedMessageCount = getRangesCount(ranges)
       var encodedCount = 0
-      const failed = []
       var timeout
-      var timeoutID = setTimeout(() => {
-        if (verified.length !== expectedMessageCount) {
-          console.log('Encoder failed',  verified.length, expectedMessageCount)
-          failed.push(encoderKey)
-        }
-        resolve(failed)
-        timeout = true
-        streams.end()
-      }, 11000)
 
+      // if it timeouts, we push failed encoders to failed array
+      var timeoutID = setTimeout(encoderFailed, 5000)
+      function encoderFailed () {
+        console.log(`Timeout: encoder failed, amendment: ${amendmentID} (${verified.length}/${expectedMessageCount})`)
+        encoderComm.serialize$.end({ type: 'encoded:error', error: 'TIMEOUT' })
+        timeout = true
+        resolve(encoderKey)
+      }
+      var failed
       for await (const message of encoderComm.parse$) {
+        if (timeout) return
+        if (failed) return
         log2encoder({ type: 'attestor', body: [`${message.index} RECV_MSG ${encoderKey.toString('hex')}`] })
         encodedCount++
-        // @TODO: merkle verify each chunk
         const { type } = message
-        if (type === 'ping') continue
         if (type === 'encoded') {
-          // verify if all encodings are same size
-          verified.push({ message})
-          verifiedAndStored.push(compareEncodings(message))
+          if (!merkleVerifyChunk(message)) {
+            log2encoder({ type: 'attestor', body: [`Encoder failed ${encoderKey.toString('hex')} for message ${message.index}`] })
+            failed = true
+            encoderComm.serialize$.end({ type: 'encoded:error', error: 'INVALID_CHUNK', messageType: type })
+            return resolve(encoderKey)
+          }
+          encodedReceived.push({ message })
+          comparedAndHosted.push(compareAndForwardPromise(message).catch(err => {
+            if (err.encoderKey) {
+              failed = true
+              encoderComm.serialize$.end({ type: 'encoded:error', error: 'INVALID_COMPRESSION', messageType: type })
+              resolve(err.encoderKey)
+            }
+            else if (err.hosterKey) resolve(err.hosterKey)
+            else resolve()
+          }))
+          if (encodedReceived.length === expectedMessageCount) break // @TODO: do we need to END the stream here?
         } else {
           log2encoder({ type: 'attestor', body: [`encoded checking UNKNOWN_MESSAGE MESSAGE TYPE ${type} `] })
-          encoderComm.serialize$.end({ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', ...{ messageType: type } })
+          encoderComm.serialize$.end({ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', messageType: type })
+          failed = true
+          resolve(encoderKey)
         }
       }
+
+      function merkleVerifyChunk (message) {
+        // @TODO merkle verify chunk and re-use also in compareStorage
+        return true
+      }
+
+      clearTimeout(timeoutID)
+      if (encodedReceived.length !== expectedMessageCount) return resolve(encoderKey)
+
       // prepare the report
-      if (timeout) return
-      else clearTimeout(timeoutID)
-      const results = await Promise.allSettled(verifiedAndStored).catch((error) => console.log({ type: 'error', body: [`Error: ${error}`] }))
-      const status = this.getStatus(results)
-      if (!status) {
-        console.log(`Hoster failed (${verified.length}/${expectedMessageCount})`)
-        log2encoder({ type: 'attestor', body: [`Hoster failed (${verified.length}/${expectedMessageCount})`] })
-        failed.push(hosterKey)
+      const results = await Promise.allSettled(comparedAndHosted)
+
+// @TODO: CHANGE ALL THE THINGS BELOW
+
+      // array<???> -> boolean
+      const isFulfilled = this.allFulfilled(results)
+      console.log({status})
+      if (!isFulfilled) {
+        console.log(`Hoster failed: amendment: ${amendmentID} (${encodedReceived.length}/${expectedMessageCount})`)
+        log2encoder({ type: 'attestor', body: [`Hoster failed: amendment: ${amendmentID} (${encodedReceived.length}/${expectedMessageCount}))`] })
+        streams.end()
+        resolve(hosterKey) // encoderKey
+        return
       }
       streams.end()
-      resolve(failed)
+      resolve()
+      return
 
-      function compareEncodings (message) {
+      function compareAndForwardPromise (message) {
         return new Promise((resolve, reject) => {
-          compare(message, async (err, res) => {
+          var timeoutOtherEncoder
+          var timeoutHoster
+          var tid = setTimeout(() => { // something went wrong with another encoder
+            timeoutOtherEncoder = true
+            encoderComm.serialize$.end({ type: 'encoded:timeout' }) // @NOTE: new amendment is coming, encoder should keep all their data
+            resolve()
+          }, 5000)
+          compareCB(message, encoderKey, async (err, res) => {
+            if (timeoutOtherEncoder) return resolve()
             if (!err) {
               log2encoder({ type: 'attestor', body: [`${message.index} SEND_ACK ${encoderKey.toString('hex')}`] })
               encoderComm.serialize$.write({ type: 'encoded:checked', ok: true, index: message.index })
               try {
                 const response = await sendToHoster(message, log2hoster)
-                return resolve({ index: response.index })
+                return resolve()
               } catch (err) {
-                // attestor.log('@TODO: hoster response timed out, how to deal with these errors?')
-                return reject(err)
+                if (timeoutHoster) return
+                timeoutHoster = true
+                return resolve(hosterKey)
               }
             } else if (err) {
+              // @TODO:future: make retry strategy (e.g. try again while waiting for others and stuff like that)
               log2encoder({ type: 'attestor', body: ['encoded checking error'] })
               encoderComm.serialize$.end({ type: 'encoded:error', error: 'INVALID_COMPRESSION', ...{ messageIndex: message.index } })
               return reject(err)
             }
+            // 1. successful compare => write CHECKED:TRUE to encoder
+            // 2. failed compare => end CHECKED:INVALID to encoder + ignore all further compare callbacks, because we dont notify encoder about more failed or unavailable chunks
+            // 3. timeout compare => end CHECKED:UNAVAILABLE + ignore all further compare callbacks, because we dont notify encoder about more failed or unavailable chunks
           })
         })
       }
@@ -165,9 +216,10 @@ module.exports = class Attestor {
         myKey: attestorKey,
       }
       const log2hosterChallenge = attestor.log.sub(`<-HosterChallenge ${hosterKey.toString('hex').substring(0,5)}`)
-      var id_streams = setTimeout(() => { log2hosterChallenge({ type: 'attestor', body: [`peerConnect timeout, ${JSON.stringify(opts3)}`] }) }, 500)
+
+      // var id_streams = setTimeout(() => { log2hosterChallenge({ type: 'attestor', body: [`peerConnect timeout, ${JSON.stringify(opts3)}`] }) }, 500)
       const streams = await peerConnect(opts3, log2hosterChallenge)
-      clearTimeout(id_streams)
+      // clearTimeout(id_streams)
 
       const all = []
       for await (const message of streams.parse$) {
@@ -195,6 +247,7 @@ module.exports = class Attestor {
       }
 
       async function proofIsVerified (message,feedKey, storageChallenge) {
+        // @TODO merkleVerifyChunk does smae thing
         const { data, index } = message
         if (!data) console.log('No data')
         // console.log('verifying index', storageChallenge.chunks[index])
@@ -274,12 +327,12 @@ module.exports = class Attestor {
 
   // HELPERS
 
-  getStatus(results) {
-    var status = true
+  allFulfilled(results) {
+    var fulfilled = true
     for (var i = 0, len = results.length; i < len; i++) {
-      status = status && (results[i].status === 'fulfilled')
+      fulfilled = status && (results[i].status === 'fulfilled')
     }
-    return status
+    return fulfilled
   }
 
 

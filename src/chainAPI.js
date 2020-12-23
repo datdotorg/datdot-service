@@ -1,4 +1,4 @@
-const ApiPromise = require('./simulate-substrate')
+const ApiPromise = require('./simulate-polkadotjs')
 // const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api')
 // const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
 // const { hexToBn, u8aToBuffer, bufferToU8a } = require('@polkadot/util')

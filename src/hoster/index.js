@@ -70,16 +70,15 @@ module.exports = class Hoster {
       }
       var counter = 0
       const log2attestor = hoster.log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
-      var id_streams2 = setTimeout(() => { log2attestor({ type: 'hoster', body: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, 500)
+      var id_streams = setTimeout(() => { log2attestor({ type: 'hoster', body: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, 500)
       const streams = await peerConnect(opts, log2attestor)
-      clearTimeout(id_streams2)
+      clearTimeout(id_streams)
 
       for await (const message of streams.parse$) {
         // log2attestor(message.index, 'RECV_MSG',attestorKey.toString('hex'))
         counter++
         // @TODO: decode and merkle verify each chunk (to see if it belongs to the feed) && verify the signature
         const { type } = message
-        if (type === 'ping') continue
         if (type === 'verified') {
           const { feed, index, encoded, proof, nodes, signature } = message
           if (!await isValidData(message)) return
@@ -209,7 +208,7 @@ module.exports = class Hoster {
     var timeoutID = setTimeout(() => {
       timeout = true
       streams.end()
-    }, 20000)
+    }, 5000)
     hoster.log({ type: 'hoster', body: [`Starting sendStorageChallenge`] })
     const storageChallengeID = storageChallenge.id
     const chunks = storageChallenge.chunks
