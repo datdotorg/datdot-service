@@ -1,5 +1,5 @@
 # DB SCHEMA
-
+[see DB.js](../src/DB.js)
 ```js
 // const timetable = [{
 //   delay    : '', // milliseconds // default: 0
