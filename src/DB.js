@@ -5,10 +5,12 @@
 
 // ============================================================================
 // storage - append only log to assign un ique id's to entries
+// ============================================================================
 'DB.storage'                            // create, get, (set), (del)
 
 // ============================================================================
 // status - onchain status
+// ============================================================================
 'DB.status.idleHosters'                 // push, pop, set
 'DB.status.idleHosters[x]'              // get, splice/del
 'DB.status.idleAttestors'               // push, pop, set
@@ -18,23 +20,27 @@
 
 // ============================================================================
 // status - onchain status
+// ============================================================================
 'DB.status.pendingAmendments'           // push, pop, set  // ammendments => contract.update // { fnName: 'makePerformanceChallenge', opts: contractID ) }
 'DB.status.pendingAmendments[x]'        // get, splice/del
 'DB.status.attestorsJobQueue'           // size, add, take, peek, drop // { planID, feedID, set }
 
 // ============================================================================
 // active - offchain status
+// ============================================================================
 'DB.activeQueue.activePerformanceChallenges' // ???
 'DB.activeQueue.activeStorageChallenges'     // ???
   // activeAmmendments (or contracts)
 
 // ============================================================================
 // query / lookup - immutable
+// ============================================================================
 'DB.lookups.userByAddress'              // set, get
 'DB.lookups.userIDByKey'                // set, get // { key: id }
 'DB.lookups.feedByKey'                  // set, get
 // ============================================================================
 // performance challenge:
+// ============================================================================
 /* set, get           */ `storage/:id/performance_challenge/id`
 /* set, get           */ `storage/:id/performance_challenge/contract_id`
 /* set, get           */ `storage/:id/performance_challenge/hoster_id`
@@ -50,6 +56,7 @@
 
 // ============================================================================
 // storage challenge:
+// ============================================================================
 /* set, get           */ `storage/:id/storage_challenge/id`
 /* set, get           */ `storage/:id/storage_challenge/contract_id`
 /* set, get           */ `storage/:id/storage_challenge/hoster_id`
@@ -64,6 +71,7 @@
 // }
 // ============================================================================
 // contract
+// ============================================================================
 /* set, get           */ `storage/:id/hosting/id`
 /* set, get           */ `storage/:id/hosting/plan_id`
 /* set, get           */ `storage/:id/hosting/feed_id`
@@ -85,6 +93,7 @@
 // }
 // ============================================================================
 // amendment
+// ============================================================================
 /* set, get           */ `storage/:id/amendment/id`
 /* set, get           */ `storage/:id/amendment/contract_id`
 /* set, get, push     */ `storage/:id/amendment/providers/encoders`
@@ -105,6 +114,7 @@
 
 // ============================================================================
 // user
+// ============================================================================
 `storage/:id/user/id`  // boolean `if (user[5]) const user = storage[5]`
 `storage/:id/user/noisekey` // ed2519 public key
 `storage/:id/user/signkey`  // ed25519 public key
@@ -151,6 +161,7 @@
 // 'storage[15].hoster.jobs[5]'         //
 // ============================================================================
 // feed:
+// ============================================================================
 `storage/:id`
 `storage/:id/id`
 `storage/:id/publickey`
@@ -249,6 +260,7 @@ const feed = {
 
 // ============================================================================
 // plan:
+// ============================================================================
 `storage/:id`
 `storage/:id/id`
 `storage/:id/sponsor_id`
@@ -295,6 +307,7 @@ const feed = {
 
 // ============================================================================
 // plan - component - dataset
+// ============================================================================
 `type/dataset/:id`
 `storage/:id`
 `storage/:id/id`
@@ -304,6 +317,7 @@ const feed = {
 
 // ============================================================================
 // plan - component - performance
+// ============================================================================
 `type/performance/:id`
 `storage/:id` // = { availability, bandwidth, latency }
 `storage/:id/availability`
@@ -320,13 +334,16 @@ const feed = {
 // }]
 // ============================================================================
 // user - component - performance
+// ============================================================================
 `storage/:id/user/form/components/performance`
 // ============================================================================
 // user - component - timetables
+// ============================================================================
 `storage/:id/user/form/components/timing`
 
 // ============================================================================
 // plan - component - timing
+// ============================================================================
 /* make, get */ `timing/:id`      // = { delay, duration, pause, repeat }
 // * we always store as a blob
 // * it never gets updated
@@ -410,10 +427,12 @@ const feed = {
 // * more work to see all of given type
 // ============================================================================
 // user - component - resources
+// ============================================================================
 `storage/:id/user/form/components/resources`
 // @TODO: decide later, once it is clear which resources we are tracking
 // ============================================================================
 // plan - component - regions
+// ============================================================================
 `region/:id` = ['X3F', 'A0K']
 // * we always store as a blob
 // * it never gets updated
@@ -436,6 +455,7 @@ const feed = {
 //    * minimize computation
 // ============================================================================
 // user - component - region
+// ============================================================================
 // `storage/:id/user/form/components/region`
 `region/:id` = ['X3F', 'A0K']
 // hoster region is one hash
@@ -471,19 +491,19 @@ const feed = {
 */
 // SCENARIO
 const nodes = [
-  { id: 1, location: 'XF3', latencies: [
+  { id: 1, location: 'XF3', lag: [
     [2, 0.3],
     [3, 0.3],
     [4, 0.3],
-  ]}, { id: 2, location: 'AF3', latencies: [
+  ]}, { id: 2, location: 'AF3', lag: [
     [1, 0.3],
     [3, 0.3],
     [4, 0.3],
-  ]}, { id: 3, location: 'XA3', latencies: [
+  ]}, { id: 3, location: 'XA3', lag: [
     [2, 0.3],
     [1, 0.3],
     [4, 0.3],
-  ]}, { id: 4, location: 'XF3', latencies: [
+  ]}, { id: 4, location: 'XF3', lag: [
     [2, 0.3],
     [3, 0.3],
     [1, 0.3],
@@ -491,22 +511,22 @@ const nodes = [
 ]
 const nodes = [
   {
-    id: 1, location: 'Berlin', latencies: [
+    id: 1, location: 'Berlin', lag: [
     ['South London', 0.1],
     ['East London', 0.3],
     ['Rome', 0.1],
   ]}, {
-    id: 2, location: 'South London', latencies: [
+    id: 2, location: 'South London', lag: [
     ['Berlin'], 0.2],
     ['East London', 0.2],
     ['Rome', 0.3],
   ]}, {
-    id: 3, location: 'East London', latencies: [
+    id: 3, location: 'East London', lag: [
     ['South London', 0.3],
     ['Berlin'], 0.5],
     ['Rome', 0.2],
   ]}, {
-    id: 4, location: 'Rome', latencies: [
+    id: 4, location: 'Rome', lag: [
     ['South London', 0.2],
     ['East London', 0.5],
     ['Berlin'], 0.1],

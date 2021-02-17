@@ -79,6 +79,10 @@ on('block', block => {
     // ...
   })
 
+// ---------------------------------------------------
+// ---------------------------------------------------
+// ---------------------------------------------------
+
   const providers = db.sub('providers')
   const hosters = providers.sub('hoster')
   const encoders = providers.sub('encoder')
@@ -106,6 +110,10 @@ on('block', block => {
       return
     }
   })
+
+// ---------------------------------------------------
+// ---------------------------------------------------
+// ---------------------------------------------------
 
   bank.register('hoster', id)
   bank.register('encoder', id)
@@ -136,174 +144,136 @@ on('block', block => {
   register()
   unregister()
 
-// --------------------------------------------------------------------------
-async function test (db) {
-  const result = await db.get(query)
 
-  const batch = db.batch()
-  batch.add()
-  batch.add()
-  batch.set()
-  batch.commit()
+// ---------------------------------------------------
+// ---------------------------------------------------
+// ---------------------------------------------------
 
 
-  db.fn('fn/filterTodo', {
-    'array': val => Array.isArray(val),
-    'string': String,
-    'boolean': Boolean,
-    'object': Object,
-    'buffer': Buffer,
-    'number': Number,
-    'float': Number,
-    'integer': val => Number.isInteger(val),
-  })
+const wobble = DB.foo.bar.baz[8].beep.boop[123].wibble.wobble
+const wobble_path = 'foo.bar.baz[8].beep.boop[123].wibble.wobble'
 
-  const jsonType = {
-    foo: db.type('number'),
-    bar: db.type('array')
-  }
+db_helper('push', wobble_path, true)
 
-  db('fn/filterTodo', async function jsonType ($) {
-    const { load, test, work, save, name } = $ // name = 'fn/filterTodo'
-    work(jsonType)
+const hosters_path = 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters'
 
-  })
-  db(fnName, jsonType)
+db_helper('set', 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[0].balance', 2000)
+db_helper('set', 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[0].rating.bandwidth', 50)
+db_helper('set', 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[0].rating.latency', 25)
+
+db_helper('set', 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].balance', 2000)
+db_helper('set', 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].rating.bandwidth', 50)
+db_helper('set', 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].rating.latency', 25)
 
 
-  db('foo/bar/8/baz', 'foobar')        // default action: SET
-  const x1 = db('foo/bar/8/baz')       // default action: GET
-  console.log(x1) // 'foobar'
-  const d  = db.sub('foo/bar/8')
-  const x4 = d('baz')
-  console.log(x4) // 'foobar'
+db_helper('set', `${hosters_path}[0].balance`, 2000)
+db_helper('set', `${hosters_path}[0].rating.bandwidth`, 50)
+db_helper('set', `${hosters_path}[0].rating.latency`, 25)
 
-  console.log(db) // function db () { }, db.sub
-  console.log(db.sub) // function sub () {}
-  console.log(d) // function d () { }, d.sub
-  console.log(d.sub) // function sub () {}
+db_helper('set', `${hosters_path}[1].balance`, 2000)
+db_helper('set', `${hosters_path}[1].rating.bandwidth`, 50)
+db_helper('set', `${hosters_path}[1].rating.latency`, 25)
+
+DB.foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].rating.latency = 25
+DB.foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].rating.bandwidth = 50
+// DB.foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].rating = { latency: 25, bandwidth: 50 }
+DB.foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].balance = 25
+
+const hosters_path = 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters'
+const alice = `${hosters_path}[0]`
+const bob = `${hosters_path}[1]`
+
+const user = DB.foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1]
+user.rating.latency = 25
+user.rating.bandwidth = 50
+user.balance = 25
+emitEvent('foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters', { latency, bandwidth })
+
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
 
 
-  db('foo/bar/8/baz', 'foobar')        // default action: SET
-  const x1 = db('foo/bar/8')          // default action: GET
-  console.log(x1) // { baz: 'foobar' }
-  const d  = db.sub('foo/bar/8')
-  const x4 = d('')
-  console.log(x4) // { baz: 'foobar' }
-
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
+// --------------------------------------------------------
+// DATA
+// --------------------------------------------------------
+const path  = 'users[17].hoster.balance'
+const val   = 2500
+const path1 = 'foo/bar/8/baz'
+const val1  = 123
+const path2 = 'foo.bar.baz'
+const val2  = 456
+const path3 = 'provider/5/hoster/rating'
+const val3  = { bandwidth: 5, latency: 0.3 }
+// {a:'b',foo:{bar:[0,1,2,3,4,5,6,7,{baz:'foobar'}]}}
+const DATA = require('./db.json')
+// --------------------------------------------------------
+// --------------------------------------------------------
+// DB HELPER USAGE SPECIFICATION
+// --------------------------------------------------------
+// --------------------------------------------------------
 const db_helper = require('db_helper')
-const DATA = require('./db.json') // {a:'b',foo:{bar:[0,1,2,3,4,5,6,7,{baz:'foobar'}]}}
 const db = db_helper(DATA)
 const { run, addEmitter, addActions, on } = db
-// ----------------------------------------------------------------------------
-
-const path = 'users[17].hoster.balance' // `all.foo.bar[8].baz`
-const val = 2500
-
-const path1 = 'foo/bar/8/baz'
-const val1 = 123
-
-const path2 = 'foo.bar.baz'
-const val2 = 456
-
-const path3 = 'provider/5/hoster/rating'
-const val3 = { bandwidth: 5, latency: 0.3 }
-
-// db.addEmitter({ name: 'rating',
-//   match: (type, path) => { if (path.includes('rating')) return 'rating' },
-//   get_data: (path, val) => ({ userID: path.split('[')[1].split(']')[0], value: val })
-// })
-// db.addEmitter({ name: 'plan-ranges',
-//   match: (type, path) => { if (path.includes('ranges')) return 'plan-ranges' },
-//   get_data: (path, val) => ({ contractID: path.split('contracts[')[1].split(']')[0], value: val })
-// })
-
-
-// ----------------------------------------------------------------
-// const arrayActions = {
-//   set: (DB, path, val) => { DB[path] = val },
-//   get: (DB, path) => { return DB[path] },
-//   push: (DB, path, val) => DB[path].push(val),
-//   pop: (DB, path, val) => DB[path].pop()
-// }
-const arrayActions = require('./actions/arrayAction')
-addActions('status/idleHosters', arrayActions)
-addActions('status/idleAttestors', arrayActions)
-addActions('status/idleEncoders', {
-  make: (DB, path, val) => { DB[path] = [] },
-  getall: (DB, path, val) => { return DB[path] },
-  set: (DB, path, val) => { DB[path] = val },
-  get: (DB, path) => { return DB[path] },
-  push: (DB, path, val) => {
-    leveldb.set(path, val, err => {
-
-    })
-  },
-  pop: (DB, path, val) => DB[path].pop()
+// --------------------------------------------------------
+// EMITTER
+// --------------------------------------------------------
+db.addEmitter({ name: 'rating',
+  match: (type, path) => { if (path.includes('rating')) return 'rating' },
+  get_data: (path, val) => ({ userID: path.split('[')[1].split(']')[0], value: val })
 })
-// ----------------------------------------------------------------
-const run_db_storage = addActions('DB/storage', {
-  add: (path, db, val) => {
-
-  }
+db.addEmitter({ name: 'plan-ranges',
+  match: (type, path) => { if (path.includes('ranges')) return 'plan-ranges' },
+  get_data: (path, val) => ({ contractID: path.split('contracts[')[1].split(']')[0], value: val })
+})
+// -----
+db.addEmitter({
+  name: 'roles_unregister',
+  match: (type, path, value) => {},
+  get_data: (path, value) => {},
+})
+// --------------------------------------------------------
+// ON
+// --------------------------------------------------------
+on('roles_unregister', data => {
+  // ???
 })
 
-const challenge = {
+// LESEZEICHEN: MATCHING.md#230
 
-}
-run('add', 'DB/storage', )
-run_db_storage('add', )
-// ----------------------------------------------------------------
-await run('create', 'DB/storage', challenge)
 
-const id = await run('append', 'DB/storage', challenge)
-const challenge = await run('get', `DB/storage/${id}`)
-
-const id = await run('push', 'DB/storage', challenge)
-// const id = await run('set', 'DB/storage', challenge)
-// const challenge = await run('get', `DB/storage/${id}`)
-await run('set', `DB/storage/${id}`, id)
-// ----------------------------------------------------------------
-addActions('storage[15]')
-// ----------------------------------------------------------------
-{
-  create: (DB, path, val) => {
-
-    var id = DB[path].length
-    val.id = id
-    DB[path].push(val)
-    return id
-  }
-}
-{
-  push: (DB, path, val) => {
-
-    var id = DB[path].length
-    val.id = id
-    DB[path].push(val)
-    return id
-  }
-}
-// ----------------------------------------------------------------------------
+// --------------------------------------------------------
+// ACTION
+// --------------------------------------------------------
 // ACTION has ONE UNIQUE HANDLER
 // ACTION has MANY UNIQUE TRIGGERS
-// ---------------------------------
-addActions({
+db.addAction({
+  'roles_unregister': data => {
+
+  }
+})
+// -----
+// const arrayActions = require('./actions/arrayAction')
+const arrayActions = {
   set: (DB, path, val) => { DB[path] = val },
   get: (DB, path) => { return DB[path] },
+  pop: (DB, path, val) => DB[path].pop(),
+  // push: (DB, path, val) => DB[path].push(val),
   push: (DB, path, val) => {
     leveldb.get(path, (err, data) => {
       if (!err && !Array.isArray(data)) throw new Error('')
@@ -313,16 +283,42 @@ addActions({
     })
     // DB[path].push(val)
   },
-  pop: (DB, path, val) => DB[path].pop()
+}
+const idleActions = {
+  make: (DB, path, val) => { DB[path] = [] },
+  getall: (DB, path, val) => { return DB[path] },
+  ...arrayActions,
+}
+addActions('status/idleHosters', idleActions)
+addActions('status/idleAttestors', idleActions)
+addActions('status/idleEncoders', idleActions)
+
+const run_db_storage = addActions('DB/storage', {
+  add: (path, db, val) => {
+
+  }
 })
+// --------------------------------------------------------
+// RUN
+// --------------------------------------------------------
+const data = { challenge: 123 }
 
-DB.idleHosters = []
-DB.idleHosters.push()
-DB.idleHosters[length + 1] = 'foobar'
-DB.idleHosters.map(fn)
-user.hoster = {}
+run('add', 'DB/storage', data)
+// VS.
+run_db_storage('add', data)
 
 
+await run('create', 'DB/storage', data)
+await run('add', 'DB/storage', data)
+
+const id = await run('append', 'DB/storage', data)
+const data = await run('get', `DB/storage/${id}`)
+
+const id = await run('push', 'DB/storage', data)
+// const id = await run('set', 'DB/storage', data)
+// const data = await run('get', `DB/storage/${id}`)
+await run('set', `DB/storage/${id}`, id)
+// --------------------------------------------------------
 // DB[path] = val
 // DB.provider[5].hoster.rating = { bandwidth, latency }
 // emit('set', path, val)
@@ -333,32 +329,12 @@ const x3 = await run('pop', path1)
 const x4 = await run('pop', path2)
 run('set', path, val)              // default action: SET
 const x1 = await run('get', path)  // default action: GET
-// ----------------------------------------------------------------------------
-// EVENT has MANY UNIQUE LISTENERS
-// EVENT has ONE UNIQUE TRIGGER
-// ---------------------------------
-addEmitter({ name: 'balance',
-  match: (type, path) => (type === 'set' || type === 'push' && path.includes('balance'))
-  get_data: (path, val) => ({ userID: path.split('[')[1].split(']')[0], value: val })
-})
-on('balance', event => { // 'users[17].hoster.balance'
- const { userID, value, old_value } = event
 
-})
-on('rating', event => {
-  const { id } = event
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
 
-})
-on('balance', event => { })
-on('rating', event => { })
-on('rating', event => { })
-on('rating', event => { })
-
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
 // IMPLEMENTATION:
 module.exports = db_helper
 
@@ -439,24 +415,45 @@ function db_helper (all) {
   function on (name, handler) {
     const match = routes(name)
     // ...
+// -----------------------
+
+const Machine = require('machine')
+
+const definition = {
+  identity: 'do-something-cool',
+
+  fn: 
+}
+const callable = Machine(definition)
+
     routes[route].push(handler)
     update_matcher(route, handler)
   }
 }
 
 
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+
+
+
+// LESEZEICHEN: MATCHING.md#480
 
 db_helper$('set', [
   // [`${alice}.name`, 'alisa'], // change name of alice
@@ -473,9 +470,9 @@ db_helper$('set', `${alice}.rating`, { bandwidth: 50, latency: 25 })
 
 db_helper$('set', `${bob}.balance`, 2000)
 db_helper$('set', `${bob}.rating.`, { bandwidth: 50, latency: 25 })
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
 const x1 = await db_helper('foo/bar/8/baz')                  // default action: GET
 const x2 = await db_helper('foo/bar/8/baz', 'foobar')        // default action: SET
 const x3 = await db_helper('foo/bar/8', { baz: 'foobar' })   // default action: SET
@@ -501,63 +498,110 @@ alice$('set', `rating`, { bandwidth: 50, latency: 25 })
 bob$('set', `balance`, 2000)
 bob$('set', `rating`, { bandwidth: 50, latency: 25 })
 
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-const wobble = DB.foo.bar.baz[8].beep.boop[123].wibble.wobble
-const wobble_path = 'foo.bar.baz[8].beep.boop[123].wibble.wobble'
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
 
-db_helper('push', wobble_path, true)
+// LESEZEICHEN
 
-const hosters_path = 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters'
-
-db_helper('set', 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[0].balance', 2000)
-db_helper('set', 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[0].rating.bandwidth', 50)
-db_helper('set', 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[0].rating.latency', 25)
-
-db_helper('set', 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].balance', 2000)
-db_helper('set', 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].rating.bandwidth', 50)
-db_helper('set', 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].rating.latency', 25)
-
-
-db_helper('set', `${hosters_path}[0].balance`, 2000)
-db_helper('set', `${hosters_path}[0].rating.bandwidth`, 50)
-db_helper('set', `${hosters_path}[0].rating.latency`, 25)
-
-db_helper('set', `${hosters_path}[1].balance`, 2000)
-db_helper('set', `${hosters_path}[1].rating.bandwidth`, 50)
-db_helper('set', `${hosters_path}[1].rating.latency`, 25)
-
-DB.foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].rating.latency = 25
-DB.foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].rating.bandwidth = 50
-// DB.foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].rating = { latency: 25, bandwidth: 50 }
-DB.foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1].balance = 25
-
-const hosters_path = 'foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters'
-const alice = `${hosters_path}[0]`
-const bob = `${hosters_path}[1]`
-
-const user = DB.foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters[1]
-user.rating.latency = 25
-user.rating.bandwidth = 50
-user.balance = 25
-emitEvent('foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters', { latency, bandwidth })
-
-// --------------------------------------------------------------------------
-// --------------------------------------------------------------------------
-// --------------------------------------------------------------------------
-// --------------------------------------------------------------------------
-// --------------------------------------------------------------------------
-// --------------------------------------------------------------------------
-// --------------------------------------------------------------------------
-// --------------------------------------------------------------------------
-// --------------------------------------------------------------------------
-  db('foo/bar#!push', { bar: 'foobar' }) // custom action: PUSH
+async function test (db) {
+  // ---------------------------------------------------
+  // FEATURE: PARTITION DB
+  // ---------------------------------------------------
+  db('foo/bar/8/baz', 'foobar')        // default action: SET
+  const x1 = db('foo/bar/8/baz')       // default action: GET
+  console.log(x1) // 'foobar'
+  const x1 = db('foo/bar/8')           // default action: GET
+  console.log(x1) // { baz: 'foobar' }
+  const d  = db.sub('foo/bar/8')
+  const x4 = d('')
+  console.log(x4) // { baz: 'foobar' }
+  const x4 = d('baz')
+  console.log(x4) // 'foobar'
+  // ---------------------------------------------------
+  // FEATURE: BATCH
+  // ---------------------------------------------------
+  const result = await db.get(query)
+  const batch = db.batch()
+  batch.add()
+  batch.add()
+  batch.set()
+  batch.commit()
+  // ---------------------------------------------------
+  // FEATURE: TYPES
+  // ---------------------------------------------------
+  db.fn('fn/filterTodo', {
+    'array': val => Array.isArray(val),
+    'string': String,
+    'boolean': Boolean,
+    'object': Object,
+    'buffer': Buffer,
+    'number': Number,
+    'float': Number,
+    'integer': val => Number.isInteger(val),
+  })
+  // ---------------------------------------------------
+  // ACTIONS
+  // ---------------------------------------------------
+  const fnName = 'fn/filterTodo'
+  const fnName = 'foo/bar'
+  const run$ = db(fnName, async function jsonType ($) {
+    const { load, test, work, save, name } = $
+    // name = 'fn/filterTodo'
+    const jsonType = {
+      foo: db.type('number'),
+      bar: db.type('array')
+    }
+    work(jsonType)
+  })
+  // custom action: PUSH
+  run$('foo/bar#!push', { bar: 'foobar' }) 
   // VS.
-  run('push', 'foo/bar', { bar: 'foobar' }) // custom action: PUSH
-
-
-  db.on('', async $ => { // ===   db.on(async (old, now) => { })
+  run$('push', 'foo/bar', { bar: 'foobar' })
+  // ---------------------------------------------------
+  db.on('foo/bar/8', ({ name /* = 'foo/bar/8' */ }) => {
+    const { load, test, work, save, name } = $
+    var value = await load(x => value = x)
+    work({
+      set: async data => {
+        await test(data) // data === { baz: 'foobar' }
+        const old = value
+        value = data
+        return now
+      }
+    })
+    return () => save(value)
+  })
+  db.on('foo/bar/8/baz', ({ name /*= 'foo/bar/8/baz'*/}) => {
+    const { load, test, work, save, name } = $
+    var value = await load(x => value = x)
+    work({
+      set: async data => {
+        await test(data) // data === 'foobar'
+        const old = value
+        value = data
+        return data
+      }
+    })
+    return () => save(value)
+  })
+  // ---------------------------------------------------
+  db.on('', async $ => { // === db.on(async (old, now) => {})
     const { load, test, work, save, name } = $ // name = ''
     var value = await load(x => value = x)
     work({
@@ -570,9 +614,8 @@ emitEvent('foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters', { lat
     })
     return () => save(value)
   })
-
-  db.on('foo', ({ name }) => {
-    const { load, test, work, save, name } = $ // name = 'foo'
+  db.on('foo', ({ name /* = 'foo' */ }) => {
+    const { load, test, work, save, name } = $
     var value = await load(x => value = x)
     work({
       set: async data => {
@@ -584,8 +627,8 @@ emitEvent('foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters', { lat
     })
     return () => save(value)
   })
-  db.on('foo/bar', ({ name }) => { // ARRAY
-    const { load, test, work, save, name } = $ // name = 'foo/bar'
+  db.on('foo/bar', ({ name /* = 'foo/bar' */ }) => { // ARRAY
+    const { load, test, work, save, name } = $
     const values = await load(x => values = x) || []
     var length = values.length
     work({
@@ -612,37 +655,26 @@ emitEvent('foo.bar.baz[8].beep.boop[123].wibble.wobble.providers.hosters', { lat
     })
     return () => save(value)
   })
-  db.on('foo/bar/8', ({ name }) => {
-    const { load, test, work, save, name } = $ // name = 'foo/bar/8'
-    var value = await load(x => value = x)
-    work({
-      set: async data => {
-        await test(data) // data === { baz: 'foobar' }
-        const old = value
-        value = data
-        return now
-      }
-    })
-    return () => save(value)
-  })
-  db.on('foo/bar/8/baz', ({ name }) => {
-    const { load, test, work, save, name } = $ // name = 'foo/bar/8/baz'
-    var value = await load(x => value = x)
-    work({
-      set: async data => {
-        await test(data) // data === 'foobar'
-        const old = value
-        value = data
-        return data
-      }
-    })
-    return () => save(value)
-  })
-
 }
 
-
-
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
+// --------------------------------------------------------
 
 
 

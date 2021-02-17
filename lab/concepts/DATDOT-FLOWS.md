@@ -17,21 +17,16 @@
 account_create()
 account_update()
 account_delete()
-
 roles_register()
 roles_unregister()
-
 plan_subscribe()
 plan_update()
 plan_pause()
 plan_resume()
 plan_unsubscribe()
-
 hosting_setup_report(report)
-
 proof_of_storage_request(data)
 proof_of_storage_response(proof)
-
 performance_benchmark_request(data)
 performance_benchmark_response(rating)
 
@@ -39,10 +34,8 @@ performance_benchmark_response(rating)
 on('start-hosting')
 on('repair-hosting')
 on('end-hosting')
-
 on('provide-proof-of-storage')
 on('provide-performance-benchmark')
-
 on('pause-plan')
 on('resume-plan')
 on('end-plan')
