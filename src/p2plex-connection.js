@@ -29,9 +29,9 @@ async function peerConnect ({ plex, feedKey, senderKey, receiverKey, myKey, id }
   for (var peer; !peer;) {
     try {
       peer = await plex.findByTopicAndPublicKey(topic, peerKey, SWARM_OPTS)
-      log({ type: 'p2plex', body: [`Got a peer`] })
+      log({ type: 'p2plex', data: [`Got a peer`] })
     } catch (error) {
-      log({ type: 'p2plex', body: [`timeout "findByTopicAndPublicKey" ${error} `] })
+      log({ type: 'p2plex', data: [`timeout "findByTopicAndPublicKey" ${error} `] })
     }
   }
 
@@ -44,13 +44,13 @@ async function peerConnect ({ plex, feedKey, senderKey, receiverKey, myKey, id }
   // pump
   pump(serialize$, duplex$, ...(myKey === receiverKey) ? [parse$, obj$] : [parse$], async (err) => {
     // @NOTE no need to destroy each stream manually as pump already takes care of this
-    log({ type: 'p2plex', body: [`Streams successfully closed and destroyed`] })
+    log({ type: 'p2plex', data: [`Streams successfully closed and destroyed`] })
     peer.disconnect()
   })
 
   // listen
   peer.on('disconnected', function () {
-    log({ type: 'p2plex', body: [`Peer disconnected, PeerKey: ${peerKey.toString('hex').substring(0,5)}, MyKey: ${myKey.toString('hex').substring(0,5)}`] })
+    log({ type: 'p2plex', data: [`Peer disconnected, PeerKey: ${peerKey.toString('hex').substring(0,5)}, MyKey: ${myKey.toString('hex').substring(0,5)}`] })
   })
   peer.on('error', (err) => { 'p2plex error', err })
 
@@ -59,13 +59,13 @@ async function peerConnect ({ plex, feedKey, senderKey, receiverKey, myKey, id }
   parse$.on('error', e => { e.type = 'parse$' })
   obj$.on('error', e => { e.type = 'obj$' })
 
-  serialize$.on('close', e => { log({ type: 'p2plex', body: [`serialize$ close`] }) })
-  duplex$.on('close', e => { log({ type: 'p2plex', body: [`duplex$ close`] }) })
-  parse$.on('close', e => { log({ type: 'p2plex', body: [`parse$ close`] }) })
-  obj$.on('close', e => { log({ type: 'p2plex', body: [`obj$ close`] }) })
+  serialize$.on('close', e => { log({ type: 'p2plex', data: [`serialize$ close`] }) })
+  duplex$.on('close', e => { log({ type: 'p2plex', data: [`duplex$ close`] }) })
+  parse$.on('close', e => { log({ type: 'p2plex', data: [`parse$ close`] }) })
+  obj$.on('close', e => { log({ type: 'p2plex', data: [`obj$ close`] }) })
 
   async function end () {
-    log({ type: 'p2plex', body: [`peer-connect end`] })
+    log({ type: 'p2plex', data: [`peer-connect end`] })
     const lastStream = (myKey === receiverKey) ? obj$ : parse$
     await lastStream.end()
     // can't do plex.destroy() because we need to flush the data

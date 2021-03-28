@@ -114,10 +114,10 @@ module.exports = class HosterStorage {
     } catch (err) {
       console.log(err)
       // console.log('Caught new error in getStorageChallenge', index, err)
-      // this.log({ type: 'hoster', body: [`New error in getStorageChallenge:${index} ${err.message}`] })
+      // this.log({ type: 'hoster', data: [`New error in getStorageChallenge:${index} ${err.message}`] })
       // const _enc = await this.db.get(makeKey(ENCODED_PREFIX, index))
       // const _proof = await this.db.get(makeKey(PROOF_PREFIX, index))
-      // this.log({ type: 'hoster', body: [`New error in getStorageChallenge:${index} ${err.message}`] })
+      // this.log({ type: 'hoster', data: [`New error in getStorageChallenge:${index} ${err.message}`] })
     }
 
   }

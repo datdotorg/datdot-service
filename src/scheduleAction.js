@@ -21,13 +21,13 @@ function blockgenerator (log, emit) {
       if (!id) return
       if (executeBlock < currentBlock) setTimeout(action, 0)
       else if (executeBlock === currentBlock) {
-        log({ type: 'block', body: [`Executing scheduled action: ${name}`] })
+        log({ type: 'block', data: [`Executing scheduled action: ${name}`] })
         setTimeout(action, 0)
       }
       else return true
     })
-    emit({ type: 'block', body: { number: currentBlock } })
-    log({ type: 'block', body: [`Current block: ${JSON.stringify(currentBlock)}`] })
+    emit({ type: 'block', data: { number: currentBlock } })
+    log({ type: 'block', data: [`Current block: ${JSON.stringify(currentBlock)}`] })
   }, 2000)
 
   function scheduleAction ({ action, delay, name }) {
@@ -35,7 +35,7 @@ function blockgenerator (log, emit) {
     const item = { name, action, executeBlock: currentBlock + delay/*currentBlock? currentBlock + delay : delay*/ }
     const id = item.id = total = total + 1
     actions.push(item)
-    log({ type: 'schedule', body: [`Pushing new action: ${name}`] })
+    log({ type: 'schedule', data: [`Pushing new action: ${name}`] })
     return id
   }
   function cancelAction (id) {

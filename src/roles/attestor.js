@@ -12,14 +12,14 @@ async function role (profile, APIS) {
   const { name, log } = profile
   const { serviceAPI, chainAPI, vaultAPI } = APIS
 
-  log({ type: 'attestor', body: [`Register as attestor`] })
+  log({ type: 'attestor', data: [`Register as attestor`] })
 
   await vaultAPI.initAttestor({}, log)
-  const attestorKey = vaultAPI.attestor.publicKey
-  const myAddress = vaultAPI.chainKeypair.address
-  const signer = vaultAPI.chainKeypair
+  const attestorKey = await vaultAPI.attestor.publicKey
+  const myAddress = await vaultAPI.chainKeypair.address
+  const signer = await vaultAPI.chainKeypair
   const nonce = await vaultAPI.getNonce()
-  log({ type: 'attestor', body: [`My address ${myAddress}`] })
+  log({ type: 'attestor', data: [`My address ${myAddress}`] })
 
   const jobsDB = await tempDB(attestorKey)
 
@@ -46,7 +46,7 @@ async function role (profile, APIS) {
       const [userID] = event.data
       const attestorAddress = await chainAPI.getUserAddress(userID)
       if (attestorAddress === myAddress) {
-        log({ type: 'attestor', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'attestor', data: [`Event received: ${event.method} ${event.data.toString()}`] })
       }
     }
 
@@ -98,14 +98,14 @@ async function role (profile, APIS) {
       const [attestorID] = amendment.providers.attestors
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress !== myAddress) return
-      log({ type: 'chainEvent', body: [`Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`] })
+      log({ type: 'chainEvent', data: [`Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`] })
       const { feedKey, encoderKeys, hosterKeys, ranges } = await getData(amendment, contract)
 
       const task = { account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges }
       const ref = amendmentID
       jobsDB.put(ref, task)
 
-      jobsDB.list().forEach((ref, currentState => {
+      jobsDB.list().forEach((ref, currentState) => {
 
         var controller = new AbortController()
         // controller.abort()
@@ -122,8 +122,8 @@ async function role (profile, APIS) {
 
 
       const failedKeys = await serviceAPI.verifyAndForwardEncodings(task, {}, signal)
-      // .catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
-      log({ type: 'attestor', body: [`Resolved all the responses for amendment: ${amendmentID}: ${failedKeys}`] })
+      // .catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
+      log({ type: 'attestor', data: [`Resolved all the responses for amendment: ${amendmentID}: ${failedKeys}`] })
       if (failedKeys) {
         const failed = []
         if (failedKeys.length) {
@@ -137,7 +137,7 @@ async function role (profile, APIS) {
         }
         const report = { id: amendmentID, failed }
         const encoders = amendment.encoders
-        const nonce = vaultAPI.getNonce()
+        const nonce = await vaultAPI.getNonce()
         await chainAPI.amendmentReport({ report, signer, nonce })
         jobsDB.del(ref)
       }
@@ -153,7 +153,7 @@ async function role (profile, APIS) {
       attestors.forEach(async (attestorID) => {
         const attestorAddress = await chainAPI.getUserAddress(attestorID)
         if (attestorAddress === myAddress) {
-          log({ type: 'chainEvent', body: [`Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}`] })
+          log({ type: 'chainEvent', data: [`Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}`] })
           const contractID = performanceChallenge.contract
           const contract = await chainAPI.getContractByID(contractID)
           const feedID = contract.feed
@@ -166,9 +166,9 @@ async function role (profile, APIS) {
           //  select a reporter
           // const meeting = await serviceAPI.meetAttestors(feedKey)
           const data = { account: vaultAPI, randomChunks, feedKey }
-          const report = await serviceAPI.checkPerformance(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+          const report = await serviceAPI.checkPerformance(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
           const nonce = await vaultAPI.getNonce()
-          log({ type: 'attestor', body: [`Submitting performance challenge`] })
+          log({ type: 'attestor', data: [`Submitting performance challenge`] })
           await chainAPI.submitPerformanceChallenge({ performanceChallengeID, report, signer, nonce })
         }
       })
@@ -179,17 +179,17 @@ async function role (profile, APIS) {
       const attestorID = storageChallenge.attestor
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress === myAddress) {
-        log({ type: 'chainEvent', body: [`Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'chainEvent', data: [`Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}`] })
         const data = await getStorageChallengeData(storageChallenge)
         data.account = vaultAPI
         data.attestorKey = attestorKey
-        const proofs = await serviceAPI.verifyStorageChallenge(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
-        log({ type: 'attestor', body: [`Got all the proofs`] })
+        const proofs = await serviceAPI.verifyStorageChallenge(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
+        log({ type: 'attestor', data: [`Got all the proofs`] })
         if (proofs) {
           const response = makeResponse({ proofs, storageChallengeID})
-          const nonce = vaultAPI.getNonce()
+          const nonce = await vaultAPI.getNonce()
           const opts = { response, signer, nonce }
-          log({ type: 'attestor', body: [`Submitting storage challenge`] })
+          log({ type: 'attestor', data: [`Submitting storage challenge`] })
           await chainAPI.submitStorageChallenge(opts)
         }
       }

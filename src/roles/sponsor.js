@@ -1,4 +1,5 @@
 const dateToBlockNumber = require('../dateToBlockNumber')
+const get_feed_metadata = require('../get_feed_metadata')
 /******************************************************************************
   ROLE: sponsor
 ******************************************************************************/
@@ -8,27 +9,30 @@ module.exports = role
 async function role (profile, APIS) {
   const { name, log } = profile
   const { serviceAPI, chainAPI, vaultAPI } = APIS
+  const getChatAPI = require('../../lab/simulations/chatAPI')
+  const chatAPI = await getChatAPI(profile, ['ws://localhost', '8000'].join(':'))
 
-  log({ type: 'sponsor', body: [`I am a sponsor`] })
+  log({ type: 'sponsor', data: [`I am a sponsor`] })
   await chainAPI.listenToEvents(handleEvent)
-  const myAddress = vaultAPI.chainKeypair.address
-  log({ type: 'sponsor', body: [`My address ${myAddress}`] })
-  const signer = vaultAPI.chainKeypair
+  const myAddress = await vaultAPI.chainKeypair.address
+  log({ type: 'sponsor', data: [`My address ${myAddress}`] })
+  const signer = await vaultAPI.chainKeypair
 
   // EVENTS
+
+  chatAPI.on(async keys => {
+    log({ type: 'sponsor', data: [`Got the keys, publishing data now => ${keys}`] })
+    const { feedkey, topic } = JSON.parse(keys)
+    const components = await makeComponents(feedkey, topic)
+    const duration = getFromUntilBlock()
+    const plan = makePlan( duration, components)
+    const nonce = await vaultAPI.getNonce()
+    await chainAPI.publishPlan({ plan, signer, nonce })
+  })
+
   async function handleEvent (event) {
     if (event.method === 'FeedPublished') {
-      const [feedID] = event.data
-      log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
-
-      const nonce = await vaultAPI.getNonce()
-      const feed1 = { id: feedID, ranges: [[0,3], [5,8], [10,14]] }
-      const feeds = [feed1 /*, ... */]
-      const blockNow = await chainAPI.getBlockNumber()
-      const until = new Date('Nov 26, 2021 23:55:00')
-      const untilBlock = dateToBlockNumber ({ dateNow: new Date(), blockNow, date: until })
-      const plan = makePlan({ feeds, blockNow, untilBlock })
-      await chainAPI.publishPlan({ plan, signer, nonce })
+      log({ type: 'chainEvent', data: [`Event received: ${event.method} ${event.data.toString()}`] })
     }
     if (event.method === 'StorageChallengeConfirmed') {
       const [storageChallengeID] = event.data
@@ -37,7 +41,7 @@ async function role (profile, APIS) {
       const { sponsor: sponsorID } = await chainAPI.getPlanByID(planID)
       const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
       if (sponsorAddress === myAddress) {
-        log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'chainEvent', data: [`Event received: ${event.method} ${event.data.toString()}`] })
       }
     }
     if (event.method === 'PerformanceChallengeConfirmed') {
@@ -47,8 +51,8 @@ async function role (profile, APIS) {
       const { sponsor: sponsorID } = await chainAPI.getPlanByID(planID)
       const sponsorAddress = await chainAPI.getUserAddress(sponsorID)
       if (sponsorAddress === myAddress) {
-        // log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
-        log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+        // log({ type: 'chainEvent', data: [`Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'chainEvent', data: [`Event received: ${event.method} ${event.data.toString()}`] })
 
       }
     }
@@ -57,68 +61,51 @@ async function role (profile, APIS) {
   // HELPERS
  // See example https://pastebin.com/5nAb6XHQ
  // all feeds under one Plan have same hosting settings
- function sponsorPlan () {
-   const sponsorship = {
-     planID,
-     importance : '', // 1-3? 1-10?
-     budget     : '',
-     traffic    : '',
-     price      : '',
-   }
-   return { type: 'start', data: sponsorship }
- }
- function updateSponsorship () {
-   return { type: 'pause', data: id }
-   return { type: 'resume', data: id }
-   return { type: 'cancel', data: id }
-   return { type: 'update', data: { id, update: { importance, budget } } }
+//  function sponsorPlan () {
+//    const sponsorship = {
+//      planID,
+//      importance : '', // 1-3? 1-10?
+//      budget     : '',
+//      traffic    : '',
+//      price      : '',
+//    }
+//    return { type: 'start', data: sponsorship }
+//  }
+//  function updateSponsorship () {
+//    return { type: 'pause', data: id }
+//    return { type: 'resume', data: id }
+//    return { type: 'cancel', data: id }
+//    return { type: 'update', data: { id, update: { importance, budget } } }
 
-    if ( type === 'update') sponsorships[data.id] = Object.assign(sponsorships[data.id], data.update)
- }
-  function makePlan ({ feeds, blockNow, untilBlock }) {
-    const feeds = [feed_id0, feed_pk1, feed_pk2, feed_id2]
-    const dataset = [{ id, ranges }]
-    const performances = [{ // OPTIONAL
-      availability: '', // percentage_decimal
-      bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
-      latency: { /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
-    }],
-    const timetable = [{ // OPTIONAL
-      delay    : '', // milliseconds // default: 0
-      duration : '', // milliseconds // default: until - from
-      pause    : '', // milliseconds // default: none
-      repeat   : '', // number // default: none
-    }],
-    const regions = [['X3F', 'A0K']],  // at least 1 region is mandatory (defaults to global)
-    // @TODO should times be converted into blocks??
+//     if ( type === 'update') sponsorships[data.id] = Object.assign(sponsorships[data.id], data.update)
+//  }
+
+  function makePlan (duration, components) {
+    // const { from, until } = duration
     return {
-      components: { feeds, dataset, performance, timetable, regions },
-      from     : blockNow, // or new Date('Apr 30, 2000')
-      until    : untilBlock, // date
+      duration,
+      swarmkey: '',
       program  : [
-        { plans: [234] },
+        // { plans: [] }, // duplicate program from referenced plans
         {
-          // @TODO: if you publish a few local components (e.g. 5)
-          // and you want to reference the global component with id=3
-          // how to figure out if thats local ID or global ID
-          // e.g. positive vs. negative numbers to differentiate
-          dataset, // [0, 1]
-          regions, // [0, 1]
-          timetable, // [0]
-          performance: 0,
+          dataset: [-1],
+          region: [-1, -2],
+          timetable: [-1],
+          performance: [-1],
         },
-        { dataset, regions, performance, times },
-        { dataset, regions, performance, times }
-      ]
+        // { dataset, regions, performance, times },
+        // { dataset, regions, performance, times }
+      ],
+      components
     }
   }
-  function makePlanUpdate ({ }) {
+  function makePlanUpdate ({ plan }) {
     // - pause plan (define max, after that resume or drop) - maybe pause only performance challenges
     //   -> hosters can pause seeding and dont get paid for seeding, only storing,  while paused
     // ...
     const { program: { add, del, put } } = plan
     Object.entries(put).map(([i, val]) => Object.assign(program[i], val))
-    del.map(i, => program.splice(i, 1))
+    del.map(i => program.splice(i, 1))
     program.push(...add)
 
     return {
@@ -132,6 +119,32 @@ async function role (profile, APIS) {
         put: {2: { dataset, regions }},
       }
     }
+  }
+
+  async function makeComponents (feedkey, topic) {
+    const feed1 = await get_feed_metadata(log, feedkey, topic)
+    const feeds = [feed1]
+    const dataset_items = [{ ref: -1, ranges: [[0,3], [5,8], [10,14]] }]
+    const performance_items = [{ // OPTIONAL
+      availability: '', // percentage_decimal
+      bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
+      latency: { /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
+    }]
+    const timetable_items = [{ // OPTIONAL
+      delay    : '', // milliseconds // default: 0
+      duration : '', // milliseconds // default: until - from
+      pause    : '', // milliseconds // default: none
+      repeat   : '', // number // default: none
+    }]
+    const region_items = [{ geohash: 'X3F' }, { geohash: 'A0K' }]  // at least 1 region is mandatory (defaults to global)
+    return { feeds, dataset_items, performance_items, timetable_items, region_items }
+  }
+
+  async function getFromUntilBlock () {
+    const blockNow = await chainAPI.getBlockNumber()
+    const until = new Date('Nov 26, 2021 23:55:00')
+    const untilBlock = dateToBlockNumber ({ dateNow: new Date(), blockNow, date: until })
+    return { from: blockNow, until: untilBlock }
   }
 
 }

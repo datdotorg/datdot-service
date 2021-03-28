@@ -10,12 +10,12 @@ async function role (profile, APIS) {
   const { name, log } = profile
   const { serviceAPI, chainAPI, vaultAPI } = APIS
 
-  log({ type: 'encoder', body: [`Register as encoder`] })
+  log({ type: 'encoder', data: [`Register as encoder`] })
   await vaultAPI.initEncoder({}, log)
-  const encoderKey = vaultAPI.encoder.publicKey
-  const myAddress = vaultAPI.chainKeypair.address
-  log({ type: 'encoder', body: [`My address ${myAddress}`] })
-  const signer = vaultAPI.chainKeypair
+  const encoderKey = await vaultAPI.encoder.publicKey
+  const myAddress = await vaultAPI.chainKeypair.address
+  log({ type: 'encoder', data: [`My address ${myAddress}`] })
+  const signer = await vaultAPI.chainKeypair
   const nonce = await vaultAPI.getNonce()
 
   const blockNow = await chainAPI.getBlockNumber()
@@ -32,7 +32,7 @@ async function role (profile, APIS) {
       const id = encoders[i]
       const peerAddress = await chainAPI.getUserAddress(id)
       if (peerAddress === myAddress) {
-        log({ type: 'chainEvent', body: [`Encoder ${id}:  Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'chainEvent', data: [`Encoder ${id}:  Event received: ${event.method} ${event.data.toString()}`] })
         return true
       }
     }
@@ -42,7 +42,7 @@ async function role (profile, APIS) {
       const [userID] = event.data
       const encoderAddress = await chainAPI.getUserAddress(userID)
       if (encoderAddress === myAddress) {
-        log({ type: 'encoder', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })
       }
     }
     if (event.method === 'NewAmendment') {
@@ -51,12 +51,12 @@ async function role (profile, APIS) {
       const contract = await chainAPI.getContractByID(amendment.contract)
       const { encoders, attestors } = amendment.providers
       if (!await isForMe(encoders, event)) return
-      // log({ type: 'chainEvent', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+      // log({ type: 'chainEvent', data: [`Event received: ${event.method} ${event.data.toString()}`] })
       const { attestorKey, feedKey, ranges } = await getHostingData(attestors,contract)
       const data = { amendmentID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges }
-      const encoding = await serviceAPI.encode(data).catch((error) => log({ type: 'error', body: [`error: ${error}`] }))
-      if (!encoding) { return log({ type: 'encoder', body: [`Encoding job could not be finished`] }) }
-      log({ type: 'encoder', body: [`Encoding done`] })
+      const encoding = await serviceAPI.encode(data).catch((error) => log({ type: 'error', data: [`error: ${error}`] }))
+      if (!encoding) { return log({ type: 'encoder', data: [`Encoding job could not be finished`] }) }
+      log({ type: 'encoder', data: [`Encoding done`] })
     }
   }
 

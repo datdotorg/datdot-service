@@ -25,7 +25,7 @@ function handler (request, response) {
       break
   }
 }
-function show (LOG) {
+function show (LOG = window.LOG) {
   document.body.innerHTML = ''
   const parser = document.createElement('div')
   document.body.innerHTML = `
@@ -90,28 +90,28 @@ function show (LOG) {
   }
   function format (id, message) {
     if (message && typeof message === 'object') {
-      var { type, body } = message
-      if (typeof body !== 'string') body = JSON.stringify(body)
-      if (type === 'error') return `<span onclick="toggleStack(this, ${id})" style="color: red">${type}:${body}</span>`
-      if (type === 'chainEvent') return `<span onclick="toggleStack(this, ${id})" style="color: orange">${type}:${body}</span>`
-      if (type === 'block') return `<span onclick="toggleStack(this, ${id})" style="color: green">${type}:${body}</span>`
-      if (type === 'chain') return `<span onclick="toggleStack(this, ${id})" style="color: white">${type}:${body}</span>`
-      if (type === 'user') return `<span onclick="toggleStack(this, ${id})" style="color: maroon">${type}:${body}</span>`
-      if (type === 'peer') return `<span onclick="toggleStack(this, ${id})" style="color: blue">${type}:${body}</span>`
-      if (type === 'publisher') return `<span onclick="toggleStack(this, ${id})" style="color: purple">${type}:${body}</span>`
-      if (type === 'sponsor') return `<span onclick="toggleStack(this, ${id})" style="color: lime">${type}:${body}</span>`
-      if (type === 'author') return `<span onclick="toggleStack(this, ${id})" style="color: fuchsia">${type}:${body}</span>`
-      if (type === 'hoster') return `<span onclick="toggleStack(this, ${id})" style="color: pink">${type}:${body}</span>`
-      if (type === 'attestor') return `<span onclick="toggleStack(this, ${id})" style="color: olive">${type}:${body}</span>`
-      if (type === 'encoder') return `<span onclick="toggleStack(this, ${id})" style="color: turquoise">${type}:${body}</span>`
-      if (type === 'serviceAPI') return `<span onclick="toggleStack(this, ${id})" style="color: teal"> ${type}:${body}</span>`
-      if (type === 'chat') return `<span onclick="toggleStack(this, ${id})" style="color: silver"> ${type}:${body}</span>`
-      if (type === 'p2plex') return `<span onclick="toggleStack(this, ${id})" style="color: SlateBlue"> ${type}:${body}</span>`
-      if (type === 'chainAPI') return `<span onclick="toggleStack(this, ${id})" style="color: white"> ${type}:${body}</span>`
-      if (type === 'requestResponse') return `<span onclick="toggleStack(this, ${id})" style="color: aqua"> ${type}:${body}</span>`
-      if (type === 'feed') return `<span onclick="toggleStack(this, ${id})" style="color: salmon"> ${type}:${body}</span>`
-      if (type === 'log') return `<span onclick="toggleStack(this, ${id})" style="color: gray">${type}:${body}</span>`
-      if (type === 'schedule') return `<span onclick="toggleStack(this, ${id})" style="color: seagreen">${type}:${body}</span>`
+      var { type, data } = message
+      if (typeof data !== 'string') data = JSON.stringify(data)
+      if (type === 'error') return `<span onclick="toggleStack(this, ${id})" style="color: red">${type}:${data}</span>`
+      if (type === 'chainEvent') return `<span onclick="toggleStack(this, ${id})" style="color: orange">${type}:${data}</span>`
+      if (type === 'block') return `<span onclick="toggleStack(this, ${id})" style="color: green">${type}:${data}</span>`
+      if (type === 'chain') return `<span onclick="toggleStack(this, ${id})" style="color: DarkGoldenRod">${type}:${data}</span>`
+      if (type === 'user') return `<span onclick="toggleStack(this, ${id})" style="color: DarkCyan">${type}:${data}</span>`
+      if (type === 'peer') return `<span onclick="toggleStack(this, ${id})" style="color: DarkSeaGreen">${type}:${data}</span>`
+      if (type === 'publisher') return `<span onclick="toggleStack(this, ${id})" style="color: purple">${type}:${data}</span>`
+      if (type === 'sponsor') return `<span onclick="toggleStack(this, ${id})" style="color: lime">${type}:${data}</span>`
+      if (type === 'author') return `<span onclick="toggleStack(this, ${id})" style="color: fuchsia">${type}:${data}</span>`
+      if (type === 'hoster') return `<span onclick="toggleStack(this, ${id})" style="color: pink">${type}:${data}</span>`
+      if (type === 'attestor') return `<span onclick="toggleStack(this, ${id})" style="color: olive">${type}:${data}</span>`
+      if (type === 'encoder') return `<span onclick="toggleStack(this, ${id})" style="color: turquoise">${type}:${data}</span>`
+      if (type === 'serviceAPI') return `<span onclick="toggleStack(this, ${id})" style="color: teal"> ${type}:${data}</span>`
+      if (type === 'chat') return `<span onclick="toggleStack(this, ${id})" style="color: silver"> ${type}:${data}</span>`
+      if (type === 'p2plex') return `<span onclick="toggleStack(this, ${id})" style="color: SlateBlue"> ${type}:${data}</span>`
+      if (type === 'chainAPI') return `<span onclick="toggleStack(this, ${id})" style="color: white"> ${type}:${data}</span>`
+      if (type === 'requestResponse') return `<span onclick="toggleStack(this, ${id})" style="color: aqua"> ${type}:${data}</span>`
+      if (type === 'feed') return `<span onclick="toggleStack(this, ${id})" style="color: salmon"> ${type}:${data}</span>`
+      if (type === 'log') return `<span onclick="toggleStack(this, ${id})" style="color: gray">${type}:${data}</span>`
+      if (type === 'schedule') return `<span onclick="toggleStack(this, ${id})" style="color: seagreen">${type}:${data}</span>`
       return console.log('error', message)
     } else {
       console.error('weirdly formatted message', message)
@@ -145,9 +145,9 @@ function show (LOG) {
       function countPresence (phrase) {
         const results = []
         for (var i = 0; i < LOG.length; i ++) {
-          var [name, id, time, { type = '', body = '' }] = LOG[i]
-          if (typeof body !== 'string') body = JSON.stringify(body)
-          if (body && body.includes(phrase)) results.push(LOG)
+          var [name, id, time, { type = '', data = '' }] = LOG[i]
+          if (typeof data !== 'string') data = JSON.stringify(data)
+          if (data && data.includes(phrase)) results.push(LOG)
           else if (type.includes(phrase)) results.push(LOG)
         }
         return results.length
@@ -164,13 +164,13 @@ function explorer (PORTS) {
       window.LOG = []
       function logger (port, message) {
         const msgs = connections[port].msgs
-        const { flow: [from, into, id, time], type, body, meta: { stack } } = message
+        const { flow: [from, into, id, time], type, data, meta: { stack } } = message
 
         if (type !== 'log') return console.error('unknown message type', message)
         if (!from) return console.error('missing sender', message)
         if (!into || into !== '*') return console.error('missing recipient', message)
 
-        LOG.push([from, id, time, body, type, stack])
+        LOG.push([from, id, time, data, type, stack])
       }
       for (var i = 0, len = PORTS.length; i < len; i++) connect(PORTS[i])
       function connect (port) {
@@ -180,9 +180,9 @@ function explorer (PORTS) {
         connections[port] = { ws, port, codec: { encode, decode }, msgs: {} }
         var counter = 0
         function decode (json) { return JSON.parse(json) }
-        function encode (type, body, cite) {
+        function encode (type, data, cite) {
           const flow = [name, port, counter++]
-          const message = { flow, cite, type, body }
+          const message = { flow, cite, type, data }
           return JSON.stringify(message)
         }
         ws.onmessage = event => {

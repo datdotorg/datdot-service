@@ -14,11 +14,11 @@ module.exports = role
 async function role (profile, APIS) {
   const { name, log } = profile
   const { chainAPI, vaultAPI } = APIS
-
+  
   const nonce = await vaultAPI.getNonce()
-  const myAddress = vaultAPI.chainKeypair.address
-  log({ type: 'peer', body: [`My address ${myAddress}`] })
-  const signer = vaultAPI.chainKeypair
-  log({ type: 'peer', body: [`New account created => ${myAddress}`] })
+  const myAddress = await vaultAPI.chainKeypair.address
+  log({ type: 'peer', data: [`My address ${myAddress}`] })
+  const signer = await vaultAPI.chainKeypair
+  log({ type: 'peer', data: [`New account created => ${myAddress}`] })
   await chainAPI.newUser({ signer, nonce })
 }

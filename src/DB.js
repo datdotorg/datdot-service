@@ -6,47 +6,50 @@
 // ============================================================================
 // storage - append only log to assign un ique id's to entries
 // ============================================================================
-'DB.storage'                            // create, get, (set), (del)
+// 'DB.storage'                            // create, get, (set), (del)
 
 // ============================================================================
 // status - onchain status
 // ============================================================================
-'DB.status.idleHosters'                 // push, pop, set
-'DB.status.idleHosters[x]'              // get, splice/del
-'DB.status.idleAttestors'               // push, pop, set
-'DB.status.idleAttestors[x]'            // get, splice/del
-'DB.status.idleEncoders'                // push, pop, set
-'DB.status.idleEncoders[x]'             // get, splice/del
+
+// 'DB.status.idleHosters'                 // push, pop, set
+// 'DB.status.idleHosters[x]'              // get, splice/del
+// 'DB.status.idleAttestors'               // push, pop, set
+// 'DB.status.idleAttestors[x]'            // get, splice/del
+// 'DB.status.idleEncoders'                // push, pop, set
+// 'DB.status.idleEncoders[x]'             // get, splice/del
 
 // ============================================================================
 // status - onchain status
 // ============================================================================
-'DB.status.pendingAmendments'           // push, pop, set  // ammendments => contract.update // { fnName: 'makePerformanceChallenge', opts: contractID ) }
-'DB.status.pendingAmendments[x]'        // get, splice/del
-'DB.status.attestorsJobQueue'           // size, add, take, peek, drop // { planID, feedID, set }
+
+// 'DB.status.pendingAmendments'           // push, pop, set  // ammendments => contract.update // { fnName: 'makePerformanceChallenge', opts: contractID ) }
+// 'DB.status.pendingAmendments[x]'        // get, splice/del
+// 'DB.status.attestorsJobQueue'           // size, add, take, peek, drop // { planID, feedID, set }
 
 // ============================================================================
 // active - offchain status
 // ============================================================================
-'DB.activeQueue.activePerformanceChallenges' // ???
-'DB.activeQueue.activeStorageChallenges'     // ???
+
+// 'DB.activeQueue.activePerformanceChallenges' // ???
+// 'DB.activeQueue.activeStorageChallenges'     // ???
   // activeAmmendments (or contracts)
 
 // ============================================================================
 // query / lookup - immutable
 // ============================================================================
-'DB.lookups.userByAddress'              // set, get
-'DB.lookups.userIDByKey'                // set, get // { key: id }
-'DB.lookups.feedByKey'                  // set, get
+// 'DB.lookups.userByAddress'              // set, get
+// 'DB.lookups.userIDByKey'                // set, get // { key: id }
+// 'DB.lookups.feedByKey'                  // set, get
 // ============================================================================
 // performance challenge:
 // ============================================================================
-/* set, get           */ `storage/:id/performance_challenge/id`
-/* set, get           */ `storage/:id/performance_challenge/contract_id`
-/* set, get           */ `storage/:id/performance_challenge/hoster_id`
-/* push, get, forEach */ `storage/:id/performance_challenge/attestor/:id`
-// VS.
-/* set, get           */ `storage/:id/performance_challenge/attestor_ids`
+// /* set, get           */ `storage/:id/performance_challenge/id`
+// /* set, get           */ `storage/:id/performance_challenge/contract_id`
+// /* set, get           */ `storage/:id/performance_challenge/hoster_id`
+// /* push, get, forEach */ `storage/:id/performance_challenge/attestor/:id`
+// // VS.
+// /* set, get           */ `storage/:id/performance_challenge/attestor_ids`
 // {
 //   id,
 //   contract: 'contractID',
@@ -57,11 +60,11 @@
 // ============================================================================
 // storage challenge:
 // ============================================================================
-/* set, get           */ `storage/:id/storage_challenge/id`
-/* set, get           */ `storage/:id/storage_challenge/contract_id`
-/* set, get           */ `storage/:id/storage_challenge/hoster_id`
-/* set, get           */ `storage/:id/storage_challenge/attestor_id`
-/* push, get, forEach */ `storage/:id/storage_challenge/chunks` // = [1,4,6]
+// /* set, get           */ `storage/:id/storage_challenge/id`
+// /* set, get           */ `storage/:id/storage_challenge/contract_id`
+// /* set, get           */ `storage/:id/storage_challenge/hoster_id`
+// /* set, get           */ `storage/:id/storage_challenge/attestor_id`
+// /* push, get, forEach */ `storage/:id/storage_challenge/chunks` // = [1,4,6]
 // {
 //   id,
 //   contract: 'contractID',
@@ -72,14 +75,14 @@
 // ============================================================================
 // contract
 // ============================================================================
-/* set, get           */ `storage/:id/hosting/id`
-/* set, get           */ `storage/:id/hosting/plan_id`
-/* set, get           */ `storage/:id/hosting/feed_id`
-/* set, get           */ `storage/:id/hosting/ranges`
-/* push, get          */ `storage/:id/hosting/amendments`
-/* get                */ `storage/:id/hosting/amendments/:id_x`
-/* set, get           */ `storage/:id/hosting/status/active_hoster/:id_h`
-/* set, get           */ `storage/:id/hosting/status/scheduler_id`
+// /* set, get           */ `storage/:id/hosting/id`
+// /* set, get           */ `storage/:id/hosting/plan_id`
+// /* set, get           */ `storage/:id/hosting/feed_id`
+// /* set, get           */ `storage/:id/hosting/ranges`
+// /* push, get          */ `storage/:id/hosting/amendments`
+// /* get                */ `storage/:id/hosting/amendments/:id_x`
+// /* set, get           */ `storage/:id/hosting/status/active_hoster/:id_h`
+// /* set, get           */ `storage/:id/hosting/status/scheduler_id`
 // {
 //   id,
 //   feed,
@@ -94,14 +97,14 @@
 // ============================================================================
 // amendment
 // ============================================================================
-/* set, get           */ `storage/:id/amendment/id`
-/* set, get           */ `storage/:id/amendment/contract_id`
-/* set, get, push     */ `storage/:id/amendment/providers/encoders`
-/* set, get           */ `storage/:id/amendment/providers/encoders/:id`
-/* set, get, push     */ `storage/:id/amendment/providers/hosters`
-/* set, get           */ `storage/:id/amendment/providers/hosters/:id`
-/* set, get, push     */ `storage/:id/amendment/providers/attestors`
-/* set, get           */ `storage/:id/amendment/providers/attestors/:id`
+// /* set, get           */ `storage/:id/amendment/id`
+// /* set, get           */ `storage/:id/amendment/contract_id`
+// /* set, get, push     */ `storage/:id/amendment/providers/encoders`
+// /* set, get           */ `storage/:id/amendment/providers/encoders/:id`
+// /* set, get, push     */ `storage/:id/amendment/providers/hosters`
+// /* set, get           */ `storage/:id/amendment/providers/hosters/:id`
+// /* set, get, push     */ `storage/:id/amendment/providers/attestors`
+// /* set, get           */ `storage/:id/amendment/providers/attestors/:id`
 // {
 //   id,
 //   contract: contractID,
@@ -115,20 +118,20 @@
 // ============================================================================
 // user
 // ============================================================================
-`storage/:id/user/id`  // boolean `if (user[5]) const user = storage[5]`
-`storage/:id/user/noisekey` // ed2519 public key
-`storage/:id/user/signkey`  // ed25519 public key
-`storage/:id/user/form/from`
-`storage/:id/user/form/until`
-`storage/:id/user/form/timing`
-`storage/:id/user/form/region`
-`storage/:id/user/form/performance`
-`storage/:id/user/form/resources`
-`storage/:id/user/jobs/hoster`
-`storage/:id/user/jobs/attestor`
-`storage/:id/user/jobs/encoder`
-`storage/:id/user/status/capacity`
-`storage/:id/user/status/idleStorage`
+// `storage/:id/user/id`  // boolean `if (user[5]) const user = storage[5]`
+// `storage/:id/user/noisekey` // ed2519 public key
+// `storage/:id/user/signkey`  // ed25519 public key
+// `storage/:id/user/form/from`
+// `storage/:id/user/form/until`
+// `storage/:id/user/form/timing`
+// `storage/:id/user/form/region`
+// `storage/:id/user/form/performance`
+// `storage/:id/user/form/resources`
+// `storage/:id/user/jobs/hoster`
+// `storage/:id/user/jobs/attestor`
+// `storage/:id/user/jobs/encoder`
+// `storage/:id/user/status/capacity`
+// `storage/:id/user/status/idleStorage`
 // {
 //   id, 776
 //   key: noiseKey, // public noise key
@@ -162,10 +165,10 @@
 // ============================================================================
 // feed:
 // ============================================================================
-`storage/:id`
-`storage/:id/id`
-`storage/:id/publickey`
-`storage/:id/meta/signature/:version`
+// `storage/:id`
+// `storage/:id/id`
+// `storage/:id/publickey`
+// `storage/:id/meta/signature/:version`
 // `storage/:id/meta/hashType`
 // `storage/:id/meta/children`
 // {
@@ -173,24 +176,24 @@
 //   publickey: 'key',
 //   meta: '{ signature, hashType, children }',
 // }
-`feed/:id/publickey`
-`feed/:id/version/:v/` // signature
-`feed/:id/chunk/:v` // cummulative size for that version
-const feed = {
-  publickey,
-  version: {
-      // short array
-      // only one signature on feed publish + one per feed update
-    23: signature1 // feed length old
-    42: signature2 // feed length new
-  },
-  size: { // for nodes
-    // multiple sizes for each storage proof get added
-    23: 64.05
-    24: 63.251
-    25: ...
-  }
-}
+// `feed/:id/publickey`
+// `feed/:id/version/:v/` // signature
+// `feed/:id/chunk/:v` // cummulative size for that version
+// const feed = {
+//   publickey,
+//   version: {
+//       // short array
+//       // only one signature on feed publish + one per feed update
+//     23: signature1 // feed length old
+//     42: signature2 // feed length new
+//   },
+//   size: { // for nodes
+//     // multiple sizes for each storage proof get added
+//     23: 64.05
+//     24: 63.251
+//     25: ...
+//   }
+// }
 
 // Encoder sends total size of all compressed chunks to attestor
 // attestor send total compressed size  and signatures to chain
@@ -261,14 +264,14 @@ const feed = {
 // ============================================================================
 // plan:
 // ============================================================================
-`storage/:id`
-`storage/:id/id`
-`storage/:id/sponsor_id`
-`storage/:id/from`
-`storage/:id/until` // until: time, budget, price...???
-`storage/:id/program`
-`storage/:id/status/contract_ids`
-`storage/:id/status/contract_ids/:c_id`
+// `storage/:id`
+// `storage/:id/id`
+// `storage/:id/sponsor_id`
+// `storage/:id/from`
+// `storage/:id/until` // until: time, budget, price...???
+// `storage/:id/program`
+// `storage/:id/status/contract_ids`
+// `storage/:id/status/contract_ids/:c_id`
 // {
 //   id,
 //   // sponsor_id: 'userID',
@@ -308,25 +311,25 @@ const feed = {
 // ============================================================================
 // plan - component - dataset
 // ============================================================================
-`type/dataset/:id`
-`storage/:id`
-`storage/:id/id`
-`storage/:id/ranges/:i/:first`
-`storage/:id/ranges/:i/:last`
+// `type/dataset/:id`
+// `storage/:id`
+// `storage/:id/id`
+// `storage/:id/ranges/:i/:first`
+// `storage/:id/ranges/:i/:last`
 // const dataset = [{ id, ranges }]
 
 // ============================================================================
 // plan - component - performance
 // ============================================================================
-`type/performance/:id`
-`storage/:id` // = { availability, bandwidth, latency }
-`storage/:id/availability`
-`storage/:id/bandwidth/ingress/speed`
-`storage/:id/bandwidth/ingress/guarantee`
-`storage/:id/bandwidth/egress/speed`
-`storage/:id/bandwidth/egress/guarantee`
-`storage/:id/latency/speed`
-`storage/:id/latency/guarantee`
+// `type/performance/:id`
+// `storage/:id` // = { availability, bandwidth, latency }
+// `storage/:id/availability`
+// `storage/:id/bandwidth/ingress/speed`
+// `storage/:id/bandwidth/ingress/guarantee`
+// `storage/:id/bandwidth/egress/speed`
+// `storage/:id/bandwidth/egress/guarantee`
+// `storage/:id/latency/speed`
+// `storage/:id/latency/guarantee`
 // const performances = [{ // OPTIONAL
 //   availability: '', // percentage_decimal
 //   bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
@@ -335,16 +338,16 @@ const feed = {
 // ============================================================================
 // user - component - performance
 // ============================================================================
-`storage/:id/user/form/components/performance`
+// `storage/:id/user/form/components/performance`
 // ============================================================================
 // user - component - timetables
 // ============================================================================
-`storage/:id/user/form/components/timing`
+// `storage/:id/user/form/components/timing`
 
 // ============================================================================
 // plan - component - timing
 // ============================================================================
-/* make, get */ `timing/:id`      // = { delay, duration, pause, repeat }
+// /* make, get */ `timing/:id`      // = { delay, duration, pause, repeat }
 // * we always store as a blob
 // * it never gets updated
 // * we always need all values (we read it always as a blob)
@@ -428,12 +431,12 @@ const feed = {
 // ============================================================================
 // user - component - resources
 // ============================================================================
-`storage/:id/user/form/components/resources`
+// `storage/:id/user/form/components/resources`
 // @TODO: decide later, once it is clear which resources we are tracking
 // ============================================================================
 // plan - component - regions
 // ============================================================================
-`region/:id` = ['X3F', 'A0K']
+// `region/:id` = ['X3F', 'A0K']
 // * we always store as a blob
 // * it never gets updated
 // * we always need all values (we read it always as a blob)
@@ -457,7 +460,7 @@ const feed = {
 // user - component - region
 // ============================================================================
 // `storage/:id/user/form/components/region`
-`region/:id` = ['X3F', 'A0K']
+// `region/:id` = ['X3F', 'A0K']
 // hoster region is one hash
 // plan regions is array of hashes
 // matching process:
@@ -490,56 +493,56 @@ const feed = {
 
 */
 // SCENARIO
-const nodes = [
-  { id: 1, location: 'XF3', lag: [
-    [2, 0.3],
-    [3, 0.3],
-    [4, 0.3],
-  ]}, { id: 2, location: 'AF3', lag: [
-    [1, 0.3],
-    [3, 0.3],
-    [4, 0.3],
-  ]}, { id: 3, location: 'XA3', lag: [
-    [2, 0.3],
-    [1, 0.3],
-    [4, 0.3],
-  ]}, { id: 4, location: 'XF3', lag: [
-    [2, 0.3],
-    [3, 0.3],
-    [1, 0.3],
-  ]}
-]
-const nodes = [
-  {
-    id: 1, location: 'Berlin', lag: [
-    ['South London', 0.1],
-    ['East London', 0.3],
-    ['Rome', 0.1],
-  ]}, {
-    id: 2, location: 'South London', lag: [
-    ['Berlin'], 0.2],
-    ['East London', 0.2],
-    ['Rome', 0.3],
-  ]}, {
-    id: 3, location: 'East London', lag: [
-    ['South London', 0.3],
-    ['Berlin'], 0.5],
-    ['Rome', 0.2],
-  ]}, {
-    id: 4, location: 'Rome', lag: [
-    ['South London', 0.2],
-    ['East London', 0.5],
-    ['Berlin'], 0.1],
-  ]}
-  // ...
-]
+// const nodes = [
+//   { id: 1, location: 'XF3', lag: [
+//     [2, 0.3],
+//     [3, 0.3],
+//     [4, 0.3],
+//   ]}, { id: 2, location: 'AF3', lag: [
+//     [1, 0.3],
+//     [3, 0.3],
+//     [4, 0.3],
+//   ]}, { id: 3, location: 'XA3', lag: [
+//     [2, 0.3],
+//     [1, 0.3],
+//     [4, 0.3],
+//   ]}, { id: 4, location: 'XF3', lag: [
+//     [2, 0.3],
+//     [3, 0.3],
+//     [1, 0.3],
+//   ]}
+// ]
+// const nodes = [
+//   {
+//     id: 1, location: 'Berlin', lag: [
+//     ['South London', 0.1],
+//     ['East London', 0.3],
+//     ['Rome', 0.1],
+//   ]}, {
+//     id: 2, location: 'South London', lag: [
+//     ['Berlin'], 0.2],
+//     ['East London', 0.2],
+//     ['Rome', 0.3],
+//   ]}, {
+//     id: 3, location: 'East London', lag: [
+//     ['South London', 0.3],
+//     ['Berlin'], 0.5],
+//     ['Rome', 0.2],
+//   ]}, {
+//     id: 4, location: 'Rome', lag: [
+//     ['South London', 0.2],
+//     ['East London', 0.5],
+//     ['Berlin'], 0.1],
+//   ]}
+//   // ...
+// ]
 
 
 
 /******************************************************************************
   STATE
 ******************************************************************************/
-const storage = [] // append only log to assign un ique id's to entries
+const storage = [] // append only log to assign unique id's to entries
 
 /******************************************************************************
   LOOKUP - IMMUTABLE
@@ -589,41 +592,41 @@ const queues = {
 
 
 // makeX.js
-function make (opts) {
+// function make (opts) {
 
-  return {
-    push(type, peerID) {
-      var arr = ALL[type]
-      if (!arr) ALL[type] = []
-      arr.push(peerID)
-    }
-  }
-}
-
-
-removeJobForRole
-giveJobToRoles
-tryNextChallenge
-select
-
-const opts = {}
-const idleHosters = make(opts) // should be a `new Set()`
-const idleEncoders = make(opts)
-const idleAttestors = make(opts)
+//   return {
+//     push(type, peerID) {
+//       var arr = ALL[type]
+//       if (!arr) ALL[type] = []
+//       arr.push(peerID)
+//     }
+//   }
+// }
 
 
-const idlePeers = make(opts)
-idlePeers.push('attestor', peerID)
+// removeJobForRole
+// giveJobToRoles
+// tryNextChallenge
+// select
+
+// const opts = {}
+// const idleHosters = make(opts) // should be a `new Set()`
+// const idleEncoders = make(opts)
+// const idleAttestors = make(opts)
 
 
-idleHosters.push(peerID)
+// const idlePeers = make(opts)
+// idlePeers.push('attestor', peerID)
 
 
-const providers = idlehosters.select(jobID)
+// idleHosters.push(peerID)
 
-idlehosters.select(jobID)
-idlehosters.select(jobID)
-const providers  = {}
+
+// const providers = idlehosters.select(jobID)
+
+// idlehosters.select(jobID)
+// idlehosters.select(jobID)
+// const providers  = {}
 // ----------------------------------------------------------------------------
 
 
@@ -646,8 +649,8 @@ const activePerformanceChallenges = {
 }
 const active = {
   // activeAmmendments (or contracts)
-  activePerformanceChallenges
-  activeStorageChallenges,
+  activePerformanceChallenges,
+  activeStorageChallenges
 }
 /*****************************************************************************/
 const DB = { storage, lookups, active, queues, status }

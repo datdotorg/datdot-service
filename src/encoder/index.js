@@ -58,7 +58,7 @@ module.exports = class Encoder {
         myKey: encoderKey,
       }
       const log2Attestor = encoder.log.sub(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
-      // var id_streams = setTimeout(() => { log2Attestor({ type: 'encoder', body: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, 500)
+      // var id_streams = setTimeout(() => { log2Attestor({ type: 'encoder', data: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, 500)
       const streams = await peerConnect(opts, log2Attestor)
       const allChunks = []
       // clearTimeout(id_streams)
@@ -66,20 +66,20 @@ module.exports = class Encoder {
       var total = 0
       for (const range of ranges) total += (range[1] + 1) - range[0]
 
-      log2Attestor({ type: 'encoder', body: [`Start encoding and sending data to attestor`] })
+      log2Attestor({ type: 'encoder', data: [`Start encoding and sending data to attestor`] })
       for (const range of ranges) {
         const rangeRes = sendDataToAttestor({ encoder, range, feed, feedKey, streams, log: log2Attestor })
         allChunks.push(...rangeRes)
       }
       try {
-        const results = await Promise.all(allChunks).catch((error) => log2Attestor({ type: 'error', body: [`Error: ${error}`] }))
+        const results = await Promise.all(allChunks).catch((error) => log2Attestor({ type: 'error', data: [`Error: ${error}`] }))
         if (!results) return reject('Encoder has not received all the confirmations')
-        log2Attestor({ type: 'encoder', body: [`${allChunks.length} confirmations received from the attestor`] })
-        log2Attestor({ type: 'encoder', body: [`Destroying communication with the attestor`] })
+        log2Attestor({ type: 'encoder', data: [`${allChunks.length} confirmations received from the attestor`] })
+        log2Attestor({ type: 'encoder', data: [`Destroying communication with the attestor`] })
         streams.end()
         resolve(results)
       } catch (e) {
-        log2Attestor({ type: 'encoder', body: [`Error: ${e}`] })
+        log2Attestor({ type: 'encoder', data: [`Error: ${e}`] })
         reject(e)
       }
     })

@@ -30,7 +30,7 @@ module.exports = class Attestor {
     const noiseKeyPair = seedKeygen(noiseSeed)
     this.communication = p2plex({ keyPair: noiseKeyPair, maxPeers: Infinity })
     this.communication.setMaxListeners(128)
-    this.communication.on('connection', (peer) => { this.log({ type: 'attestor', body: [`new connection`]}) })
+    this.communication.on('connection', (peer) => { this.log({ type: 'attestor', data: [`new connection`]}) })
     this.publicKey = noiseKeyPair.publicKey
   }
 
@@ -57,7 +57,7 @@ module.exports = class Attestor {
       }
       const log2encoder = attestor.log.sub(`<-Encoder ${encoderKey.toString('hex').substring(0,5)}`)
 
-      // var id_streams1 = setTimeout(() => { log2encoder({ type: 'attestor', body: [`peerConnect timeout, ${JSON.stringify(opts2)}`] }) }, 500)
+      // var id_streams1 = setTimeout(() => { log2encoder({ type: 'attestor', data: [`peerConnect timeout, ${JSON.stringify(opts2)}`] }) }, 500)
       const encoderComm = await peerConnect(opts1, log2encoder)
       // clearTimeout(id_streams1)
 
@@ -71,12 +71,12 @@ module.exports = class Attestor {
       }
       const log2hoster = attestor.log.sub(`->Hoster ${hosterKey.toString('hex').substring(0,5)}`)
 
-      // var id_streams2 = setTimeout(() => { log2hoster({ type: 'attestor', body: [`peerConnect timeout, ${JSON.stringify(opts2)}`] }) }, 500)
+      // var id_streams2 = setTimeout(() => { log2hoster({ type: 'attestor', data: [`peerConnect timeout, ${JSON.stringify(opts2)}`] }) }, 500)
       const streams = await peerConnect(opts2, log2hoster)
       // clearTimeout(id_streams2)
 
       // check the encoded data and if ok, send them to the hosters
-      log2encoder({ type: 'attestor', body: ['Start receiving data from the encoder'] })
+      log2encoder({ type: 'attestor', data: ['Start receiving data from the encoder'] })
       const encodedReceived = []
       const comparedAndHosted = []
       const expectedMessageCount = getRangesCount(ranges)
@@ -95,12 +95,12 @@ module.exports = class Attestor {
       for await (const message of encoderComm.parse$) {
         if (timeout) return
         if (failed) return
-        log2encoder({ type: 'attestor', body: [`${message.index} RECV_MSG ${encoderKey.toString('hex')}`] })
+        log2encoder({ type: 'attestor', data: [`${message.index} RECV_MSG ${encoderKey.toString('hex')}`] })
         encodedCount++
         const { type } = message
         if (type === 'encoded') {
           if (!merkleVerifyChunk(message)) {
-            log2encoder({ type: 'attestor', body: [`Encoder failed ${encoderKey.toString('hex')} for message ${message.index}`] })
+            log2encoder({ type: 'attestor', data: [`Encoder failed ${encoderKey.toString('hex')} for message ${message.index}`] })
             failed = true
             encoderComm.serialize$.end({ type: 'encoded:error', error: 'INVALID_CHUNK', messageType: type })
             return resolve(encoderKey)
@@ -117,7 +117,7 @@ module.exports = class Attestor {
           }))
           if (encodedReceived.length === expectedMessageCount) break // @TODO: do we need to END the stream here?
         } else {
-          log2encoder({ type: 'attestor', body: [`encoded checking UNKNOWN_MESSAGE MESSAGE TYPE ${type} `] })
+          log2encoder({ type: 'attestor', data: [`encoded checking UNKNOWN_MESSAGE MESSAGE TYPE ${type} `] })
           encoderComm.serialize$.end({ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', messageType: type })
           failed = true
           resolve(encoderKey)
@@ -142,7 +142,7 @@ module.exports = class Attestor {
       console.log({status})
       if (!isFulfilled) {
         console.log(`Hoster failed: amendment: ${amendmentID} (${encodedReceived.length}/${expectedMessageCount})`)
-        log2encoder({ type: 'attestor', body: [`Hoster failed: amendment: ${amendmentID} (${encodedReceived.length}/${expectedMessageCount}))`] })
+        log2encoder({ type: 'attestor', data: [`Hoster failed: amendment: ${amendmentID} (${encodedReceived.length}/${expectedMessageCount}))`] })
         streams.end()
         resolve(hosterKey) // encoderKey
         return
@@ -163,7 +163,7 @@ module.exports = class Attestor {
           compareCB(message, encoderKey, async (err, res) => {
             if (timeoutOtherEncoder) return resolve()
             if (!err) {
-              log2encoder({ type: 'attestor', body: [`${message.index} SEND_ACK ${encoderKey.toString('hex')}`] })
+              log2encoder({ type: 'attestor', data: [`${message.index} SEND_ACK ${encoderKey.toString('hex')}`] })
               encoderComm.serialize$.write({ type: 'encoded:checked', ok: true, index: message.index })
               try {
                 const response = await sendToHoster(message, log2hoster)
@@ -175,7 +175,7 @@ module.exports = class Attestor {
               }
             } else if (err) {
               // @TODO:future: make retry strategy (e.g. try again while waiting for others and stuff like that)
-              log2encoder({ type: 'attestor', body: ['encoded checking error'] })
+              log2encoder({ type: 'attestor', data: ['encoded checking error'] })
               encoderComm.serialize$.end({ type: 'encoded:error', error: 'INVALID_COMPRESSION', ...{ messageIndex: message.index } })
               return reject(err)
             }
@@ -187,7 +187,7 @@ module.exports = class Attestor {
       }
       async function sendToHoster (message, log2hoster) {
         const { type, feed, index, encoded, proof, nodes, signature } = message
-        if (type !== 'encoded') return log({ type: 'attestor', body: [`Type not encoded, not sending to the hoster`] })
+        if (type !== 'encoded') return log({ type: 'attestor', data: [`Type not encoded, not sending to the hoster`] })
 
         const msg = { type: 'verified', feed, index, encoded, proof, nodes, signature }
         return requestResponse({ message: msg, sendStream: streams.serialize$, receiveStream: streams.parse$, log: log2hoster })
@@ -205,7 +205,7 @@ module.exports = class Attestor {
     return new Promise(async (resolve, reject) => {
       const { storageChallenge, attestorKey, hosterKey, feedKey } = data
       const id = storageChallenge.id
-      attestor.log({ type: 'attestor', body: [`Starting verifyStorageChallenge}`] })
+      attestor.log({ type: 'attestor', data: [`Starting verifyStorageChallenge}`] })
 
       const opts3 = {
         plex: this.communication,
@@ -217,7 +217,7 @@ module.exports = class Attestor {
       }
       const log2hosterChallenge = attestor.log.sub(`<-HosterChallenge ${hosterKey.toString('hex').substring(0,5)}`)
 
-      // var id_streams = setTimeout(() => { log2hosterChallenge({ type: 'attestor', body: [`peerConnect timeout, ${JSON.stringify(opts3)}`] }) }, 500)
+      // var id_streams = setTimeout(() => { log2hosterChallenge({ type: 'attestor', data: [`peerConnect timeout, ${JSON.stringify(opts3)}`] }) }, 500)
       const streams = await peerConnect(opts3, log2hosterChallenge)
       // clearTimeout(id_streams)
 
@@ -226,7 +226,7 @@ module.exports = class Attestor {
         const { type } = message
         if (type === 'StorageChallenge') {
           const { storageChallengeID, data, index } = message
-          log2hosterChallenge({ type: 'attestor', body: [`Storage Proof received, ${message.index}`]})
+          log2hosterChallenge({ type: 'attestor', data: [`Storage Proof received, ${message.index}`]})
           // console.log(`Attestor received ${storageChallenge.chunks[index]}`)
           if (id === storageChallengeID) {
             if (proofIsVerified(message, feedKey, storageChallenge)) {
@@ -234,13 +234,13 @@ module.exports = class Attestor {
                 type: 'StorageChallenge:verified',
                 ok: true
               })
-              log2hosterChallenge({ type: 'attestor', body: [`Storage verified for chunk ${storageChallenge.chunks[index]}`]})
+              log2hosterChallenge({ type: 'attestor', data: [`Storage verified for chunk ${storageChallenge.chunks[index]}`]})
               all.push(data)
               if (all.length === storageChallenge.chunks.length) resolve(all)
             }
           }
         } else {
-          log2hosterChallenge({ type: 'attestor', body: [`UNKNOWN_MESSAGE messageType: ${type}`] })
+          log2hosterChallenge({ type: 'attestor', data: [`UNKNOWN_MESSAGE messageType: ${type}`] })
           sendError('UNKNOWN_MESSAGE', { messageType: type })
           reject()
         }

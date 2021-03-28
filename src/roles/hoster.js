@@ -9,13 +9,13 @@ async function role (profile, APIS) {
   const { name, log } = profile
   const { serviceAPI, chainAPI, vaultAPI } = APIS
 
-  log({ type: 'hoster', body: [`Register as hoster`] })
+  log({ type: 'hoster', data: [`Register as hoster`] })
   await vaultAPI.initHoster({}, log)
-  const hosterKey = vaultAPI.hoster.publicKey
-  const myAddress = vaultAPI.chainKeypair.address
-  log({ type: 'hoster', body: [`My address ${myAddress}`] })
-  const signer = vaultAPI.chainKeypair
-  const nonce = vaultAPI.getNonce()
+  const hosterKey = await vaultAPI.hoster.publicKey
+  const myAddress = await vaultAPI.chainKeypair.address
+  log({ type: 'hoster', data: [`My address ${myAddress}`] })
+  const signer = await vaultAPI.chainKeypair
+  const nonce = await vaultAPI.getNonce()
 
 
   const blockNow = await chainAPI.getBlockNumber()
@@ -32,7 +32,7 @@ async function role (profile, APIS) {
       const id = hosters[i]
       const peerAddress = await chainAPI.getUserAddress(id)
       if (peerAddress === myAddress) {
-        log({ type: 'hoster', body: [`Hoster ${id}:  Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'hoster', data: [`Hoster ${id}:  Event received: ${event.method} ${event.data.toString()}`] })
         return true
       }
     }
@@ -42,7 +42,7 @@ async function role (profile, APIS) {
       const [userID] = event.data
       const hosterAddress = await chainAPI.getUserAddress(userID)
       if (hosterAddress === myAddress) {
-        log({ type: 'hoster', body: [`Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'hoster', data: [`Event received: ${event.method} ${event.data.toString()}`] })
       }
     }
     if (event.method === 'NewAmendment') {
@@ -53,37 +53,37 @@ async function role (profile, APIS) {
       if (!await isForMe(hosters, event)) return
       const { feedKey, attestorKey, plan } = await getHostingData(attestors, contract)
       const data = { amendmentID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan }
-      await serviceAPI.host(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
-      log({ type: 'hoster', body: [`Hosting for the amendment ${amendmentID} started`] })
+      await serviceAPI.host(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
+      log({ type: 'hoster', data: [`Hosting for the amendment ${amendmentID} started`] })
     }
     if (event.method === 'DropHosting') {
       const [feedID, hosterID] = event.data
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
         // @TODO close all the connections related to this feed
-        log({ type: 'hoster', body: [`Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'hoster', data: [`Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}`] })
         const feedKey = await chainAPI.getFeedKey(feedID)
-        // await serviceAPI.removeFeed({ feedKey, account: vaultAPI }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+        // await serviceAPI.removeFeed({ feedKey, account: vaultAPI }).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
         // @TODO cancel hosting = remove feed, get out of swarm...
       }
     }
     if (event.method === 'NewStorageChallenge') {
-      log({ type: 'hoster', body: [`NewStorageChallenge event for hoster`] })
+      log({ type: 'hoster', data: [`NewStorageChallenge event for hoster`] })
       const [storageChallengeID] = event.data
       const storageChallenge = await chainAPI.getStorageChallengeByID(storageChallengeID)
       const contract = await chainAPI.getContractByID(storageChallenge.contract)
       const hosterID = storageChallenge.hoster
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
-        log({ type: 'hoster', body: [`Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'hoster', data: [`Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}`] })
         const data = await getStorageChallengeData(storageChallenge, contract)
-        data.account = vaultAPI
+        data.account = await vaultAPI
         data.hosterKey = hosterKey
         data.storageChallenge = storageChallenge
-        // log({ type: 'hoster', body: [`sendStorageChallengeToAttestor - ${data}`] })
-        await serviceAPI.sendStorageChallengeToAttestor(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
-        // await serviceAPI.sendStorageChallengeToAttestor(data).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
-        log({ type: 'hoster', body: [`sendStorageChallengeToAttestor completed`] })
+        // log({ type: 'hoster', data: [`sendStorageChallengeToAttestor - ${data}`] })
+        await serviceAPI.sendStorageChallengeToAttestor(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
+        // await serviceAPI.sendStorageChallengeToAttestor(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
+        log({ type: 'hoster', data: [`sendStorageChallengeToAttestor completed`] })
       }
     }
   }
@@ -106,7 +106,7 @@ async function role (profile, APIS) {
     const feedKey = await chainAPI.getFeedKey(feedID)
     const attestorID = storageChallenge.attestor
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
-    // const proofs = await serviceAPI.getStorageChallenge({ account: vaultAPI, storageChallenge, feedKey }).catch((error) => log({ type: 'error', body: [`Error: ${error}`] }))
+    // const proofs = await serviceAPI.getStorageChallenge({ account: vaultAPI, storageChallenge, feedKey }).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
     return { feedKey, attestorKey }
   }
 }

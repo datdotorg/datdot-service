@@ -23,7 +23,7 @@ function datdotService (profile) {
                  BEFORE HOSTING => ENCODING, VERIFYING, STORING
   ------------------------------------------------------------------ */
   async function encode ({ amendmentID, account, attestorKey, encoderKey, feedKey: feedKeyBuffer, ranges }) {
-    log({ type: 'serviceAPI', body: [`Encode!`] })
+    log({ type: 'serviceAPI', data: [`Encode!`] })
     return account.encoder.encodeFor(amendmentID, attestorKey, encoderKey, feedKeyBuffer, ranges)
   }
 
@@ -35,7 +35,7 @@ function datdotService (profile) {
       const encoderKey = encoderKeys[i]
       const hosterKey = hosterKeys[i]
       const opts = { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, compareCB: (msg, key, cb) => compareEncodings({messages, key, msg}, cb) }
-      log({ type: 'serviceAPI', body: [`Verify encodings!`] })
+      log({ type: 'serviceAPI', data: [`Verify encodings!`] })
       responses.push(account.attestor.verifyAndForwardFor(opts))
     }
     const failedKeys = await Promise.all(responses)
@@ -45,14 +45,14 @@ function datdotService (profile) {
   async function host (data) {
     const { account, amendmentID, feedKey, hosterKey, attestorKey, plan } = data
     const opts = { amendmentID, feedKey, hosterKey, attestorKey, plan }
-    log({ type: 'serviceAPI', body: [`Host! ${JSON.stringify(opts)}`] })
+    log({ type: 'serviceAPI', data: [`Host! ${JSON.stringify(opts)}`] })
 
     return await account.hoster.hostFor(opts)
   }
 
   async function removeFeed ({ feedKey, account }) {
     const hasKey = await account.hoster.hasKey(feedKey)
-    log({ type: 'serviceAPI', body: [`DropHosting hasKey? ${hasKey}`] })
+    log({ type: 'serviceAPI', data: [`DropHosting hasKey? ${hasKey}`] })
     // @TODO fix errors in hoster storage when trying to remove feed
     if (hasKey) return await account.hoster.removeFeed(feedKey)
     // @TODO ELSE => cancelHostFor process (disconnect from attestor and removeKey) <= for hosters that didn't start hosting on time
@@ -70,20 +70,20 @@ function datdotService (profile) {
 
   async function sendStorageChallengeToAttestor (data) {
     const { account, hosterKey, storageChallenge, feedKey, attestorKey } = data
-    log({ type: 'serviceAPI', body: [`send storage to attestor!`] })
+    log({ type: 'serviceAPI', data: [`send storage to attestor!`] })
     return account.hoster.sendStorageChallenge({ storageChallenge, hosterKey, feedKey, attestorKey })
   }
 
   async function verifyStorageChallenge (data) {
     const { account, attestorKey, hosterKey, feedKey, storageChallenge } = data
-    log({ type: 'serviceAPI', body: [`verify storage!`] })
+    log({ type: 'serviceAPI', data: [`verify storage!`] })
     // @TODO prepare the response: hash, proof etc. instead of sending the full chunk
     return await account.attestor.verifyStorageChallenge({ storageChallenge, attestorKey, feedKey, hosterKey })
   }
 
   async function checkPerformance (data) {
     const { account, randomChunks, feedKey } = data
-    log({ type: 'serviceAPI', body: [`check performance!`] })
+    log({ type: 'serviceAPI', data: [`check performance!`] })
     const report = await Promise.all(randomChunks.map(async (chunk) => {
       return await account.attestor.checkPerformance(feedKey, chunk)
     }))
@@ -138,13 +138,13 @@ function datdotService (profile) {
   function compareEncodings ({messages, key, msg}, cb) {
     const { index } = msg
     // get all three chunks from different encoders, compare and then respond to each
-    log({ type: 'serviceAPI', body: [`comparing encoding for index: ${index} (${messages[index] ? messages[index].length : 'none'}/3)`] })
+    log({ type: 'serviceAPI', data: [`comparing encoding for index: ${index} (${messages[index] ? messages[index].length : 'none'}/3)`] })
 
     const size = Buffer.from(msg.encoded).length // @TODO or .bytelength
     if (messages[index]) messages[index].push({ key, size, cb })
     else messages[index] = [{ key, size, cb }]
     if (messages[index].length === 3) {
-      log({ type: 'serviceAPI', body: [`Have 3 encodings, comparing them now!`] })
+      log({ type: 'serviceAPI', data: [`Have 3 encodings, comparing them now!`] })
       findInvalidEncoding(messages)
     }
   }

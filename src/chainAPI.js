@@ -1,4 +1,4 @@
-const ApiPromise = require('./simulate-polkadotjs')
+const ApiPromise = require('../lab/simulations/simulate-polkadotjs')
 // const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api')
 // const { randomAsU8a } = require('@polkadot/util-crypto') // make sure version matches api version
 // const { hexToBn, u8aToBuffer, bufferToU8a } = require('@polkadot/util')
@@ -48,7 +48,7 @@ async function datdotChain (profile, provider) {
   async function status ({ events = [], status }) {
     if (status.isInBlock) {
       events.forEach(({ phase, event: { data, method, section } }) => {
-        log({ type: 'chainAPI', body: ['\t', phase.toString(), `: ${section}.${method}`, data.toString()] })
+        log({ type: 'chainAPI', data: ['\t', phase.toString(), `: ${section}.${method}`, data.toString()] })
       })
     }
   }
@@ -70,7 +70,6 @@ async function datdotChain (profile, provider) {
   async function registerHoster ({ form, hosterKey, signer, nonce }) {
     // hosterKey = bufferToU8a(hosterKey)
     const tx = await API.tx.datVerify.registerHoster(hosterKey,form)
-    // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function registerEncoder ({ form, encoderKey, signer, nonce }) {

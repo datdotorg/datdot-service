@@ -15,14 +15,14 @@ async function getChatAPI (profile, provider) {
     var ws = new WebSocket(provider)
     instance = {
       on: callback => ws.on('message', json => {
-        const body = JSON.parse(json)
-        log({ type: 'chat', body: [`received ${body}`]})
-        callback(body)
+        const data = JSON.parse(json)
+        log({ type: 'chat', data: [`received ${data}`]})
+        callback(data)
       }),
-      send: body => ws.send(JSON.stringify({
+      send: data => ws.send(JSON.stringify({
         flow: [name, counter++],
         type: 'say',
-        body: body,
+        data: data,
       })),
     }
     ws.on('open', function open () {

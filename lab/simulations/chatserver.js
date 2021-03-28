@@ -1,5 +1,5 @@
 const WebSocket = require('ws')
-const logkeeper = require('./logkeeper')
+const logkeeper = require('../scenarios/logkeeper')
 
 init()
 
@@ -14,7 +14,7 @@ async function init () {
   const wss = new WebSocket.Server({ port: PORT }, after)
 
   function after () {
-    log({ type: 'chat', body: [`running on http://localhost:${wss.address().port}`] })
+    log({ type: 'chat', data: [`running on http://localhost:${wss.address().port}`] })
   }
 
   const connections = {}
@@ -23,28 +23,28 @@ async function init () {
   wss.on('connection', function connection (ws) {
     ws.on('message', function incoming (message) {
       message = JSON.parse(message)
-      const { flow, type, body } = message
+      const { flow, type, data } = message
       const [name, id] = flow
       if (type === 'join') {
         if (!connections[name]) {
           connections[name] = { name, counter: id, ws }
-          log({ type: 'chat', body: [`history: ${history}`] })
-          history.forEach(body => {
-            log({ type: 'chat', body: [`tell to [${name}] ${body}`] })
-            ws.send(JSON.stringify(body))
+          log({ type: 'chat', data: [`history: ${history}`] })
+          history.forEach(data => {
+            log({ type: 'chat', data: [`tell to [${name}] ${data}`] })
+            ws.send(JSON.stringify(data))
           })
-          return log({ type: 'chat', body: [`${type} ${flow}`] })
+          return log({ type: 'chat', data: [`${type} ${flow}`] })
         } else {
-          log({ type: 'error', body: [`${type} ${flow}`] })
+          log({ type: 'error', data: [`${type} ${flow}`] })
           return ws.send(JSON.stringify({
-            cite: [flow], type: 'error', body: 'name is already taken'
+            cite: [flow], type: 'error', data: 'name is already taken'
           }))
         }
       }
-      log({ type: 'chat', body: [`[${name}] says: ${body}`] })
-      history.push(body)
+      log({ type: 'chat', data: [`[${name}] says: ${data}`] })
+      history.push(data)
       Object.values(connections).map(({ ws, name }) => {
-        ws.send(JSON.stringify(body))
+        ws.send(JSON.stringify(data))
       })
     })
   })

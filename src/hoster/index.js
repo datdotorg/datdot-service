@@ -54,7 +54,7 @@ module.exports = class Hoster {
     await this.addKey(feedKey, plan)
     await this.loadFeedData(feedKey)
     await this.getEncodedDataFromAttestor(amendmentID, hosterKey, attestorKey, feedKey)
-    this.log({ type: 'hoster', body: ['All done'] })
+    this.log({ type: 'hoster', data: ['All done'] })
   }
 
   async getEncodedDataFromAttestor (amendmentID, hosterKey, attestorKey, feedKey) {
@@ -70,7 +70,7 @@ module.exports = class Hoster {
       }
       var counter = 0
       const log2attestor = hoster.log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
-      var id_streams = setTimeout(() => { log2attestor({ type: 'hoster', body: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, 500)
+      var id_streams = setTimeout(() => { log2attestor({ type: 'hoster', data: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, 500)
       const streams = await peerConnect(opts, log2attestor)
       clearTimeout(id_streams)
 
@@ -115,25 +115,25 @@ module.exports = class Hoster {
             // Uncomment for better stack traces
             const error = { type: 'encoded:error', error: `ERROR_STORING: ${e.message}`, ...{ e }, data }
             streams.serialize$.write(error)
-            log2attestor({ type: 'error', body: [`Error: ${error}`] })
+            log2attestor({ type: 'error', data: [`Error: ${error}`] })
             streams.end()
             return reject(error)
           }
         } else {
-          log2attestor({ type: 'error', body: [`UNKNOWN_MESSAGE messageType: ${type}`] })
+          log2attestor({ type: 'error', data: [`UNKNOWN_MESSAGE messageType: ${type}`] })
           const error ={ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', ...{ messageType: type } }
           streams.serialize$.write(error)
           streams.end()
           return reject(error)
         }
       }
-      log2attestor({ type: 'hoster', body: [`Hoster received & stored all: ${counter}`] })
+      log2attestor({ type: 'hoster', data: [`Hoster received & stored all: ${counter}`] })
       resolve()
     })
   }
 
   async removeFeed (key) {
-    this.log({ type: 'hoster', body: [`Removing the feed`] })
+    this.log({ type: 'hoster', data: [`Removing the feed`] })
     const stringKey = key.toString('hex')
     if (this.storages.has(stringKey)) {
       const storage = await this.getStorage(key)
@@ -209,7 +209,7 @@ module.exports = class Hoster {
       timeout = true
       streams.end()
     }, 5000)
-    hoster.log({ type: 'hoster', body: [`Starting sendStorageChallenge`] })
+    hoster.log({ type: 'hoster', data: [`Starting sendStorageChallenge`] })
     const storageChallengeID = storageChallenge.id
     const chunks = storageChallenge.chunks
     // console.log('CHUNKS', chunks)
@@ -223,10 +223,10 @@ module.exports = class Hoster {
         myKey: hosterKey,
       }
       const log2attestor4Challenge = hoster.log.sub(`<-Attestor4challenge ${attestorKey.toString('hex').substring(0,5)}`)
-      var id_streams = setTimeout(() => { log2attestor4Challenge({ type: 'hoster', body: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, 500)
+      var id_streams = setTimeout(() => { log2attestor4Challenge({ type: 'hoster', data: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, 500)
       const streams = await peerConnect(opts, log2attestor4Challenge)
       clearTimeout(id_streams)
-      hoster.log({ type: 'hoster', body: [`Got the streams`] })
+      hoster.log({ type: 'hoster', data: [`Got the streams`] })
 
 
       const all = []
@@ -236,20 +236,20 @@ module.exports = class Hoster {
         if (!data) return
         // console.log('Got data for', index)
         const message = { type: 'StorageChallenge', storageChallengeID, data, index }
-        log2attestor4Challenge({ type: 'hoster', body: [`Sending proof of storage chunk with value ${chunks[i]}, message index: ${message.index}, all chunks in this challenge ${chunks.length}`] })
+        log2attestor4Challenge({ type: 'hoster', data: [`Sending proof of storage chunk with value ${chunks[i]}, message index: ${message.index}, all chunks in this challenge ${chunks.length}`] })
         const dataSent = requestResponse({ message, sendStream: streams.serialize$, receiveStream: streams.parse$, log: log2attestor4Challenge })
         all.push(dataSent)
       }
       try {
         if (timeout) return
         else clearTimeout(timeoutID)
-        const results = await Promise.allSettled(all).catch((error) => log2attestor4Challenge({ type: 'error', body: [`error: ${error}`] }))
-        log2attestor4Challenge({ type: 'hoster', body: [`${all.length} responses received from the attestor`] })
-        log2attestor4Challenge({ type: 'hoster', body: [`Destroying communication with the attestor`] })
+        const results = await Promise.allSettled(all).catch((error) => log2attestor4Challenge({ type: 'error', data: [`error: ${error}`] }))
+        log2attestor4Challenge({ type: 'hoster', data: [`${all.length} responses received from the attestor`] })
+        log2attestor4Challenge({ type: 'hoster', data: [`Destroying communication with the attestor`] })
         streams.end()
         resolve(results)
       } catch (e) {
-        log2attestor4Challenge({ type: 'error', body: [`Error: ${e}`] })
+        log2attestor4Challenge({ type: 'error', data: [`Error: ${e}`] })
         reject(e)
       }
 
@@ -297,12 +297,12 @@ module.exports = class Hoster {
   }
 
   async removeKey (key) {
-    this.log({ type: 'hoster', body: [`Removing the key`] })
+    this.log({ type: 'hoster', data: [`Removing the key`] })
     const stringKey = key.toString('hex')
     const existing = await this.listKeys()
     const final = existing.filter((data) => data.key !== stringKey)
     await this.saveKeys(final)
-    this.log({ type: 'hoster', body: [`Key removed`] })
+    this.log({ type: 'hoster', data: [`Key removed`] })
   }
 
   async setOpts (key, options) {

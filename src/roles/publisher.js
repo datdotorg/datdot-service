@@ -1,4 +1,4 @@
-const getData = require('../getFeed')
+const get_feed_metadata = require('../get_feed_metadata')
 /******************************************************************************
   ROLE: Publisher
 ******************************************************************************/
@@ -12,19 +12,19 @@ async function role (profile, APIS) {
   const chatAPI = await getChatAPI(profile, ['ws://localhost', '8000'].join(':'))
 
 
-  chatAPI.on(keys => {
-    log({ type: 'publisher', body: [`Got the keys, publishing data now => ${keys}`] })
-    publishFeed(JSON.parse(keys))
-  })
+  // chatAPI.on(keys => {
+  //   log({ type: 'publisher', data: [`Got the keys, publishing data now => ${keys}`] })
+  //   publishFeed(JSON.parse(keys))
+  // })
 
   async function publishFeed (keys) {
     const feedkey = keys.feedkey
     const topic = keys.topic
-    const data = await getData(log, feedkey, topic)
-    log({ type: 'publisher', body: [`Got the data => ${data}`] })
-    const myAddress = vaultAPI.chainKeypair.address
-    log({ type: 'publisher', body: [`My address ${myAddress}`] })
-    const signer = vaultAPI.chainKeypair
+    const data = await get_feed_metadata(log, feedkey, topic)
+    log({ type: 'publisher', data: [`Got the data => ${data}`] })
+    const myAddress = await vaultAPI.chainKeypair.address
+    log({ type: 'publisher', data: [`My address ${myAddress}`] })
+    const signer = await vaultAPI.chainKeypair
     const nonce = await vaultAPI.getNonce()
     await chainAPI.publishFeed({ merkleRoot: data, signer, nonce })
     await chainAPI.listenToEvents(handleEvent)

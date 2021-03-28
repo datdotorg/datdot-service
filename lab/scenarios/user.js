@@ -26,7 +26,7 @@ async function user ({name, roles}, config, logport) {
   const serviceAPI = getServiceAPI(profile)
   const chainAPI = await getChainAPI(profile, config.chain.join(':'))
   const vaultAPI = await getVaultAPI(profile)
-  log({ type: 'user', body: [`start ${scenario}`] })
+  log({ type: 'user', data: [`start ${scenario}`] })
   const APIS = { serviceAPI, chainAPI, vaultAPI }
   roles = [...new Set(roles)]
   for (var i = 0, len = roles.length; i < len; i++) {
@@ -46,14 +46,14 @@ user(JSON.parse(scenario), JSON.parse(config), logport)
 
 function captureErrors (log) {
   process.on('unhandledRejection', error => {
-    log({ type: 'user', body: [`unhandledRejection ${error}`] })
+    log({ type: 'user', data: [`unhandledRejection ${error}`] })
   })
   process.on('uncaughtException', (err, origin) => {
-    log({ type: 'user', body: [`uncaughtException ${err} ${origin}`] })
+    log({ type: 'user', data: [`uncaughtException ${err} ${origin}`] })
   })
   process.on('warning', error => {
     const stack = error.stack
-    log({ type: 'user', body: [`warning ${stack} ${error}`] })
+    log({ type: 'user', data: [`warning ${stack} ${error}`] })
   })
   process.setMaxListeners(0)
 }

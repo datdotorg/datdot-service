@@ -8,9 +8,9 @@ const docs = {
 
 function codec (from, into, counter = 0) {
   function decode (json) { return JSON.parse(json) }
-  function encode (type, [body, stack], cite) {
+  function encode (type, [data, stack], cite) {
     const flow = [from, into, counter++, performance.now()]
-    const message = { flow, cite, type, body, meta: { stack } }
+    const message = { flow, cite, type, data, meta: { stack } }
     return JSON.stringify(message)
   }
   return { encode, decode }
@@ -74,8 +74,9 @@ async function logkeeper (name, PORT) {
     wss.on('connection', function connection (ws) {
       const index = connections.push(ws) - 1
       ws.on('message', function incoming (message) {
+        console.log('New message')
         message = JSON.parse(message)
-        const { flow, type, body } = message
+        const { flow, type, data } = message
         const [from, into, id] = flow
         if (type === 'all:live') {
           LOG('send logs to client:', from)

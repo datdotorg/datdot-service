@@ -1,8 +1,8 @@
 const DB = require('../../src/DB')
 const makeSets = require('../../src/makeSets')
 const blockgenerator = require('../../src/scheduleAction')
-const logkeeper = require('./logkeeper')
-const priorityQueue = require('./priority-queue')
+const logkeeper = require('../scenarios/logkeeper')
+const priorityQueue = require('../../src/priority-queue')
 const WebSocket = require('ws')
 
 const connections = {}
@@ -18,7 +18,7 @@ async function init () {
   const log = await logkeeper(name, logport)
   const wss = new WebSocket.Server({ port: PORT }, after)
   function after () {
-    log({ type: 'chain', body: [`running on http://localhost:${wss.address().port}`] })
+    log({ type: 'chain', data: [`running on http://localhost:${wss.address().port}`] })
   }
   wss.on('connection', function connection (ws) {
     ws.on('message', async function incoming (message) {
@@ -29,15 +29,15 @@ async function init () {
         // 1. do we have that user in the database already?
         // 2. is the message verifiable?
         // 3. => add to database
-
+        // @TODO:
         // OLD:
-        // if (!connections[from]) {
-        //   connections[from] = { name: from, counter: id, ws, log: log.sub(from) }
-        //   handlers.push([from, body => ws.send(JSON.stringify({ body }))])
-        // }
-        // else return ws.send(JSON.stringify({
-        //   cite: [flow], type: 'error', body: 'name is already taken'
-        // }))
+        if (!connections[from]) {
+          connections[from] = { name: from, counter: id, ws, log: log.sub(from) }
+          handlers.push([from, data => ws.send(JSON.stringify({ data }))])
+        }
+        else return ws.send(JSON.stringify({
+          cite: [flow], type: 'error', data: 'name is already taken'
+        }))
 
         return
       }
@@ -46,21 +46,21 @@ async function init () {
 
 
       const _log = connections[from].log
-      _log({ type: 'chain', body: [`${JSON.stringify(type)} ${JSON.stringify(flow)}`] })
+      _log({ type: 'chain', data: [`${JSON.stringify(type)} ${JSON.stringify(flow)}`] })
       const method = queries[type] || signAndSend
-      if (!method) return ws.send({ cite: [flow], type: 'error', body: 'unknown type' })
-      const result = await method(body, from, body => {
-        // _log({ type: 'chain', body: [`send data after "${type}" to: ${from}`] })
-        ws.send(JSON.stringify({ cite: [flow], type: 'data', body }))
+      if (!method) return ws.send({ cite: [flow], type: 'error', data: 'unknown type' })
+      const result = await method(data, from, data => {
+        // _log({ type: 'chain', data: [`send data after "${type}" to: ${from}`] })
+        ws.send(JSON.stringify({ cite: [flow], type: 'data', data }))
       })
       if (!result) return
-      const msg = { cite: [flow], type: 'done', body: result }
-      // _log({ type: 'chain', body: [`sending "${type}" to: ${from}`] })
+      const msg = { cite: [flow], type: 'done', data: result }
+      // _log({ type: 'chain', data: [`sending "${type}" to: ${from}`] })
       ws.send(JSON.stringify(msg))
     })
   })
   return blockgenerator(log.sub('blockgenerator'), blockMessage => {
-    header = blockMessage.body
+    header = blockMessage.data
     Object.entries(connections).forEach(([name, channel]) => {
       channel.ws.send(JSON.stringify(blockMessage))
     })
@@ -98,23 +98,23 @@ function getPerformanceChallengeByID (id) { return getItem(id) }
 // ---
 function getFeedByKey (key) {
   const keyBuf = Buffer.from(key, 'hex')
-  return DB.feedByKey[keyBuf.toString('hex')]
+  return DB.lookups.feedByKey[keyBuf.toString('hex')]
 }
 function getUserIDByKey(key) {
   const keyBuf = Buffer.from(key, 'hex')
-  return DB.userIDByKey[keyBuf.toString('hex')]
+  return DB.lookups.userIDByKey[keyBuf.toString('hex')]
 }
 /******************************************************************************
   ROUTING (sign & send)
 ******************************************************************************/
-async function signAndSend (body, name, status) {
+async function signAndSend (data, name, status) {
   const log = connections[name].log
-  const { type, args, nonce, address } = body
+  const { type, args, nonce, address } = data
 
   status({ events: [], status: { isInBlock:1 } })
 
   const user = await _loadUser(address, { name, nonce }, status)
-  if (!user) return log({ type: 'chain', body: [`UNKNOWN SENDER of: ${body}`] }) // @TODO: maybe use status() ??
+  if (!user) return log({ type: 'chain', data: [`UNKNOWN SENDER of: ${data}`] }) // @TODO: maybe use status() ??
 
   if (type === 'publishFeed') _publishFeed(user, { name, nonce }, status, args)
   else if (type === 'publishPlan') _publishPlan(user, { name, nonce }, status, args)
@@ -135,18 +135,18 @@ async function signAndSend (body, name, status) {
 async function _loadUser (address, { name, nonce }, status) {
   const log = connections[name].log
   let user
-  if (DB.userByAddress[address]) {
-    const pos = DB.userByAddress[address]
+  if (DB.lookups.userByAddress[address]) {
+    const pos = DB.lookups.userByAddress[address]
     user = getUserByID(pos)
   }
   else {
     // const id = DB.storage.length
     // user = { id, address: address }
     // DB.storage.push(user) // @NOTE: set id
-    const user = { address: address }
-    const id = await addItem(user)
-    DB.userByAddress[address] = user.id // push to userByAddress lookup array
-    log({ type: 'chain', body: [`New user: ${name}, ${user.id}, ${address}`] })
+    user = { address }
+    await addItem(user)
+    DB.lookups.userByAddress[address] = user.id // push to userByAddress lookup array
+    log({ type: 'chain', data: [`New user: ${name}, ${user.id}, ${address}`] })
   }
   return user
 }
@@ -154,7 +154,7 @@ async function _loadUser (address, { name, nonce }, status) {
       STORE ITEM
 ------------------------*/
 function addItem (item) {
-  if (id in item) throw new Error('new items cannot have "id" property')
+  if ('id' in item) throw new Error('new items cannot have "id" property')
   const id = DB.storage.length
   item.id = id
   DB.storage.push([item])
@@ -198,41 +198,57 @@ function updateItem (id, item) {
 // * provide signature for highest index in ranges
 // * provide all root hash sizes required for ranges
 // => native api feed.getRoothashes() provides the values
-async function _publishFeed (user, { name, nonce }, status, args) {
-  const log = connections[name].log
-  const [merkleRoot]  = args
-  const [key, {hashType, children}, signature] = merkleRoot
+async function _publishFeed (feed, sponsor_id, log) {
+  const [key, {hashType, children}, signature] = feed
   const keyBuf = Buffer.from(key, 'hex')
   // check if feed already exists
-  if (DB.feedByKey[keyBuf.toString('hex')]) return
-  // const feedID = DB.feeds.length
-  // const feed = { publickey: keyBuf.toString('hex'), meta: { signature, hashType, children } }
-  // DB.feeds.push(feed) // @NOTE: set id
+  if (DB.lookups.feedByKey[keyBuf.toString('hex')]) return
+  feed = { publickey: keyBuf.toString('hex'), meta: { signature, hashType, children } }
   const feedID = await addItem(feed)
-  DB.feedByKey[keyBuf.toString('hex')] = feedID
-  feed.publisher = user.id
+  DB.lookups.feedByKey[keyBuf.toString('hex')] = feedID
+  feed.publisher = sponsor_id
   emitEvent('FeedPublished', [feedID], log)
+  return feedID
 }
 /*----------------------
       (UN)PUBLISH PLAN
 ------------------------*/
 async function _publishPlan (user, { name, nonce }, status, args) {
   const log = connections[name].log
-  log({ type: 'chain', body: [`Publishing a plan`] })
-  const [plan] = args
-  if (!planValid({ plan })) return log({ type: 'chain', body: [`Plan from and/or until are invalid`] })
+  log({ type: 'chain', data: [`Publishing a plan`] })
+  let [plan] = args
+  const { duration, swarmkey, program, components }  = plan
+  const { feeds, dataset_items, performance_items, timetable_items, region_items } = components
+
+  const feed_ids = await Promise.all(feeds.map(async feed => await _publishFeed(feed, user.id, log)))
+  const dataset_ids = await Promise.all(dataset_items.map(async item => {
+    if (item.ref < 0) item.ref = feed_ids[(Math.abs(item.ref) - 1)]
+    return await addItem(item)
+  }))
+  const performance_ids = await Promise.all(performance_items.map(async item => await addItem(item)))
+  const timetable_ids = await Promise.all(timetable_items.map(async item => await addItem(item)))
+  const region_ids = await Promise.all(region_items.map(async item => await addItem(item)))
+  const ids = { dataset_ids, performance_ids, timetable_ids, region_ids }
+
+  const updated_program = []
+  for (var i = 0, len = program.length; i < len; i++) {
+    const item = program[i]
+    if (item.plans) updated_program.push(...getPrograms(item.plan))
+    else updated_program.push(handleNew(updated_program, item, ids))
+  }
+
+  plan = { duration, swarmkey, program: updated_program }
+
+  if (!planValid({ plan })) return log({ type: 'chain', data: [`Plan from and/or until are invalid`] })
   plan.sponsor = user.id
   plan.contracts = []
-  // const planID = DB.plans.length
-  // plan.id = planID
-  // DB.plans.push(plan) // store the plan + @NOTE: set id
   const id = await addItem(plan)
-  makeContractsAndScheduleAmendments({ plan }, log) // schedule the plan execution
+  // makeContractsAndScheduleAmendments({ plan }, log) // schedule the plan execution
 }
 async function unpublishPlan (user, { name, nonce }, status, args) {
   const [planID] = args
   const plan = getPlanByID(planID)
-  if (!plan.sponsor === user.id) return log({ type: 'chain', body: [`Only a sponsor is allowed to unpublish the plan`] })
+  if (!plan.sponsor === user.id) return log({ type: 'chain', data: [`Only a sponsor is allowed to unpublish the plan`] })
   cancelContracts(plan) // remove all hosted and draft contracts
 }
 /*----------------------
@@ -241,31 +257,32 @@ async function unpublishPlan (user, { name, nonce }, status, args) {
 async function _registerRoles (user, { name, nonce }, status, args) {
   const log = connections[name].log
   if (!verify_registerRoles(args)) throw new Error('invalid args')
-  const roles = args
+  const [role, roleKey, form] = args
+  const userID = user.id
   const registration = [userID]
-  for (var i = 0, len = roles.length; i < len; i++) {
-    const [role, roleKey, form] = roles[i]
-    registered.push(role)
-    const userID = user.id
-    if (!user[role]) user[role] = {}
-    if (user[role][roleKey]) return log({ type: 'chain', body: [`User is already registered as a ${role}`] })
-    const keyBuf = Buffer.from(roleKey, 'hex')
-    DB.userIDByKey[keyBuf.toString('hex')] = user.id // push to userByRoleKey lookup array
-    user[role] = {
-      key: keyBuf.toString('hex'),
-      form,
-      jobs: {},
-      idleStorage: form.storage,
-      capacity: form.capacity,
-    }
-    const first = role[0].toUpperCase()
-    const rest = role.substring(1)
-    DB[`idle${first + rest}`].push(userID)
+  // registered.push(role)
+  if (!user[role]) user[role] = {}
+  if (user[role][roleKey]) return log({ type: 'chain', data: [`User is already registered as a ${role}`] })
+  const keyBuf = Buffer.from(roleKey, 'hex')
+  DB.lookups.userIDByKey[keyBuf.toString('hex')] = user.id // push to userByRoleKey lookup array
+  user[role] = {
+    key: keyBuf.toString('hex'),
+    form,
+    jobs: {},
+    idleStorage: form.storage,
+    capacity: form.capacity,
   }
+  const first = role[0].toUpperCase()
+  const rest = role.substring(1)
+  DB.status[`idle${first + rest}s`].push(userID)
   // @TODO: replace with: `findNextJob()`
   tryNextAmendments(log) // see if enough providers for new contract
   // tryNextChallenge({ attestorID: userID }, log) // check for attestor only jobs (storage & perf challenge)
   emitEvent(`RegistrationSuccessful`, registration, log)
+}
+function verify_registerRoles (args) {
+  // @TODO: verify args
+  return true
 }
 async function unregisterRoles (user, { name, nonce }, status, args) {
   args.forEach(role => {
@@ -339,8 +356,8 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
   const { status: { schedulerID }, plan: planID } = contract
   const plan = getPlanByID(planID)
   const [attestorID] = attestors
-  if (user.id !== attestorID) return log({ type: 'chain', body: [`Error: this user can not submit the attestation`] })
-  if (contract.amendments[contract.amendments.length - 1] !== amendmentID) return log({ type: 'chain', body: [`Error: this amendment has expired`] })
+  if (user.id !== attestorID) return log({ type: 'chain', data: [`Error: this user can not submit the attestation`] })
+  if (contract.amendments[contract.amendments.length - 1] !== amendmentID) return log({ type: 'chain', data: [`Error: this amendment has expired`] })
   // cancel amendment schedule
   const { scheduleAction, cancelAction } = await scheduler
   if (!schedulerID) console.log('No scheduler in', JSON.stringify(contract))
@@ -350,7 +367,6 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
     // { hosterID, amendmentID }
     contract.activeHosters = hosters
     hosters.forEach(startChallengePhase)
-    const amendment = getAmendmentByID(amendmentID)
     removeJobForRolesXXXX({ providers: { attestors, encoders }, jobID: amendmentID }, log)
     // => until HOSTING STARTED event, everyone keeps the data around
     emitEvent('HostingStarted', [amendmentID], log)
@@ -377,7 +393,6 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
   }
 
   // remove jobs from providers
-  const amendment = getAmendmentByID(amendmentID)
   removeJobForRolesXXXX({ providers: amendment.providers, jobID: amendmentID }, log)
 
   // @TODO: ... who should drop jobs when??? ...
@@ -402,7 +417,7 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
   function startChallengePhase (hosterID) {
     const message = { plan, user, hosterID, name, nonce, contractID, status }
     console.log(`Hosting started: contract: ${contractID}, amendment: ${amendmentID}, hoster: ${hosterID}`)
-    log({ type: 'chain', body: [`Starting Challenge Phase ${JSON.stringify(message)}`] })
+    log({ type: 'chain', data: [`Starting Challenge Phase ${JSON.stringify(message)}`] })
     scheduleChallenges(message)
   }
 }
@@ -417,13 +432,13 @@ async function _requestStorageChallenge ({ user, signingData, status, args }) {
   const [ contractID, hosterID ] = args
   const contract = getContractByID(contractID)
   const plan = getPlanByID(contract.plan)
-  if (!plan.sponsor === user.id) return log({ type: 'chain', body: [`Error: this user can not call this function`] })
+  if (!plan.sponsor === user.id) return log({ type: 'chain', data: [`Error: this user can not call this function`] })
   makeStorageChallenge({ contract, hosterID, plan }, log)
 }
 async function _submitStorageChallenge (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [ response ] = args
-  log({ type: 'chain', body: [`Received StorageChallenge ${JSON.stringify(response)}`] })
+  log({ type: 'chain', data: [`Received StorageChallenge ${JSON.stringify(response)}`] })
 
   const { hashes, storageChallengeID, signature } = response  // signed storageChallengeID, signed by hoster
 
@@ -437,7 +452,7 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
 
   const storageChallenge = getStorageChallengeByID(storageChallengeID)
   const attestorID = storageChallenge.attestor
-  if (user.id !== attestorID) return log({ type: 'chain', body: [`Only the attestor can submit this storage challenge`] })
+  if (user.id !== attestorID) return log({ type: 'chain', data: [`Only the attestor can submit this storage challenge`] })
   // @TODO validate proof
   const isValid = validateProof(hashes, signature, storageChallenge)
   var method = isValid ? 'StorageChallengeConfirmed' : 'StorageChallengeFailed'
@@ -467,9 +482,9 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
   const log = connections[name].log
   const [ performanceChallengeID, report ] = args
   const userID = user.id
-  log({ type: 'chain', body: [`Performance Challenge proof by attestor: ${userID} for challenge: ${performanceChallengeID}`] })
+  log({ type: 'chain', data: [`Performance Challenge proof by attestor: ${userID} for challenge: ${performanceChallengeID}`] })
   const performanceChallenge = getPerformanceChallengeByID(performanceChallengeID)
-  if (!performanceChallenge.attestors.includes(userID)) return log({ type: 'chain', body: [`Only selected attestors can submit this performance challenge`] })
+  if (!performanceChallenge.attestors.includes(userID)) return log({ type: 'chain', data: [`Only selected attestors can submit this performance challenge`] })
   var method = report ? 'PerformanceChallengeFailed' : 'PerformanceChallengeConfirmed'
   emitEvent(method, [performanceChallengeID], log)
   // attestor finished job, add them to idleAttestors again
@@ -486,9 +501,27 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
 /******************************************************************************
   HELPERS
 ******************************************************************************/
+
 const setSize = 10 // every contract is for hosting 1 set = 10 chunks
 const size = setSize*64*1024 //assuming each chunk is 64kb
 const blockTime = 6000
+
+function handleNew (program, item, ids) {
+  const keys = Object.keys(item)
+  for (var i = 0, len = keys.length; i < len; i++) {
+    const type = keys[i]
+    item[type] = item[type].map(id => {
+      if (id < 0) return ids[`${type}_ids`][(Math.abs(id) - 1)]
+    })
+  }
+  return item
+}
+
+function getPrograms (plans) {
+  const programs = []
+  for (var i = 0; i < plans.length; i++) { programs.push(...plans[i].programs) }
+  return programs
+}
 
 async function makeContractsAndScheduleAmendments ({ plan }, log) {
   const contractIDs = await makeContracts({ plan }, log)
@@ -506,6 +539,7 @@ async function makeContractsAndScheduleAmendments ({ plan }, log) {
     scheduleAction({ action: schedulingAmendment, delay, name: 'schedulingAmendment' })
   }
 }
+
 // split plan into sets with 10 chunks
 async function makeContracts ({ plan }, log) {
   const feeds = plan.feeds
@@ -513,7 +547,7 @@ async function makeContracts ({ plan }, log) {
     const feedObj = feeds[i]
     // split ranges to sets (size = setSize)
     const sets = makeSets({ ranges: feedObj.ranges, setSize })
-    return sets.map(set => {
+    return sets.map(async set => {
       // const contractID = DB.contracts.length
       const contract = {
         // id: contractID,
@@ -527,15 +561,15 @@ async function makeContracts ({ plan }, log) {
       // DB.contracts.push(contract) // @NOTE: set id
       const contractID = await addItem(contract)
       return contractID
-      log({ type: 'chain', body: [`New Contract: ${JSON.stringify(contract)}`] })
+      log({ type: 'chain', data: [`New Contract: ${JSON.stringify(contract)}`] })
     })
   }
 }
 // find providers for each contract (+ new providers if selected ones fail)
 async function makeDraftAmendment ({ contractID, reuse}, log) {
   const contract = getContractByID(contractID)
-  if (!contract) return log({ type: 'chain', body: [`No contract with this ID: ${contractID}`] })
-  log({ type: 'chain', body: [`Searching additional providers for contract: ${contractID}`] })
+  if (!contract) return log({ type: 'chain', data: [`No contract with this ID: ${contractID}`] })
+  log({ type: 'chain', data: [`Searching additional providers for contract: ${contractID}`] })
   // const id = DB.amendments.length
   const amendment = { contract: contractID }
   // DB.amendments.push(amendment) // @NOTE: set id
@@ -545,14 +579,14 @@ async function makeDraftAmendment ({ contractID, reuse}, log) {
   return id
 }
 function addToPendingAmendments ({ amendmentID }, log) {
-  DB.pendingAmendments.push({ amendmentID }) // @TODO sort pendingAmendments based on priority (RATIO!)
+  DB.queues.pendingAmendments.push({ amendmentID }) // @TODO sort pendingAmendments based on priority (RATIO!)
 }
 async function tryNextAmendments (log) {
   // const failed = []
-  for (var start = new Date(); DB.pendingAmendments.length && new Date() - start < 4000;) {
-    const { amendmentID } = DB.pendingAmendments[0]
+  for (var start = new Date(); DB.queues.pendingAmendments.length && new Date() - start < 4000;) {
+    const { amendmentID } = DB.queues.pendingAmendments[0]
     const x = await executeAmendment({ amendmentID }, log)
-    if (!x) DB.pendingAmendments.shift()
+    if (!x) DB.queues.pendingAmendments.shift()
   }
   // failed.forEach(x => addToPendingAmendments(x, log))
 }
@@ -564,7 +598,7 @@ async function executeAmendment ({ amendmentID }, log) {
   const newJob = amendmentID
   const providers = getProviders({ plan: getPlanByID(planID), reused: amendment.providers, newJob }, log)
   if (!providers) {
-    log({ type: 'chain', body: [`not enough providers available for this amendment`] })
+    log({ type: 'chain', data: [`not enough providers available for this amendment`] })
     return { amendmentID }
   }
   amendment.providers = providers
@@ -595,11 +629,11 @@ function getProviders ({ plan, newJob, reused }, log) {
   }
   // @TODO backtracking!! try all the options before returning no providers available
   const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: attestorAmount, avoid, plan, log })
-  if (!attestors.length) return log({ type: 'chain', body: [`missing attestors`] })
+  if (!attestors.length) return log({ type: 'chain', data: [`missing attestors`] })
   const encoders = select({ idleProviders: DB.idleEncoders, role: 'encoder',  newJob, amount: encoderAmount, avoid, plan, log })
-  if (!encoders.length === encoderAmount) return log({ type: 'chain', body: [`missing encoders`] })
+  if (!encoders.length === encoderAmount) return log({ type: 'chain', data: [`missing encoders`] })
   const hosters = select({ idleProviders: DB.idleHosters, role: 'hoster', newJob, amount: hosterAmount, avoid, plan, log })
-  if (!hosters.length === hosterAmount) return log({ type: 'chain', body: [`missing hosters`] })
+  if (!hosters.length === hosterAmount) return log({ type: 'chain', data: [`missing hosters`] })
   return {
     encoders: encoders.concat(reused.encoders),
     hosters: hosters.concat(reused.hosters),
@@ -669,7 +703,7 @@ function giveJobToRoles ({ type, selectedProviders, idleProviders, role, newJob 
   // returns array of selected providers for select function
   // emit event
   console.log(`New event`, type)
-  log({ type: 'chain', body: [type, newJob] })
+  log({ type: 'chain', data: [type, newJob] })
   emitEvent(type, [newJob], log)
   return providers
 }
@@ -723,7 +757,7 @@ function removeJobForRolesXXXX ({ providers, jobID }, log) {
 function removeJobForRoleYYYY ({ id, role, doneJob, idleProviders, action }, log) {
   const provider = getUserByID(id)
   if (provider[role].jobs[doneJob]) {
-    log({ type: 'chain', body: [`Removing the job ${doneJob}`] })
+    log({ type: 'chain', data: [`Removing the job ${doneJob}`] })
     delete provider[role].jobs[doneJob]
     if (!idleProviders.includes(id)) idleProviders.push(id)
     provider[role].idleStorage += size
@@ -756,8 +790,8 @@ function hasEnoughStorage ({ role, provider }) {
   if (provider[role].idleStorage > size) return true
 }
 function tryNextChallenge ({ attestorID }, log) {
-  if (DB.attestorsJobQueue.length) {
-    const next = DB.attestorsJobQueue[0]
+  if (DB.queues.attestorsJobQueue.length) {
+    const next = DB.queues.attestorsJobQueue[0]
     if (next.fnName === 'NewStorageChallenge' && DB.idleAttestors.length) {
       const storageChallenge = next.opts.storageChallenge
       const hosterID = storageChallenge.hoster
@@ -770,7 +804,7 @@ function tryNextChallenge ({ attestorID }, log) {
       const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: 1, avoid, plan, log })
 
       if (attestors.length) {
-        DB.attestorsJobQueue.shift()
+        DB.queues.attestorsJobQueue.shift()
         storageChallenge.attestor = attestorID
         giveJobToRoles({
           type: 'NewStorageChallenge',
@@ -792,7 +826,7 @@ function tryNextChallenge ({ attestorID }, log) {
       const newJob = performanceChallenge.id
       const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: 5, avoid, plan, log })
       if (attestors.length) {
-        DB.attestorsJobQueue.shift()
+        DB.queues.attestorsJobQueue.shift()
         performanceChallenge.attestors = attestors
         giveJobToRoles({
           type: 'NewPerformanceChallenge',
@@ -854,9 +888,9 @@ function cancelContracts (plan) {
     })
     contract.activeHosters = []
     // remove from jobs queue
-    for (var j = 0; j < DB.pendingAmendments; j++) {
-      const amendment = DB.pendingAmendments[j]
-      if (contractID === amendment.contract) DB.pendingAmendments.splice(j, 1)
+    for (var j = 0; j < DB.queues.pendingAmendments; j++) {
+      const amendment = DB.queues.pendingAmendments[j]
+      if (contractID === amendment.contract) DB.queues.pendingAmendments.splice(j, 1)
     }
   }
 }
@@ -883,10 +917,10 @@ async function scheduleAmendmentFollowUp ({ amendmentID }, log) {
   const scheduling = () => {
     const { providers: { attestors } } = getAmendmentByID(amendmentID)
     // @TODO get all necessary data to call this exstrinsic from the chain
-    cosnt report = [amendmentID, failed: attestors]
+    const report = [amendmentID, attestors]
     const [attestorID] = attestors
     // const user = getUserByID(attestorID)
-    _amendmentReport(user, { name, nonce }, status, args: [report])
+    _amendmentReport(user, { name, nonce }, status, [report])
     //
     // console.log('scheduleAmendmentFollowUp', sid)
     // const contract = getContractByID(contractID)
@@ -907,7 +941,8 @@ async function scheduleAmendmentFollowUp ({ amendmentID }, log) {
 
 async function planValid ({ plan }) {
   const blockNow = header.number
-  if ((plan.until.time > plan.from) && ( plan.until.time > blockNow)) return true
+  const { duration: { from, until } } = plan
+  if ((until > from) && ( until > blockNow)) return true
 }
 async function makeStorageChallenge({ contract, hosterID, plan }, log) {
   var chunks = []
@@ -923,7 +958,7 @@ async function makeStorageChallenge({ contract, hosterID, plan }, log) {
 
   const newJob = storageChallenge.id
   const [attestorID] = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: 1, avoid, plan, log })
-  if (!attestorID) return DB.attestorsJobQueue.push({ fnName: 'NewStorageChallenge', opts: { storageChallenge } })
+  if (!attestorID) return DB.queues.attestorsJobQueue.push({ fnName: 'NewStorageChallenge', opts: { storageChallenge } })
   storageChallenge.attestor = attestorID
   giveJobToRoles({
     type: 'NewStorageChallenge',
@@ -945,7 +980,7 @@ async function makePerformanceChallenge ({ contractID, hosterID, plan }, log) {
 
   const newJob = performanceChallenge.id
   const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: 5, avoid, plan, log })
-  if (!attestors.length) return DB.attestorsJobQueue.push({ fnName: 'NewPerformanceChallenge', opts: { performanceChallenge } })
+  if (!attestors.length) return DB.queues.attestorsJobQueue.push({ fnName: 'NewPerformanceChallenge', opts: { performanceChallenge } })
   performanceChallenge.attestors = attestors
   giveJobToRoles({
     type: 'NewPerformanceChallenge',
@@ -958,12 +993,12 @@ async function makePerformanceChallenge ({ contractID, hosterID, plan }, log) {
 
 function isValidHoster ({ hosters, failedHosters, hosterID }) {
   // is hoster listed in the amendment for hosting and is hoster not listed as failed (by the attestor)
-  if (!hosters.includes(hosterID) || failedHosters.includes(hosterID)) return log({ type: 'chain', body: [`Error: this user can not call this function`] })
+  if (!hosters.includes(hosterID) || failedHosters.includes(hosterID)) return log({ type: 'chain', data: [`Error: this user can not call this function`] })
   return true
 }
 
 function emitEvent (method, data, log) {
   const message = [{ event: { data, method } }]
   handlers.forEach(([name, handler]) => handler(message))
-  log({ type: 'chain', body: [`emit chain event ${JSON.stringify(message)}`] })
+  log({ type: 'chain', data: [`emit chain event ${JSON.stringify(message)}`] })
 }

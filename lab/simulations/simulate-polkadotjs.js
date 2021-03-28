@@ -62,15 +62,15 @@ module.exports = {
         console.error('unexpected closing of chain connection for', name)
       })
       ws.on('message', function incoming (message) {
-        const { cite, type, body } = JSON.parse(message)
+        const { cite, type, data } = JSON.parse(message)
         if (type === 'block') {
-          header = body
-          return blockSubscribers.forEach(handle => handle(body))
+          header = data
+          return blockSubscribers.forEach(handle => handle(data))
         }
-        if (!cite) return handlers.forEach(handle => handle(body))
+        if (!cite) return handlers.forEach(handle => handle(data))
         const [name, msgid] = cite[0]
         const resolve = requests[msgid]
-        resolve(body)
+        resolve(data)
       })
     }
   }
@@ -98,7 +98,7 @@ function getFeedByID (id) {
     const msgid = instance.counter++
     const flow = [instance.name, msgid]
     requests[msgid] = resolve
-    instance.ws.send(JSON.stringify({ flow, type: 'getFeedByID', body: id }))
+    instance.ws.send(JSON.stringify({ flow, type: 'getFeedByID', data: id }))
   })
 }
 function getFeedByKey (key) {
@@ -107,7 +107,7 @@ function getFeedByKey (key) {
     const msgid = instance.counter++
     const flow = [instance.name, msgid]
     requests[msgid] = resolve
-    instance.ws.send(JSON.stringify({ flow, type: 'getFeedByKey', body: key }))
+    instance.ws.send(JSON.stringify({ flow, type: 'getFeedByKey', data: key }))
   })
 }
 function getUserByID (id) {
@@ -116,7 +116,7 @@ function getUserByID (id) {
     const msgid = instance.counter++
     const flow = [instance.name, msgid]
     requests[msgid] = resolve
-    instance.ws.send(JSON.stringify({ flow, type: 'getUserByID', body: id }))
+    instance.ws.send(JSON.stringify({ flow, type: 'getUserByID', data: id }))
   })
 }
 function getUserIDByKey (key) {
@@ -125,7 +125,7 @@ function getUserIDByKey (key) {
     const msgid = instance.counter++
     const flow = [instance.name, msgid]
     requests[msgid] = resolve
-    instance.ws.send(JSON.stringify({ flow, type: 'getUserIDByKey', body: key }))
+    instance.ws.send(JSON.stringify({ flow, type: 'getUserIDByKey', data: key }))
   })
 }
 function getPlanByID (id) {
@@ -134,7 +134,7 @@ function getPlanByID (id) {
     const msgid = instance.counter++
     const flow = [instance.name, msgid]
     requests[msgid] = resolve
-    instance.ws.send(JSON.stringify({ flow, type: 'getPlanByID', body: id }))
+    instance.ws.send(JSON.stringify({ flow, type: 'getPlanByID', data: id }))
   })
 }
 function getAmendmentByID (id) {
@@ -143,7 +143,7 @@ function getAmendmentByID (id) {
     const msgid = instance.counter++
     const flow = [instance.name, msgid]
     requests[msgid] = resolve
-    instance.ws.send(JSON.stringify({ flow, type: 'getAmendmentByID', body: id }))
+    instance.ws.send(JSON.stringify({ flow, type: 'getAmendmentByID', data: id }))
   })
 }
 function getContractByID (id) {
@@ -152,7 +152,7 @@ function getContractByID (id) {
     const msgid = instance.counter++
     const flow = [instance.name, msgid]
     requests[msgid] = resolve
-    instance.ws.send(JSON.stringify({ flow, type: 'getContractByID', body: id }))
+    instance.ws.send(JSON.stringify({ flow, type: 'getContractByID', data: id }))
   })
 }
 function getStorageChallengeByID (id) {
@@ -161,7 +161,7 @@ function getStorageChallengeByID (id) {
     const msgid = instance.counter++
     const flow = [instance.name, msgid]
     requests[msgid] = resolve
-    instance.ws.send(JSON.stringify({ flow, type: 'getStorageChallengeByID', body: id }))
+    instance.ws.send(JSON.stringify({ flow, type: 'getStorageChallengeByID', data: id }))
   })
 }
 function getPerformanceChallengeByID (id) {
@@ -170,7 +170,7 @@ function getPerformanceChallengeByID (id) {
     const msgid = instance.counter++
     const flow = [instance.name, msgid]
     requests[msgid] = resolve
-    instance.ws.send(JSON.stringify({ flow, type: 'getPerformanceChallengeByID', body: id }))
+    instance.ws.send(JSON.stringify({ flow, type: 'getPerformanceChallengeByID', data: id }))
   })
 }
 
@@ -184,6 +184,6 @@ function signAndSend (signer, { nonce }, status) {
   const flow = [instance.name, msgid]
   requests[msgid] = status
   const address = signer.address
-  const message = { flow, type, body: {type, args, nonce, address } }
+  const message = { flow, type, data: {type, args, nonce, address } }
   instance.ws.send(JSON.stringify(message))
 }
