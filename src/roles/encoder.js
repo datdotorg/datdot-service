@@ -21,8 +21,8 @@ async function role (profile, APIS) {
   const blockNow = await chainAPI.getBlockNumber()
   const until = new Date('Dec 26, 2021 23:55:00')
   const untilBlock = dateToBlockNumber ({ dateNow: new Date(), blockNow, date: until })
-  const settings = { from: blockNow, until: untilBlock }
-  const form = registrationForm('encoder', settings)
+  const duration = { from: blockNow, until: untilBlock }
+  const form = registrationForm('encoder', duration)
   await chainAPI.registerEncoder({ form, encoderKey, signer, nonce })
   await chainAPI.listenToEvents(handleEvent)
 

@@ -16,7 +16,7 @@ async function getProviders (opts = {}, doesQualifyFn, avoid = []) {
   const roles = Object.keys(opts)
   const idles = await getItems(roles, avoid)
   return find(roles, 0)
-  async function find (roles, i, count = 0) { // @TODO: maybe replace `find()` with another loop
+  async function find (roles, i, count = 0) { // TODO: maybe replace `find()` with another loop
     if (!roles.length) return providers
     const role = roles[i] // e.g. ['hosters', 'attestors', 'encoders']
     const role_ids = idles[role] // e.g. idleHosters

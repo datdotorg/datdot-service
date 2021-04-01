@@ -7,7 +7,7 @@ function blockgenerator (log, emit) {
   var executeBlock
   var unsubscribe
   var actions = []
-  var total = 0 // @TODO: make this BigInt
+  var total = 0 // TODO: make this BigInt
 
   init = setInterval(() => {
     // if (currentBlock === 0) {

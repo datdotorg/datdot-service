@@ -70,14 +70,14 @@ module.exports = class Hoster {
       }
       var counter = 0
       const log2attestor = hoster.log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
-      var id_streams = setTimeout(() => { log2attestor({ type: 'hoster', data: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, 500)
+      var id_streams = setTimeout(() => { log2attestor({ type: 'hoster', data: [`peerConnect timeout`] }) }, 500)
       const streams = await peerConnect(opts, log2attestor)
       clearTimeout(id_streams)
 
       for await (const message of streams.parse$) {
         // log2attestor(message.index, 'RECV_MSG',attestorKey.toString('hex'))
         counter++
-        // @TODO: decode and merkle verify each chunk (to see if it belongs to the feed) && verify the signature
+        // TODO: decode and merkle verify each chunk (to see if it belongs to the feed) && verify the signature
         const { type } = message
         if (type === 'verified') {
           const { feed, index, encoded, proof, nodes, signature } = message

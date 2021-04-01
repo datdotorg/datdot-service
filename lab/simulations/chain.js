@@ -2,13 +2,17 @@ const DB = require('../../src/DB')
 const makeSets = require('../../src/makeSets')
 const blockgenerator = require('../../src/scheduleAction')
 const logkeeper = require('../scenarios/logkeeper')
-const priorityQueue = require('../../src/priority-queue')
 const WebSocket = require('ws')
-
+const PriorityQueue = require('../../src/priority-queue')
+const priority_queue= PriorityQueue(compare)
 const connections = {}
 const handlers = []
 const scheduler = init()
 var header = 0
+
+function compare (item) {
+  return item
+}
 
 async function init () {
   const [json, logport] = process.argv.slice(2)
@@ -29,7 +33,7 @@ async function init () {
         // 1. do we have that user in the database already?
         // 2. is the message verifiable?
         // 3. => add to database
-        // @TODO:
+        // TODO:
         // OLD:
         if (!connections[from]) {
           connections[from] = { name: from, counter: id, ws, log: log.sub(from) }
@@ -88,6 +92,7 @@ const queries = {
 // function getAmendmentByID (id) { return DB.amendments[id] }
 // function getStorageChallengeByID (id) { return DB.storageChallenges[id] }
 // function getPerformanceChallengeByID (id) { return DB.performanceChallenges[id] }
+function getDatasetByID (id) { return getItem(id) }
 function getFeedByID (id) { return getItem(id) }
 function getUserByID (id) { return getItem(id) }
 function getPlanByID (id) { return getItem(id) }
@@ -114,9 +119,8 @@ async function signAndSend (data, name, status) {
   status({ events: [], status: { isInBlock:1 } })
 
   const user = await _loadUser(address, { name, nonce }, status)
-  if (!user) return log({ type: 'chain', data: [`UNKNOWN SENDER of: ${data}`] }) // @TODO: maybe use status() ??
+  if (!user) return log({ type: 'chain', data: [`UNKNOWN SENDER of: ${data}`] }) // TODO: maybe use status() ??
 
-  if (type === 'publishFeed') _publishFeed(user, { name, nonce }, status, args)
   else if (type === 'publishPlan') _publishPlan(user, { name, nonce }, status, args)
   else if (type === 'registerEncoder') _registerEncoder(user, { name, nonce }, status, args)
   else if (type === 'registerAttestor') _registerAttestor(user, { name, nonce }, status, args)
@@ -192,24 +196,13 @@ function updateItem (id, item) {
 /*----------------------
       PUBLISH FEED
 ------------------------*/
-// @TODO:
+// TODO:
 // * we wont start hosting a plan before the check
 // * 3 attestors
 // * provide signature for highest index in ranges
 // * provide all root hash sizes required for ranges
 // => native api feed.getRoothashes() provides the values
-async function _publishFeed (feed, sponsor_id, log) {
-  const [key, {hashType, children}, signature] = feed
-  const keyBuf = Buffer.from(key, 'hex')
-  // check if feed already exists
-  if (DB.lookups.feedByKey[keyBuf.toString('hex')]) return
-  feed = { publickey: keyBuf.toString('hex'), meta: { signature, hashType, children } }
-  const feedID = await addItem(feed)
-  DB.lookups.feedByKey[keyBuf.toString('hex')] = feedID
-  feed.publisher = sponsor_id
-  emitEvent('FeedPublished', [feedID], log)
-  return feedID
-}
+
 /*----------------------
       (UN)PUBLISH PLAN
 ------------------------*/
@@ -218,33 +211,26 @@ async function _publishPlan (user, { name, nonce }, status, args) {
   log({ type: 'chain', data: [`Publishing a plan`] })
   let [plan] = args
   const { duration, swarmkey, program, components }  = plan
-  const { feeds, dataset_items, performance_items, timetable_items, region_items } = components
-
-  const feed_ids = await Promise.all(feeds.map(async feed => await _publishFeed(feed, user.id, log)))
-  const dataset_ids = await Promise.all(dataset_items.map(async item => {
-    if (item.ref < 0) item.ref = feed_ids[(Math.abs(item.ref) - 1)]
-    return await addItem(item)
-  }))
-  const performance_ids = await Promise.all(performance_items.map(async item => await addItem(item)))
-  const timetable_ids = await Promise.all(timetable_items.map(async item => await addItem(item)))
-  const region_ids = await Promise.all(region_items.map(async item => await addItem(item)))
-  const ids = { dataset_ids, performance_ids, timetable_ids, region_ids }
+  const feed_ids = await Promise.all(components.feeds.map(async feed => await publish_feed(feed, user.id, log)))
+  const component_ids = await publish_components(log, components, feed_ids)
 
   const updated_program = []
   for (var i = 0, len = program.length; i < len; i++) {
     const item = program[i]
     if (item.plans) updated_program.push(...getPrograms(item.plan))
-    else updated_program.push(handleNew(updated_program, item, ids))
+    else updated_program.push(handleNew(item, component_ids))
   }
-
   plan = { duration, swarmkey, program: updated_program }
-
   if (!planValid({ plan })) return log({ type: 'chain', data: [`Plan from and/or until are invalid`] })
   plan.sponsor = user.id
+
   plan.contracts = []
   const id = await addItem(plan)
-  // makeContractsAndScheduleAmendments({ plan }, log) // schedule the plan execution
+
+  priority_queue.add({ type: 'plan', id })
+  take_next_from_priority(priority_queue.take(), log) // schedule the plan execution
 }
+
 async function unpublishPlan (user, { name, nonce }, status, args) {
   const [planID] = args
   const plan = getPlanByID(planID)
@@ -258,6 +244,14 @@ async function _registerRoles (user, { name, nonce }, status, args) {
   const log = connections[name].log
   if (!verify_registerRoles(args)) throw new Error('invalid args')
   const [role, roleKey, form] = args
+  const { components } = form
+  const { resources_ids, performances_ids, timetables_ids, regions_ids } = await publish_form_components(components)
+
+  form.timetables = form.timetables.map(ref => { if (ref < 0) return timetables_ids[(Math.abs(ref) - 1)] })
+  form.regions = form.regions.map(ref => { if (ref < 0) return regions_ids[(Math.abs(ref) - 1)] })
+  form.performances = form.performances.map(ref => { if (ref < 0) return performances_ids[(Math.abs(ref) - 1)] })
+  form.resources = form.resources.map(ref => { if (ref < 0) return resources_ids[(Math.abs(ref) - 1)] })
+
   const userID = user.id
   const registration = [userID]
   // registered.push(role)
@@ -269,19 +263,19 @@ async function _registerRoles (user, { name, nonce }, status, args) {
     key: keyBuf.toString('hex'),
     form,
     jobs: {},
-    idleStorage: form.storage,
-    capacity: form.capacity,
+    idleStorage: getItem(form.resources[0]).storage,
+    capacity: 5, // TODO: calculate capacity for each job based on the form
   }
   const first = role[0].toUpperCase()
   const rest = role.substring(1)
   DB.status[`idle${first + rest}s`].push(userID)
-  // @TODO: replace with: `findNextJob()`
-  tryNextAmendments(log) // see if enough providers for new contract
+  // TODO: replace with: `findNextJob()`
+  try_next_amendment(log) // see if enough providers for new contract
   // tryNextChallenge({ attestorID: userID }, log) // check for attestor only jobs (storage & perf challenge)
   emitEvent(`RegistrationSuccessful`, registration, log)
 }
 function verify_registerRoles (args) {
-  // @TODO: verify args
+  // TODO: verify args
   return true
 }
 async function unregisterRoles (user, { name, nonce }, status, args) {
@@ -296,7 +290,7 @@ async function unregisterRoles (user, { name, nonce }, status, args) {
     const { id, [role]: { jobs, key, form } } = user
     const jobIDs = Object.keys(jobs)
     jobsIDs.map(jobID => {
-      // @TODO: user[role].jobs
+      // TODO: user[role].jobs
       // => ...see what to do? find REPLACEMENT users?
       if (role === 'hoster') {
         const feedID = getContractByID(contractID).feed
@@ -395,12 +389,12 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
   // remove jobs from providers
   removeJobForRolesXXXX({ providers: amendment.providers, jobID: amendmentID }, log)
 
-  // @TODO: ... who should drop jobs when??? ...
+  // TODO: ... who should drop jobs when??? ...
   // => emit Event to STOP JOB for EVERYONE who FAILED
   emitEvent('DropJob', [amendmentID, failed], log)
 
-  // @TODO: add new amendment to contract only after it is taken from the queue
-  // @TODO: make amendments small (diffs) and show latest summary of all amendments under contract.activeHosters
+  // TODO: add new amendment to contract only after it is taken from the queue
+  // TODO: make amendments small (diffs) and show latest summary of all amendments under contract.activeHosters
 
 
   /*************************************************************************
@@ -409,10 +403,10 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
 
   // make new amendment
   console.log({reuse})
-  const newID = await makeDraftAmendment({ contractID, reuse}, log)
-  // @TODO ACTION find new provider for the contract (makeAmendment(reuse))
-  addToPendingAmendments({ amendmentID: newID }, log)
-  tryNextAmendments(log)
+  const newID = await init_amendment(contractID, reuse, log)
+  // TODO ACTION find new provider for the contract (makeAmendment(reuse))
+  add_to_pending(newID, log)
+  try_next_amendment(log)
 
   function startChallengePhase (hosterID) {
     const message = { plan, user, hosterID, name, nonce, contractID, status }
@@ -453,7 +447,7 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
   const storageChallenge = getStorageChallengeByID(storageChallengeID)
   const attestorID = storageChallenge.attestor
   if (user.id !== attestorID) return log({ type: 'chain', data: [`Only the attestor can submit this storage challenge`] })
-  // @TODO validate proof
+  // TODO validate proof
   const isValid = validateProof(hashes, signature, storageChallenge)
   var method = isValid ? 'StorageChallengeConfirmed' : 'StorageChallengeFailed'
   emitEvent(method, [storageChallengeID], log)
@@ -463,7 +457,7 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
     id: attestorID,
     role: 'attestor',
     doneJob: storageChallengeID,
-    idleProviders: DB.idleAttestors,
+    idleProviders: DB.status.idleAttestors,
     action: () => tryNextChallenge({ attestorID }, log)
   }, log)
 }
@@ -493,7 +487,7 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
     role: 'attestor',
 
     doneJob: performanceChallengeID,
-    idleProviders: DB.idleAttestors,
+    idleProviders: DB.status.idleAttestors,
     action: () => tryNextChallenge({ attestorID: userID }, log)
   }, log)
 }
@@ -503,10 +497,42 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
 ******************************************************************************/
 
 const setSize = 10 // every contract is for hosting 1 set = 10 chunks
-const size = setSize*64*1024 //assuming each chunk is 64kb
+const size = setSize*64 //assuming each chunk is 64kb
 const blockTime = 6000
 
-function handleNew (program, item, ids) {
+async function publish_feed (feed, sponsor_id, log) {
+  const [key, {hashType, children}, signature] = feed
+  const keyBuf = Buffer.from(key, 'hex')
+  // check if feed already exists
+  if (DB.lookups.feedByKey[keyBuf.toString('hex')]) return
+  feed = { publickey: keyBuf.toString('hex'), meta: { signature, hashType, children } }
+  const feedID = await addItem(feed)
+  DB.lookups.feedByKey[keyBuf.toString('hex')] = feedID
+  feed.publisher = sponsor_id
+  emitEvent('FeedPublished', [feedID], log)
+  return feedID
+}
+
+async function publish_components (log, components, feed_ids) {
+  const { dataset_items, performance_items, timetable_items, region_items } = components
+  const dataset_ids = await Promise.all(dataset_items.map(async item => {
+    if (item.feed_id < 0) item.feed_id = feed_ids[(Math.abs(item.feed_id) - 1)]
+    return await addItem(item)
+  }))
+  const performances_ids = await Promise.all(performance_items.map(async item => await addItem(item)))
+  const timetables_ids = await Promise.all(timetable_items.map(async item => await addItem(item)))
+  const regions_ids = await Promise.all(region_items.map(async item => await addItem(item)))
+  return { dataset_ids, performances_ids, timetables_ids, regions_ids }
+} 
+async function publish_form_components (components) {
+  const {  timetable_items, region_items, performance_items, resource_items } = components
+  const timetables_ids = await Promise.all(timetable_items.map(async item => await addItem(item)))
+  const regions_ids = await Promise.all(region_items.map(async item => await addItem(item)))
+  const performances_ids = await Promise.all(performance_items.map(async item => await addItem(item)))
+  const resources_ids = await Promise.all(resource_items.map(async item => await addItem(item)))
+  return { resources_ids, performances_ids, timetables_ids, regions_ids }
+}
+function handleNew (item, ids) {
   const keys = Object.keys(item)
   for (var i = 0, len = keys.length; i < len; i++) {
     const type = keys[i]
@@ -523,50 +549,54 @@ function getPrograms (plans) {
   return programs
 }
 
-async function makeContractsAndScheduleAmendments ({ plan }, log) {
-  const contractIDs = await makeContracts({ plan }, log)
-  for (var i = 0, len = contractIDs.length; i < len; i++) {
-    const contractID = contractIDs[i]
-    const schedulingAmendment = () => {
-      const reuse = { encoders: [], attestors: [], hosters: [] }
-      const newID = makeDraftAmendment({ contractID, reuse}, log)
-      addToPendingAmendments({ amendmentID: newID }, log)
-      tryNextAmendments(log)
-    }
+async function take_next_from_priority (next, log) {
+  const plan = await getPlanByID(next.id)
+  const contract_ids = await make_contracts(plan, log)
+  plan.contracts.push(...contract_ids)
+  for (var i = 0, len = contract_ids.length; i < len; i++) {
+    const id = contract_ids[i]
     const blockNow = header.number
-    const delay = plan.from - blockNow
-    const { scheduleAction, cancelAction } = await scheduler
-    scheduleAction({ action: schedulingAmendment, delay, name: 'schedulingAmendment' })
+    const delay = plan.duration.from - blockNow
+    const { scheduleAction } = await scheduler
+    scheduleAction({ 
+      action: () => {
+        const reuse = { encoders: [], attestors: [], hosters: [] }
+        const amendment_id = init_amendment(id, reuse, log)
+        add_to_pending(amendment_id, log)
+        try_next_amendment(log)
+      }, 
+      delay, name: 'schedulingAmendment' 
+    })
   }
 }
 
 // split plan into sets with 10 chunks
-async function makeContracts ({ plan }, log) {
-  const feeds = plan.feeds
-  for (var i = 0; i < feeds.length; i++) {
-    const feedObj = feeds[i]
+async function make_contracts (plan, log) {
+  const dataset_ids = plan.program.map(item => item.dataset).flat()
+  const datasets = get_datasets(plan)
+  for (var i = 0; i < datasets.length; i++) {
+    const feed = getFeedByID(datasets[i].feed_id)
+    const ranges = datasets[i].ranges
     // split ranges to sets (size = setSize)
-    const sets = makeSets({ ranges: feedObj.ranges, setSize })
-    return sets.map(async set => {
+    const sets = makeSets({ ranges, setSize })
+    return Promise.all(sets.map(async set => {
       // const contractID = DB.contracts.length
       const contract = {
-        // id: contractID,
         plan: plan.id,
-        feed: feedObj.id,
+        feed: feed.id,
         ranges: set,
         amendments: [],
         activeHosters: [],
         status: {}
        }
-      // DB.contracts.push(contract) // @NOTE: set id
-      const contractID = await addItem(contract)
-      return contractID
+      await addItem(contract)
       log({ type: 'chain', data: [`New Contract: ${JSON.stringify(contract)}`] })
-    })
+      return contract.id 
+    }))
   }
 }
 // find providers for each contract (+ new providers if selected ones fail)
-async function makeDraftAmendment ({ contractID, reuse}, log) {
+async function init_amendment (contractID, reuse, log) {
   const contract = getContractByID(contractID)
   if (!contract) return log({ type: 'chain', data: [`No contract with this ID: ${contractID}`] })
   log({ type: 'chain', data: [`Searching additional providers for contract: ${contractID}`] })
@@ -578,66 +608,76 @@ async function makeDraftAmendment ({ contractID, reuse}, log) {
   contract.amendments.push(id)
   return id
 }
-function addToPendingAmendments ({ amendmentID }, log) {
-  DB.queues.pendingAmendments.push({ amendmentID }) // @TODO sort pendingAmendments based on priority (RATIO!)
+function add_to_pending (amendmentID, log) {
+  DB.queues.pendingAmendments.push(amendmentID) // TODO sort pendingAmendments based on priority (RATIO!)
 }
-async function tryNextAmendments (log) {
+async function try_next_amendment (log) {
   // const failed = []
   for (var start = new Date(); DB.queues.pendingAmendments.length && new Date() - start < 4000;) {
-    const { amendmentID } = DB.queues.pendingAmendments[0]
-    const x = await executeAmendment({ amendmentID }, log)
+    const id = await DB.queues.pendingAmendments[0]
+    const x = await activate_amendment(id, log)
     if (!x) DB.queues.pendingAmendments.shift()
   }
-  // failed.forEach(x => addToPendingAmendments(x, log))
+  // failed.forEach(x => add_to_pending(x, log))
 }
-async function executeAmendment ({ amendmentID }, log) {
-  const amendment = getAmendmentByID(amendmentID)
+async function activate_amendment (id, log) {
+  const amendment = getAmendmentByID(id)
   const contract = getContractByID(amendment.contract)
-  const { plan: planID } = getContractByID(amendment.contract)
+  const { plan: plan_id } = getContractByID(amendment.contract)
 
-  const newJob = amendmentID
-  const providers = getProviders({ plan: getPlanByID(planID), reused: amendment.providers, newJob }, log)
+  const newJob = id
+  const type = 'NewAmendment'
+  const providers = getProviders(getPlanByID(plan_id), amendment.providers, newJob, log)
   if (!providers) {
     log({ type: 'chain', data: [`not enough providers available for this amendment`] })
-    return { amendmentID }
+    return { id }
   }
-  amendment.providers = providers
   // schedule follow up action
-  contract.status.schedulerID = await scheduleAmendmentFollowUp({ amendmentID }, log)
+  contract.status.schedulerID = await scheduleAmendmentFollowUp(id, log)
   ;['attestor','encoder','hoster'].forEach(role => {
     const first = role[0].toUpperCase()
     const rest = role.substring(1)
     giveJobToRoles({
-      type: 'NewAmendment',
+      type,
       selectedProviders: providers[`${role}s`],
       idleProviders: DB[`idle${first + rest}s`],
       role,
       newJob
     }, log)
   })
+  const keys = Object.keys(providers)
+  for (var i = 0, len = keys.length; i < len; i++) {
+    providers[keys[i]] = providers[keys[i]].map(item => item.id)
+  }
+  log({ type: 'chain', data: [`Providers for amendment (${id}): ${JSON.stringify(providers)}`] })
+  amendment.providers = providers
+  // emit event
+  console.log(`New event emitted`, type, newJob)
+  log({ type, data: [type, newJob] })
+  emitEvent(type, [newJob], log)
 }
 
-function getProviders ({ plan, newJob, reused }, log) {
+function getProviders (plan, reused, newJob, log) {
   const attestorAmount = 1 - (reused?.attestors?.length || 0)
   const encoderAmount = 3 - (reused?.encoders?.length || 0)
   const hosterAmount = 3 - (reused?.hosters?.length || 0)
-  const avoid = makeAvoid({ plan })
+  const avoid = makeAvoid(plan)
   if (!reused) reused = { encoders: [], attestors: [], hosters: [] }
   else {
     const reusedArr = [...reused.attestors, ...reused.hosters, ...reused.encoders]
     reusedArr.forEach(id => avoid[id] = true)
   }
-  // @TODO backtracking!! try all the options before returning no providers available
-  const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: attestorAmount, avoid, plan, log })
+  // TODO backtracking!! try all the options before returning no providers available
+  const attestors = select({ idleProviders: DB.status.idleAttestors, role: 'attestor', newJob, amount: attestorAmount, avoid, plan, log })
   if (!attestors.length) return log({ type: 'chain', data: [`missing attestors`] })
-  const encoders = select({ idleProviders: DB.idleEncoders, role: 'encoder',  newJob, amount: encoderAmount, avoid, plan, log })
+  const encoders = select({ idleProviders: DB.status.idleEncoders, role: 'encoder',  newJob, amount: encoderAmount, avoid, plan, log })
   if (!encoders.length === encoderAmount) return log({ type: 'chain', data: [`missing encoders`] })
-  const hosters = select({ idleProviders: DB.idleHosters, role: 'hoster', newJob, amount: hosterAmount, avoid, plan, log })
+  const hosters = select({ idleProviders: DB.status.idleHosters, role: 'hoster', newJob, amount: hosterAmount, avoid, plan, log })
   if (!hosters.length === hosterAmount) return log({ type: 'chain', data: [`missing hosters`] })
   return {
-    encoders: encoders.concat(reused.encoders),
-    hosters: hosters.concat(reused.hosters),
-    attestors: attestors.concat(reused.attestors)
+    encoders: [...encoders, ...reused.encoders],
+    hosters: [...hosters, ...reused.hosters],
+    attestors: [...attestors, ...reused.attestors]
   }
 }
 function getRandom (items) {
@@ -672,15 +712,15 @@ function validateProof (hashes, signature, storageChallenge) {
   return true
 }
 function select ({ idleProviders, role, newJob, amount, avoid, plan, log }) {
-  idleProviders.sort(() => Math.random() - 0.5) // @TODO: improve randomness
+  idleProviders.sort(() => Math.random() - 0.5) // TODO: improve randomness
   const selectedProviders = []
   for (var i = 0; i < idleProviders.length; i++) {
-    const providerID = idleProviders[i]
-    if (avoid[providerID]) continue // if providerID is in avoid, don't select it
-    const provider = getUserByID(providerID)
-    if (doesQualify({ plan, provider, role })) {
-      selectedProviders.push({providerID, index: i, role })
-      avoid[providerID] = true
+    const id = idleProviders[i]
+    if (avoid[id]) continue // if id is in avoid, don't select it
+    const provider = getUserByID(id)
+    if (doesQualify(plan, provider, role)) {
+      selectedProviders.push({id, index: i, role })
+      avoid[id] = true
       if (selectedProviders.length === amount) return selectedProviders
     }
   }
@@ -688,23 +728,19 @@ function select ({ idleProviders, role, newJob, amount, avoid, plan, log }) {
 }
 function giveJobToRoles ({ type, selectedProviders, idleProviders, role, newJob }, log) {
   const sortedProviders = selectedProviders.sort((a,b) => a.index > b.index ? 1 : -1)
-  const providers = sortedProviders.map(({providerID, index, role }) => {
-    const provider = getUserByID(providerID)
+  const providers = sortedProviders.map(({ id, index, role }) => {
+    const provider = getUserByID(id)
     provider[role].jobs[newJob] = true
     // @NOTE: sortedProviders makes sure those with highest index get sliced first
     // so lower indexes are unchanged until they get sliced too
-    if (!hasCapacity({ provider, role })) idleProviders.splice(index, 1)
-    // @TODO currently we reduce idleStorage for all providers
+    if (!hasCapacity(provider, role)) idleProviders.splice(index, 1)
+    // TODO currently we reduce idleStorage for all providers
     // and for all jobs (also challenge)
     // => take care that it is INCREASED again when job is done
     provider[role].idleStorage -= size
-    return providerID
+    return id
   })
   // returns array of selected providers for select function
-  // emit event
-  console.log(`New event`, type)
-  log({ type: 'chain', data: [type, newJob] })
-  emitEvent(type, [newJob], log)
   return providers
 }
 
@@ -712,7 +748,7 @@ function giveJobToRoles ({ type, selectedProviders, idleProviders, role, newJob 
 function getJobByID (jobID) {
   return getItem(jobID)
 }
-// @TODO payments: for each successfull hosting we pay attestor(1/3), this hoster (full), encoders (full, but just once)
+// TODO payments: for each successfull hosting we pay attestor(1/3), this hoster (full), encoders (full, but just once)
 async function removeJob ({ providers, jobID }, log) {
   const job = await getJobByID(jobID)
   const types = Object.keys(provider)
@@ -727,14 +763,16 @@ async function removeJob ({ providers, jobID }, log) {
 }
 
 function removeJobForRolesXXXX ({ providers, jobID }, log) {
-  const { hosters, attestors, encoders } = providers
+  console.log('Removing jobs')
+  console.log({providers})
+  const { hosters = [], attestors = [], encoders = [] } = providers
   hosters.forEach((hosterID, i) => {
     removeJobForRoleYYYY({
       id: hosterID,
       role: 'hoster',
       doneJob: jobID,
-      idleProviders: DB.idleHosters,
-      action: () => tryNextAmendments(log)
+      idleProviders: DB.status.idleHosters,
+      action: () => try_next_amendment(log)
     }, log)
   })
   encoders.map(id =>
@@ -742,16 +780,16 @@ function removeJobForRolesXXXX ({ providers, jobID }, log) {
       id,
       role: 'encoder',
       doneJob: jobID,
-      idleProviders: DB.idleEncoders,
-      action: () => tryNextAmendments(log)
+      idleProviders: DB.status.idleEncoders,
+      action: () => try_next_amendment(log)
     }, log))
   attestors.map(id =>
     removeJobForRoleYYYY({
       id,
       role: 'attestor',
       doneJob: jobID,
-      idleProviders: DB.idleAttestors,
-      action: () => tryNextAmendments(log)
+      idleProviders: DB.status.idleAttestors,
+      action: () => try_next_amendment(log)
     }, log))
 }
 function removeJobForRoleYYYY ({ id, role, doneJob, idleProviders, action }, log) {
@@ -764,86 +802,96 @@ function removeJobForRoleYYYY ({ id, role, doneJob, idleProviders, action }, log
     action()
   }
 }
-function doesQualify ({ plan, provider, role }) {
+function doesQualify (plan, provider, role) {
   const form = provider[role].form
   if (
-    isScheduleCompatible({ plan, form, role }) &&
-    hasCapacity({ provider, role }) &&
-    hasEnoughStorage({ role, provider })
+    isScheduleCompatible(plan, form, role) &&
+    hasCapacity(provider, role) &&
+    hasEnoughStorage(role, provider)
   ) return true
 }
-async function isScheduleCompatible ({ plan, form, role }) {
+async function isScheduleCompatible (plan, form, role) {
   const blockNow = header.number
-  const isAvialableNow = form.from <= blockNow
-  const until = form.until
+  const isAvialableNow = form.duration.from <= blockNow
+  const until = form.duration.until
   var jobDuration
   if (role === 'attestor') jobDuration = 3
   if (role === 'encoder') jobDuration = 2 // duration in blocks
-  if (role === 'hoster') jobDuration = plan.until.time -  blockNow
-  if (isAvialableNow && (until >= (blockNow + jobDuration) || isOpenEnded)) return true
+  if (role === 'hoster') jobDuration = plan.duration.until -  blockNow
+  return (isAvialableNow && (until >= (blockNow + jobDuration) || isOpenEnded))
 }
-function hasCapacity ({ provider, role }) {
+function hasCapacity (provider, role) {
   const jobs = provider[role].jobs
-  if (Object.keys(jobs).length < provider[role].capacity) return true
+  return (Object.keys(jobs).length < provider[role].capacity)
 }
-function hasEnoughStorage ({ role, provider }) {
-  if (provider[role].idleStorage > size) return true
+function hasEnoughStorage (role, provider) {
+  return (provider[role].idleStorage > size)
 }
 function tryNextChallenge ({ attestorID }, log) {
   if (DB.queues.attestorsJobQueue.length) {
     const next = DB.queues.attestorsJobQueue[0]
-    if (next.fnName === 'NewStorageChallenge' && DB.idleAttestors.length) {
+    if (next.fnName === 'NewStorageChallenge' && DB.status.idleAttestors.length) {
       const storageChallenge = next.opts.storageChallenge
       const hosterID = storageChallenge.hoster
       const contract = getContractByID(storageChallenge.contract)
       const plan = getPlanByID(contract.plan)
-      const avoid = makeAvoid({ plan })
+      const avoid = makeAvoid(plan)
       avoid[hosterID] = true
 
       const newJob = storageChallenge.id
-      const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: 1, avoid, plan, log })
+      const type = 'NewStorageChallenge'
+      const attestors = select({ idleProviders: DB.status.idleAttestors, role: 'attestor', newJob, amount: 1, avoid, plan, log })
 
       if (attestors.length) {
         DB.queues.attestorsJobQueue.shift()
         storageChallenge.attestor = attestorID
         giveJobToRoles({
-          type: 'NewStorageChallenge',
+          type,
           selectedProviders: attestors,
-          idleProviders: DB.idleAttestors,
+          idleProviders: DB.status.idleAttestors,
           role: 'attestor',
           newJob
         }, log)
       }
+      // emit event
+      log({ type, data: [type, newJob] })
+      emitEvent(type, [newJob], log)
     }
-    if (next.fnName === 'NewPerformanceChallenge' && DB.idleAttestors.length >= 5) {
+    if (next.fnName === 'NewPerformanceChallenge' && DB.status.idleAttestors.length >= 5) {
       const performanceChallenge = next.opts.performanceChallenge
       const hosterID = performanceChallenge.hoster
       const contract = getContractByID(performanceChallenge.contract)
       const plan = getPlanByID(contract.plan)
-      const avoid = makeAvoid({ plan })
+      const avoid = makeAvoid(plan)
       avoid[hosterID] = true
 
       const newJob = performanceChallenge.id
-      const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: 5, avoid, plan, log })
+      const type = 'NewPerformanceChallenge'
+      const attestors = select({ idleProviders: DB.status.idleAttestors, role: 'attestor', newJob, amount: 5, avoid, plan, log })
       if (attestors.length) {
         DB.queues.attestorsJobQueue.shift()
         performanceChallenge.attestors = attestors
         giveJobToRoles({
-          type: 'NewPerformanceChallenge',
+          type,
           selectedProviders: attestors,
-          idleProviders: DB.idleAttestors,
+          idleProviders: DB.status.idleAttestors,
           role: 'attestor',
           newJob
         }, log)
+        // emit event
+        log({ type, data: [type, newJob] })
+        emitEvent(type, [newJob], log)
       }
     }
   }
 }
-function makeAvoid ({ plan }) {
+function makeAvoid (plan) {
   const avoid = {}
   avoid[plan.sponsor] = true // avoid[3] = true
-  plan.feeds.forEach(feedObj => {
-    const feed = getFeedByID(feedObj.id)
+  const datasets = get_datasets(plan)
+  const feed_ids = [...new Set(datasets.map(dataset => dataset.feed_id))]
+  feed_ids.forEach(id => {
+    const feed = getFeedByID(id)
     avoid[feed.publisher] = true
   })
   return avoid
@@ -854,7 +902,7 @@ function cancelContracts (plan) {
     const contractID = contracts[i]
     const contract = getContractByID(contractID)
     // tell hosters to stop hosting
-    // @TODO:
+    // TODO:
     // 1. figure out all active Hostings (=contracts) from plan (= active)
     // 2. figure out all WIP PerfChallenges for contracts from plan
     // 3. figure out all WIP StoreChallenges for contracts from plan
@@ -882,29 +930,30 @@ function cancelContracts (plan) {
     contract.activeHosters.forEach((hosterID, i) => {
       removeJobForRolesXXXX({ providers: { hosters: [hosterID] }, jobID: contractID }, log)
       const { feed: feedID } = getContractByID(contractID)
-      // @TODO ACTION find new provider for the contract (makeAmendment(reuse))
+      // TODO ACTION find new provider for the contract (makeAmendment(reuse))
       // emit event to notify hoster(s) to stop hosting
       emitEvent('DropHosting', [feedID, hosterID], log)
     })
     contract.activeHosters = []
     // remove from jobs queue
     for (var j = 0; j < DB.queues.pendingAmendments; j++) {
-      const amendment = DB.queues.pendingAmendments[j]
+      const id = DB.queues.pendingAmendments[j]
+      const amendment = getAmendmentByID(id)
       if (contractID === amendment.contract) DB.queues.pendingAmendments.splice(j, 1)
     }
   }
 }
 async function scheduleChallenges ({ plan, user, hosterID, name, nonce, contractID, status }) {
   const schedulingChallenges = async () => {
-    // schedule new challenges ONLY while the contract is active (plan.until.time > new Date())
-    const planUntil = plan.until.time
+    // schedule new challenges ONLY while the contract is active (plan.duration.until > new Date())
+    const planUntil = plan.duration.until.time
     const blockNow = header.number
     if (!(planUntil > blockNow)) return
-    // @TODO if (!plan.schedules.length) {}
+    // TODO if (!plan.schedules.length) {}
     // else {} // plan schedules based on plan.schedules
     const planID = plan.id
-    const from = plan.from
-    // @TODO sort challenge request jobs based on priority (RATIO!) of the sponsors
+    const from = plan.duration.from
+    // TODO sort challenge request jobs based on priority (RATIO!) of the sponsors
     _requestStorageChallenge({ user, signingData: { name, nonce }, status, args: [contractID, hosterID] })
     _requestPerformanceChallenge({ user, signingData: { name, nonce }, status, args: [contractID, hosterID] })
     scheduleAction({ action: schedulingChallenges, delay: 5, name: 'schedulingChallenges' })
@@ -913,26 +962,27 @@ async function scheduleChallenges ({ plan, user, hosterID, name, nonce, contract
   scheduleAction({ action: schedulingChallenges, delay: 1, name: 'schedulingChallenges' })
 }
 
-async function scheduleAmendmentFollowUp ({ amendmentID }, log) {
+async function scheduleAmendmentFollowUp (id, log) {
   const scheduling = () => {
-    const { providers: { attestors } } = getAmendmentByID(amendmentID)
-    // @TODO get all necessary data to call this exstrinsic from the chain
-    const report = [amendmentID, attestors]
-    const [attestorID] = attestors
+    console.log('This is a scheduled amendment follow up for amendment ', id)
+    // TODO get all necessary data to call this exstrinsic from the chain
+    // const { providers: { attestors } } = getAmendmentByID(id)
+    // const report = [id, attestors]
+    // const [attestorID] = attestors
     // const user = getUserByID(attestorID)
-    _amendmentReport(user, { name, nonce }, status, [report])
-    //
+    // amendmentReport(user, { name, nonce }, status, [report])
+
     // console.log('scheduleAmendmentFollowUp', sid)
     // const contract = getContractByID(contractID)
     // // if (contract.activeHosters.length >= 3) return
     //
-    // removeJobForRolesXXXX({ failedHosters: [], amendment, doneJob: `NewAmendment${amendmentID}` }, log)
-    // // @TODO update reuse
+    // removeJobForRolesXXXX({ failedHosters: [], amendment, doneJob: `NewAmendment${id}` }, log)
+    // // TODO update reuse
     // // const reuse = { attestors: [], encoders, hosters }
     // const reuse = { attestors: [], encoders: [], hosters: [] }
-    // const newID = makeDraftAmendment({ contractID, reuse}, log)
-    // addToPendingAmendments({ amendmentID: newID }, log)
-    // return amendmentID
+    // const newID = init_amendment(contractID, reuse, log)
+    // add_to_pending(newID, log)
+    // return id
   }
   const { scheduleAction, cancelAction } = await scheduler
   var sid = scheduleAction({ action: scheduling, delay: 10, name: 'scheduleAmendmentFollowUp' })
@@ -953,20 +1003,24 @@ async function makeStorageChallenge({ contract, hosterID, plan }, log) {
   const id = await addItem(storageChallenge)
   DB.activeStorageChallenges[id] = true
   // find attestor
-  const avoid = makeAvoid({ plan })
+  const avoid = makeAvoid(plan)
   avoid[hosterID] = true
 
   const newJob = storageChallenge.id
-  const [attestorID] = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: 1, avoid, plan, log })
+  const type = 'NewStorageChallenge'
+  const [attestorID] = select({ idleProviders: DB.status.idleAttestors, role: 'attestor', newJob, amount: 1, avoid, plan, log })
   if (!attestorID) return DB.queues.attestorsJobQueue.push({ fnName: 'NewStorageChallenge', opts: { storageChallenge } })
   storageChallenge.attestor = attestorID
   giveJobToRoles({
-    type: 'NewStorageChallenge',
+    type,
     selectedProviders: attestors,
-    idleProviders: DB.idleAttestors,
+    idleProviders: DB.status.idleAttestors,
     role: 'attestor',
     newJob
   }, log)
+  // emit event
+  log({ type, data: [type, newJob] })
+  emitEvent(type, [newJob], log)
 }
 async function makePerformanceChallenge ({ contractID, hosterID, plan }, log) {
   // const id = DB.performanceChallenge.length
@@ -975,20 +1029,24 @@ async function makePerformanceChallenge ({ contractID, hosterID, plan }, log) {
   const id = await addItem(performanceChallenge)
   DB.activePerformanceChallenges[id] = true
   // select attestors
-  const avoid = makeAvoid({ plan })
+  const avoid = makeAvoid(plan)
   avoid[hosterID] = true
 
   const newJob = performanceChallenge.id
-  const attestors = select({ idleProviders: DB.idleAttestors, role: 'attestor', newJob, amount: 5, avoid, plan, log })
+  const type = 'NewPerformanceChallenge'
+  const attestors = select({ idleProviders: DB.status.idleAttestors, role: 'attestor', newJob, amount: 5, avoid, plan, log })
   if (!attestors.length) return DB.queues.attestorsJobQueue.push({ fnName: 'NewPerformanceChallenge', opts: { performanceChallenge } })
   performanceChallenge.attestors = attestors
   giveJobToRoles({
-    type: 'NewPerformanceChallenge',
+    type,
     selectedProviders: attestors,
-    idleProviders: DB.idleAttestors,
+    idleProviders: DB.status.idleAttestors,
     role: 'attestor',
     newJob
   }, log)
+  // emit event
+  log({ type, data: [type, newJob] })
+  emitEvent(type, [newJob], log)
 }
 
 function isValidHoster ({ hosters, failedHosters, hosterID }) {
@@ -1001,4 +1059,9 @@ function emitEvent (method, data, log) {
   const message = [{ event: { data, method } }]
   handlers.forEach(([name, handler]) => handler(message))
   log({ type: 'chain', data: [`emit chain event ${JSON.stringify(message)}`] })
+}
+
+function get_datasets (plan) {
+  const dataset_ids = plan.program.map(item => item.dataset).flat()
+  return dataset_ids.map(id => getDatasetByID(id))
 }

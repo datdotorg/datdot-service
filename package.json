@@ -38,8 +38,7 @@
     "sodium-native": "^3.2.0",
     "sodium-universal": "^2.0.0",
     "subleveldown": "^4.1.4",
-    "through2": "^3.0.1",
-    "youtube-dl": "^3.0.2"
+    "through2": "^3.0.1"
   },
   "devDependencies": {
     "ws": "^7.3.1"

@@ -25,7 +25,7 @@ function get (what, value) {
   if (what === 'docs') return docs[key]
 }
 function check (message, type) {
-  console.log('@TODO: fix types in types.js!')
+  console.log('TODO: fix types in types.js!')
   const validate = TYPES[type]
   if (!validate) return ERROR.invalid_message
   return validate(message)
@@ -46,7 +46,7 @@ function checkKey (type, key, val) {
       type = length(part) // e.g. too long or OK
       if (!type) return { path, error: length.error }
       // typedArray.types(part, val)
-    } else throw '@TODO: maybe implement non string or number key path?'
+    } else throw 'TODO: maybe implement non string or number key path?'
   }
   return type(val)
 }
@@ -204,8 +204,8 @@ const from = BASIC_TYPES.date
 
 region.error = 'value must be a 2-tuple (latitude, longitude)'
 region.example = ['2.022235323', '5.343263423']
-function region (value) { // @TODO: improve this to an area!
-  console.log('@TODO: improve this to an area!')
+function region (value) { // TODO: improve this to an area!
+  console.log('TODO: improve this to an area!')
   if (!Array.isArryay(value)) return region.error
   const [lat, long] = value
   if (typeof lat !== 'string') return region.error
@@ -359,9 +359,9 @@ plan.schedules = schedules
 
 const plan = {
   // id, // === plan_id
-  feed_id    : BASIC_TYPES.number, // @TODO: improve to 1+ integers
-  version    : BASIC_TYPES.number, // @TODO: improve to 0+ integers
-  from       : BASIC_TYPES.string, // @TODO: improve to date format
+  feed_id    : BASIC_TYPES.number, // TODO: improve to 1+ integers
+  version    : BASIC_TYPES.number, // TODO: improve to 0+ integers
+  from       : BASIC_TYPES.string, // TODO: improve to date format
   until: {
     time     : '',
     budget   : '',
@@ -397,7 +397,7 @@ function example_data_request_service_plan (opts = {}) {
       latency: { lag, guarantee },
     },
     regions: [{
-      region, // e.g. 'NORTH AMERICA', @TODO: see issue, e.g. latitude, longitude
+      region, // e.g. 'NORTH AMERICA', TODO: see issue, e.g. latitude, longitude
       performance: {
         availability,
         bandwidth: { speed, guarantee },
@@ -449,7 +449,7 @@ function request_service (message) {
   const config = { // at least 1 region is mandatory (e.g. global)
     performance,
     regions: [{
-      region, // @TODO: see issue, e.g. latitude, longitude
+      region, // TODO: see issue, e.g. latitude, longitude
       performance // optional
     }, ...]
   }

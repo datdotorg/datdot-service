@@ -29,7 +29,7 @@ async function logkeeper (name, PORT) {
   function connect (resolve, reject) {
     const LOG = debug(`logkeeper:${name}`)
     const connections = []
-    const history = [] // @TODO: should be a persistent hypercore
+    const history = [] // TODO: should be a persistent hypercore
     const loggers = {}
     var counter = 0 // message id counter
     instance = loggers[name] = makelog([name])

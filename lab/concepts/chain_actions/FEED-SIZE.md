@@ -18,4 +18,4 @@ for all the chunks of one feed in a plan
 ```
 
 # chain
-* @TODO make attestor or maybe encoder maybe go check the actual feed size
+* TODO make attestor or maybe encoder maybe go check the actual feed size

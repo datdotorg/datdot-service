@@ -174,7 +174,7 @@ const node = make('NODE', _ => {
   // * ADD (to pool): NEW/UNKNOWN peer (e.g. remember for broadcast)
   _($ => _``($(msg => console.log(msg))))
   _($ => _`poolA`($)`poolB`($)) // add NEW/UNKNOWN peer to pool A and B
-  _($ => _`poolA|poolB|poolC`($)) // @TODO: maybe allow this
+  _($ => _`poolA|poolB|poolC`($)) // TODO: maybe allow this
   // -------------------------------------------------
 
   // MAKE POOL

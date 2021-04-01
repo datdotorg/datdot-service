@@ -280,7 +280,7 @@
 //   until    : untilBlock, // date
 //   program  : [
 //     {
-//       // @TODO: if you publish a few local components (e.g. 5)
+//       // TODO: if you publish a few local components (e.g. 5)
 //       // and you want to reference the global component with id=3
 //       // how to figure out if thats local ID or global ID
 //       // e.g. positive vs. negative numbers to differentiate
@@ -432,7 +432,7 @@
 // user - component - resources
 // ============================================================================
 // `storage/:id/user/form/components/resources`
-// @TODO: decide later, once it is clear which resources we are tracking
+// TODO: decide later, once it is clear which resources we are tracking
 // ============================================================================
 // plan - component - regions
 // ============================================================================
@@ -451,7 +451,7 @@
 //   ['X3F', 'A0K'],
 //   ['AX3F', 'A0TY'],
 // ]
-// @TODO: solve later
+// TODO: solve later
 // 1. are geo hashes the best format to store?
 // 2. how can we make it easy to match hosters with plans to
 //    * minimize storage
@@ -472,7 +472,7 @@
 //    * e.g. X3FaaaF1 => area: X3FaaaF1 + radius of Y hashes
 // 2. we match hoster hashes with plan hashes
 //    * select 3 hosters with the best match
-// @TODO: solve later
+// TODO: solve later
 // 1. are geo hashes the best format to store?
 // 2. how can we make it easy to match hosters with plans to
 //    * minimize storage
@@ -570,7 +570,7 @@ const status = {
 }
 const attestorsJobQueue = [] // { fnName: 'makePerformanceChallenge', opts: contractID ) }
 const pendingAmendments = [] // { planID, feedID, set }
-// @TODO: merge into single queue
+// TODO: merge into single queue
 const queues = {
   pendingAmendments, // ammendments => contract.update
   attestorsJobQueue,

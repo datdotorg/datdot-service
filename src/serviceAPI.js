@@ -27,7 +27,7 @@ function datdotService (profile) {
     return account.encoder.encodeFor(amendmentID, attestorKey, encoderKey, feedKeyBuffer, ranges)
   }
 
-  async function verifyAndForwardEncodings (data) {
+  async function verifyAndForwardEncodings (data/*, currentState, signal*/) {
     const { account, amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges } = data
     const messages = {}
     const responses = []
@@ -53,9 +53,9 @@ function datdotService (profile) {
   async function removeFeed ({ feedKey, account }) {
     const hasKey = await account.hoster.hasKey(feedKey)
     log({ type: 'serviceAPI', data: [`DropHosting hasKey? ${hasKey}`] })
-    // @TODO fix errors in hoster storage when trying to remove feed
+    // TODO fix errors in hoster storage when trying to remove feed
     if (hasKey) return await account.hoster.removeFeed(feedKey)
-    // @TODO ELSE => cancelHostFor process (disconnect from attestor and removeKey) <= for hosters that didn't start hosting on time
+    // TODO ELSE => cancelHostFor process (disconnect from attestor and removeKey) <= for hosters that didn't start hosting on time
   }
 
   /* ----------------------------------------------------------------
@@ -77,7 +77,7 @@ function datdotService (profile) {
   async function verifyStorageChallenge (data) {
     const { account, attestorKey, hosterKey, feedKey, storageChallenge } = data
     log({ type: 'serviceAPI', data: [`verify storage!`] })
-    // @TODO prepare the response: hash, proof etc. instead of sending the full chunk
+    // TODO prepare the response: hash, proof etc. instead of sending the full chunk
     return await account.attestor.verifyStorageChallenge({ storageChallenge, attestorKey, feedKey, hosterKey })
   }
 
@@ -140,7 +140,7 @@ function datdotService (profile) {
     // get all three chunks from different encoders, compare and then respond to each
     log({ type: 'serviceAPI', data: [`comparing encoding for index: ${index} (${messages[index] ? messages[index].length : 'none'}/3)`] })
 
-    const size = Buffer.from(msg.encoded).length // @TODO or .bytelength
+    const size = Buffer.from(msg.encoded).length // TODO or .bytelength
     if (messages[index]) messages[index].push({ key, size, cb })
     else messages[index] = [{ key, size, cb }]
     if (messages[index].length === 3) {

@@ -6,7 +6,7 @@ module.exports = tempDB
 
 async function tempDB (uid) {
   if (UID[uid]) throw new Error(`taskdb for "${uid}" was already initialized`)
-  const storage = DB[uid] = { len: 0 } // @TODO: also persist storage to disk
+  const storage = DB[uid] = { len: 0 } // TODO: also persist storage to disk
   const db = UID[uid] = {
     add,
     del,

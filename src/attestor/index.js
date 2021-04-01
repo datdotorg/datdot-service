@@ -38,12 +38,12 @@ module.exports = class Attestor {
                             VERIFY ENCODING
 ---------------------------------------------------------------------- */
 
-  async verifyAndForwardFor (opts, currentState, abortSignal) {
+  async verifyAndForwardFor (opts) {
     const attestor = this
 
-    abortSignal.onabort = event => {
-      // @TODO: cancel ongoing operations
-    }
+    // abortSignal.onabort = event => {
+    //   // TODO: cancel ongoing operations
+    // }
 
     return new Promise(async (resolve, reject) => {
       const { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, compareCB } = opts
@@ -57,9 +57,9 @@ module.exports = class Attestor {
       }
       const log2encoder = attestor.log.sub(`<-Encoder ${encoderKey.toString('hex').substring(0,5)}`)
 
-      // var id_streams1 = setTimeout(() => { log2encoder({ type: 'attestor', data: [`peerConnect timeout, ${JSON.stringify(opts2)}`] }) }, 500)
+      var id_streams1 = setTimeout(() => { log2encoder({ type: 'attestor', data: [`peerConnect timeout`] }) }, 500)
       const encoderComm = await peerConnect(opts1, log2encoder)
-      // clearTimeout(id_streams1)
+      clearTimeout(id_streams1)
 
       const opts2 = {
         plex: this.communication,
@@ -71,9 +71,9 @@ module.exports = class Attestor {
       }
       const log2hoster = attestor.log.sub(`->Hoster ${hosterKey.toString('hex').substring(0,5)}`)
 
-      // var id_streams2 = setTimeout(() => { log2hoster({ type: 'attestor', data: [`peerConnect timeout, ${JSON.stringify(opts2)}`] }) }, 500)
+      var id_streams2 = setTimeout(() => { log2hoster({ type: 'attestor', data: [`peerConnect timeout`] }) }, 500)
       const streams = await peerConnect(opts2, log2hoster)
-      // clearTimeout(id_streams2)
+      clearTimeout(id_streams2)
 
       // check the encoded data and if ok, send them to the hosters
       log2encoder({ type: 'attestor', data: ['Start receiving data from the encoder'] })
@@ -86,7 +86,7 @@ module.exports = class Attestor {
       // if it timeouts, we push failed encoders to failed array
       var timeoutID = setTimeout(encoderFailed, 5000)
       function encoderFailed () {
-        console.log(`Timeout: encoder failed, amendment: ${amendmentID} (${verified.length}/${expectedMessageCount})`)
+        console.log(`Timeout: encoder failed, amendment: ${amendmentID}`)
         encoderComm.serialize$.end({ type: 'encoded:error', error: 'TIMEOUT' })
         timeout = true
         resolve(encoderKey)
@@ -115,7 +115,7 @@ module.exports = class Attestor {
             else if (err.hosterKey) resolve(err.hosterKey)
             else resolve()
           }))
-          if (encodedReceived.length === expectedMessageCount) break // @TODO: do we need to END the stream here?
+          if (encodedReceived.length === expectedMessageCount) break // TODO: do we need to END the stream here?
         } else {
           log2encoder({ type: 'attestor', data: [`encoded checking UNKNOWN_MESSAGE MESSAGE TYPE ${type} `] })
           encoderComm.serialize$.end({ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', messageType: type })
@@ -125,7 +125,7 @@ module.exports = class Attestor {
       }
 
       function merkleVerifyChunk (message) {
-        // @TODO merkle verify chunk and re-use also in compareStorage
+        // TODO merkle verify chunk and re-use also in compareStorage
         return true
       }
 
@@ -134,12 +134,12 @@ module.exports = class Attestor {
 
       // prepare the report
       const results = await Promise.allSettled(comparedAndHosted)
+      console.log({results})
 
-// @TODO: CHANGE ALL THE THINGS BELOW
+// TODO: CHANGE ALL THE THINGS BELOW
 
       // array<???> -> boolean
       const isFulfilled = this.allFulfilled(results)
-      console.log({status})
       if (!isFulfilled) {
         console.log(`Hoster failed: amendment: ${amendmentID} (${encodedReceived.length}/${expectedMessageCount})`)
         log2encoder({ type: 'attestor', data: [`Hoster failed: amendment: ${amendmentID} (${encodedReceived.length}/${expectedMessageCount}))`] })
@@ -158,23 +158,23 @@ module.exports = class Attestor {
           var tid = setTimeout(() => { // something went wrong with another encoder
             timeoutOtherEncoder = true
             encoderComm.serialize$.end({ type: 'encoded:timeout' }) // @NOTE: new amendment is coming, encoder should keep all their data
-            resolve()
+            resolve('timeout encoder')
           }, 5000)
           compareCB(message, encoderKey, async (err, res) => {
-            if (timeoutOtherEncoder) return resolve()
+            if (timeoutOtherEncoder) return resolve('timeoutOtherEncoder')
             if (!err) {
               log2encoder({ type: 'attestor', data: [`${message.index} SEND_ACK ${encoderKey.toString('hex')}`] })
               encoderComm.serialize$.write({ type: 'encoded:checked', ok: true, index: message.index })
               try {
                 const response = await sendToHoster(message, log2hoster)
-                return resolve()
+                return resolve('Got response')
               } catch (err) {
                 if (timeoutHoster) return
                 timeoutHoster = true
-                return resolve(hosterKey)
+                return resolve('hoster timeout', hosterKey)
               }
             } else if (err) {
-              // @TODO:future: make retry strategy (e.g. try again while waiting for others and stuff like that)
+              // TODO:future: make retry strategy (e.g. try again while waiting for others and stuff like that)
               log2encoder({ type: 'attestor', data: ['encoded checking error'] })
               encoderComm.serialize$.end({ type: 'encoded:error', error: 'INVALID_COMPRESSION', ...{ messageIndex: message.index } })
               return reject(err)
@@ -247,7 +247,7 @@ module.exports = class Attestor {
       }
 
       async function proofIsVerified (message,feedKey, storageChallenge) {
-        // @TODO merkleVerifyChunk does smae thing
+        // TODO merkleVerifyChunk does smae thing
         const { data, index } = message
         if (!data) console.log('No data')
         // console.log('verifying index', storageChallenge.chunks[index])
@@ -259,7 +259,7 @@ module.exports = class Attestor {
         const encoded = Buffer.from(data.encoded)
         const decoded = await EncoderDecoder.decode(encoded)
         // proof.encoded
-        // @TODO: merkle verify each chunk (to see if it belongs to the feed) && verify the signature
+        // TODO: merkle verify each chunk (to see if it belongs to the feed) && verify the signature
         // check the proof
         // hash the data
         return true
@@ -330,7 +330,8 @@ module.exports = class Attestor {
   allFulfilled(results) {
     var fulfilled = true
     for (var i = 0, len = results.length; i < len; i++) {
-      fulfilled = status && (results[i].status === 'fulfilled')
+      // fulfilled = status && (results[i].status === 'fulfilled')
+      fulfilled = results[i].status === 'fulfilled'
     }
     return fulfilled
   }

@@ -46,10 +46,12 @@ user(JSON.parse(scenario), JSON.parse(config), logport)
 
 function captureErrors (log) {
   process.on('unhandledRejection', error => {
-    log({ type: 'user', data: [`unhandledRejection ${error}`] })
+    const stack = error.stack
+    log({ type: 'user', data: [`unhandledRejection ${stack} ${error}`] })
   })
-  process.on('uncaughtException', (err, origin) => {
-    log({ type: 'user', data: [`uncaughtException ${err} ${origin}`] })
+  process.on('uncaughtException', (error, origin) => {
+    const stack = error.stack
+    log({ type: 'user', data: [`uncaughtException ${stack} ${error} ${origin}`] })
   })
   process.on('warning', error => {
     const stack = error.stack

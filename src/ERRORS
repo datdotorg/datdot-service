@@ -24,7 +24,7 @@ unhandledRejection Error: You are already receiving this stream
 
 ---------------------------------------------------------------
 
-// @TODO
+// TODO
 // rewrite example.js for all the encoder/attestor/hoster modules with tape testing module
 
 

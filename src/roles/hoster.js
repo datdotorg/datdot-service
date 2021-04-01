@@ -21,8 +21,8 @@ async function role (profile, APIS) {
   const blockNow = await chainAPI.getBlockNumber()
   const until = new Date('Dec 26, 2021 23:55:00')
   const untilBlock = dateToBlockNumber ({ dateNow: new Date(), blockNow, date: until })
-  const settings = { from: blockNow, until: untilBlock }
-  const form = registrationForm('hoster', settings)
+  const duration = { from: blockNow, until: untilBlock }
+  const form = registrationForm('hoster', duration)
   await chainAPI.registerHoster({ form, hosterKey, signer, nonce })
   await chainAPI.listenToEvents(handleEvent)
 
@@ -60,11 +60,11 @@ async function role (profile, APIS) {
       const [feedID, hosterID] = event.data
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
-        // @TODO close all the connections related to this feed
+        // TODO close all the connections related to this feed
         log({ type: 'hoster', data: [`Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}`] })
         const feedKey = await chainAPI.getFeedKey(feedID)
         // await serviceAPI.removeFeed({ feedKey, account: vaultAPI }).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
-        // @TODO cancel hosting = remove feed, get out of swarm...
+        // TODO cancel hosting = remove feed, get out of swarm...
       }
     }
     if (event.method === 'NewStorageChallenge') {
@@ -91,6 +91,7 @@ async function role (profile, APIS) {
   // HELPERS
 
   async function getHostingData (attestors, contract) {
+    console.log({attestors})
     const ranges = contract.ranges
     const [attestorID] = attestors
     const attestorKey = await chainAPI.getAttestorKey(attestorID)

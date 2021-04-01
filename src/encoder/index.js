@@ -58,10 +58,10 @@ module.exports = class Encoder {
         myKey: encoderKey,
       }
       const log2Attestor = encoder.log.sub(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
-      // var id_streams = setTimeout(() => { log2Attestor({ type: 'encoder', data: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, 500)
+      var id_streams = setTimeout(() => { log2Attestor({ type: 'encoder', data: [`peerConnect timeout`] }) }, 500)
       const streams = await peerConnect(opts, log2Attestor)
       const allChunks = []
-      // clearTimeout(id_streams)
+      clearTimeout(id_streams)
 
       var total = 0
       for (const range of ranges) total += (range[1] + 1) - range[0]

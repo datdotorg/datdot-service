@@ -26,8 +26,8 @@ async function role (profile, APIS) {
   const blockNow = await chainAPI.getBlockNumber()
   const until = new Date('Dec 26, 2021 23:55:00')
   const untilBlock = dateToBlockNumber ({ dateNow: new Date(), blockNow, date: until })
-  const settings = { from: blockNow, until: untilBlock }
-  const form = registrationForm('attestor', settings)
+  const duration = { from: blockNow, until: untilBlock }
+  const form = registrationForm('attestor', duration)
   await chainAPI.registerAttestor({ form, attestorKey, signer, nonce })
 
   chainAPI.listenToEvents(handleEvent)
@@ -71,7 +71,7 @@ async function role (profile, APIS) {
       jobIDs.forEach(jobID => {
 
         const job = jobsDB.get(jobID)
-        if (job) { /* @TODO: ... */ }
+        if (job) { /* TODO: ... */ }
 
       })
     }
@@ -85,13 +85,14 @@ async function role (profile, APIS) {
       jobIDs.forEach(jobID => {
 
         const job = jobsDB.get(jobID)
-        if (job) { /* @TODO: ... */ }
+        if (job) { /* TODO: ... */ }
 
       })
     }
 
 
     if (event.method === 'NewAmendment') {
+      // console.log('NEW EVENT', event.method)
       const [amendmentID] = event.data
       const amendment = await chainAPI.getAmendmentByID(amendmentID)
       const contract = await chainAPI.getContractByID(amendment.contract)
@@ -101,27 +102,27 @@ async function role (profile, APIS) {
       log({ type: 'chainEvent', data: [`Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`] })
       const { feedKey, encoderKeys, hosterKeys, ranges } = await getData(amendment, contract)
 
-      const task = { account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges }
-      const ref = amendmentID
-      jobsDB.put(ref, task)
+      const data = { account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges }
+      // const ref = amendmentID
+      // jobsDB.put(ref, task)
 
-      jobsDB.list().forEach((ref, currentState) => {
+      // jobsDB.list().forEach((ref, currentState) => {
 
-        var controller = new AbortController()
-        // controller.abort()
-        var signal = controller.signal
+      //   var controller = new AbortController()
+      //   // controller.abort()
+      //   var signal = controller.signal
 
-        resume(ref, currentState, signal)
-      })
-      // @TODO: what if process crash and restart?
-      // @TODO: how to lookup and abort on another event?
-      var controller = new AbortController()
-      // controller.abort()
-      var signal = controller.signal
-      signal.onabort = event => {}
+      //   resume(ref, currentState, signal)
+      // })
+      // TODO: what if process crash and restart?
+      // TODO: how to lookup and abort on another event?
+      // var controller = new AbortController()
+      // // controller.abort()
+      // var signal = controller.signal
+      // signal.onabort = event => {}
 
 
-      const failedKeys = await serviceAPI.verifyAndForwardEncodings(task, {}, signal)
+      const failedKeys = await serviceAPI.verifyAndForwardEncodings(data)
       // .catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
       log({ type: 'attestor', data: [`Resolved all the responses for amendment: ${amendmentID}: ${failedKeys}`] })
       if (failedKeys) {
@@ -139,7 +140,7 @@ async function role (profile, APIS) {
         const encoders = amendment.encoders
         const nonce = await vaultAPI.getNonce()
         await chainAPI.amendmentReport({ report, signer, nonce })
-        jobsDB.del(ref)
+        // jobsDB.del(ref)
       }
       // const contract = await getData(event.data, isForMe)
       // if (!contract) return
@@ -160,7 +161,7 @@ async function role (profile, APIS) {
           const feedKey = await chainAPI.getFeedKey(feedID)
           const ranges = contract.ranges
           const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
-          // @TODO: meet with other attestors in the swarm to decide on random number of attestors
+          // TODO: meet with other attestors in the swarm to decide on random number of attestors
           //  sign random number
           //  add time of execution for each attestor
           //  select a reporter
@@ -204,7 +205,7 @@ async function role (profile, APIS) {
     for (var i = 0, len = proofs.length; i < len; i++) {
       response.hashes = []
       const proof = proofs[i]
-      const hash = proof // @TODO later hash the proof
+      const hash = proof // TODO later hash the proof
       response.hashes.push(hash)
       // does hoster send a hash or does attestor decode and then hash?
     }

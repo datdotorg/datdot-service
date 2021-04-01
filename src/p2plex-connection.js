@@ -3,16 +3,23 @@ const pump = require('pump')
 const ndjson = require('ndjson')
 const { PassThrough } = require('stream')
 
-const p2plex = require('p2plex')
+const p2plex = require('p2plex') // TODO: see what version 1.4.0 and higher don't work (see PR)
 const ANNOUNCE = { announce: true, lookup: false }
 const LOOKUP = { announce: false, lookup: true }
 
 function deriveTopicKey (arr) {
   const [id, keySender, feedKey, keyReceiver] = arr
-  const idBuf = Buffer.from(id.toString(), 'hex')
+  // console.log({arr})
+  // console.log(keySender.toString('hex'))
+  // console.log(keyReceiver.toString('hex'))
+  const idBuf = Buffer.from(id + 'deriving a topic', 'hex') // id to string is too short to make a unique buffer
+  // console.log('idBuf', idBuf.toString('hex'))
+  // console.log('ID', id)
+  // console.log('ID BUF', idBuf.toString('hex'))
   const conc = Buffer.concat([idBuf, keySender, feedKey, keyReceiver])
   const topic = Buffer.alloc(32)
   sodium.crypto_generichash(topic, conc)
+  // console.log('CONC', conc.toString('hex'))
   return topic
 }
 

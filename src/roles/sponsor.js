@@ -24,7 +24,7 @@ async function role (profile, APIS) {
     log({ type: 'sponsor', data: [`Got the keys, publishing data now => ${keys}`] })
     const { feedkey, topic } = JSON.parse(keys)
     const components = await makeComponents(feedkey, topic)
-    const duration = getFromUntilBlock()
+    const duration = await getFromUntilBlock()
     const plan = makePlan( duration, components)
     const nonce = await vaultAPI.getNonce()
     await chainAPI.publishPlan({ plan, signer, nonce })
@@ -89,9 +89,9 @@ async function role (profile, APIS) {
         // { plans: [] }, // duplicate program from referenced plans
         {
           dataset: [-1],
-          region: [-1, -2],
-          timetable: [-1],
-          performance: [-1],
+          regions: [-1, -2],
+          timetables: [-1],
+          performances: [-1],
         },
         // { dataset, regions, performance, times },
         // { dataset, regions, performance, times }
@@ -124,16 +124,16 @@ async function role (profile, APIS) {
   async function makeComponents (feedkey, topic) {
     const feed1 = await get_feed_metadata(log, feedkey, topic)
     const feeds = [feed1]
-    const dataset_items = [{ ref: -1, ranges: [[0,3], [5,8], [10,14]] }]
+    const dataset_items = [{ feed_id: -1, ranges: [[0,3], [5,8], [10,14]] }]
     const performance_items = [{ // OPTIONAL
       availability: '', // percentage_decimal
       bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
       latency: { /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
     }]
     const timetable_items = [{ // OPTIONAL
+      duration : '', // blocknumbers // { from, until }
       delay    : '', // milliseconds // default: 0
-      duration : '', // milliseconds // default: until - from
-      pause    : '', // milliseconds // default: none
+      interval : '', // milliseconds // 
       repeat   : '', // number // default: none
     }]
     const region_items = [{ geohash: 'X3F' }, { geohash: 'A0K' }]  // at least 1 region is mandatory (defaults to global)

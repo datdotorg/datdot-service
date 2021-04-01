@@ -1,14 +1,13 @@
 module.exports = registrationForm
 
-function registrationForm (settings) {
-  const { from, until } = settings
-  const resources = {
-    bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
+function registrationForm (role, duration) {
+  const resource_items = [{
+    bandwidth: { speed: { upload: 15, download: 50}, guarantee: 80 }, // bitspersecond, percentage_decimal
     // { upload, download, },
-    cpu: '', // guarantees? availibility?
+    cpu: 4, // guarantees? availibility?
     // hdd, // guarantees? availibility?
-    storage: '', // guarantees? availibility? 1000000000 //1 GB to bytes is 1e+9
-    RAM: '', // guarantees? availibility?
+    storage: 100000, // in kilobytes // guarantees? availibility? 1000000000 //1 GB to bytes is 1e+9
+    RAM: 3, // guarantees? availibility?
     // net: {
     //   bit: 'bit rate'
     //   cap: 'capacity'
@@ -34,14 +33,14 @@ function registrationForm (settings) {
     //   }
     //   // https://en.wikipedia.org/wiki/Mean_time_between_failures
     // }
-  }
-  const performance = { // OPTIONAL
+  }]
+  const performance_items = [{ // OPTIONAL
     availability: '', // percentage_decimal
     bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
     latency: { /*'lag', 'guarantee'*/ }, // milliseconds, percentage_decimal
-  }
-  const region = 'global'
-  const timetables = [
+  }]
+  const region_items = [{ geohash: 'X3F' }]
+  const timetable_items = [
     {
       duration :  1200, // milliseconds
       delay    :  200, // milliseconds
@@ -55,17 +54,15 @@ function registrationForm (settings) {
     }
   ]
   const form = {
-    components: { resources, performance, timetables, region },
-    // @TODO should times be converted into blocks??
-    from,    
-    until,
-    timetables  : [0, 1],
-    region      : 0,
-    performance : 0,
-    resources   : 0,
+    duration,
+    timetables  : [-1],
+    regions      : [-1],
+    performances : [-1],
+    resources   : [-1],
     // ENCODER cpu => 1 (10%) + 9
     // ATTESTOR bandwidth => 1
     // HOSTER storage, bandwidth => 1
+    components: { timetable_items, region_items, performance_items, resource_items },
   }
   return form
 }

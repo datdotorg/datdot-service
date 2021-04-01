@@ -79,12 +79,12 @@ async function execute_benchmark (event, signal) {
     feed.on('peer-add', peer => {
       // ...
       peer.destroy()
-      // @TODO: maybe observe request patterns for later re-use with hoster
+      // TODO: maybe observe request patterns for later re-use with hoster
     })
     // feed.on('peer-remove', peer) // Emitted when a peer is removed.
     feed.on('peer-open', peer => { // Emitted when a peer channel has been fully opened.
       peer.destroy()
-      // @TODO: maybe observe request patterns for later re-use with hoster
+      // TODO: maybe observe request patterns for later re-use with hoster
     })
     const ext = hosting_extension(feed, {
       onmessage (message, peer) {
