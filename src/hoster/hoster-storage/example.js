@@ -1,4 +1,4 @@
-const SDK = require('dat-sdk')
+const SDK = require('hyper-sdk')
 const RAM = require('random-access-memory')
 const levelup = require('levelup')
 const memdown = require('memdown')

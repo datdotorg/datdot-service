@@ -2,9 +2,13 @@ const delay = require('delay')
 const p2plex = require('p2plex')
 const { seedKeygen } = require('noise-peer')
 const { performance } = require('perf_hooks')
+const hypercore = require('hypercore')
+const RAM = require('random-access-memory')
+const { toPromises } = require('hypercore-promisifier')
+const Hyperbeam = require('hyperbeam')
+const derive_topic = require('../derive_topic')
 
 const peerConnect = require('../p2plex-connection')
-const requestResponse = require('../requestResponse')
 const EncoderDecoder = require('../EncoderDecoder')
 const getRangesCount = require('../getRangesCount')
 
@@ -41,158 +45,172 @@ module.exports = class Attestor {
   async verifyAndForwardFor (opts) {
     const attestor = this
 
-    // abortSignal.onabort = event => {
-    //   // TODO: cancel ongoing operations
-    // }
-
     return new Promise(async (resolve, reject) => {
       const { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, compareCB } = opts
-      const opts1 = {
-        plex: this.communication,
-        senderKey: encoderKey,
-        feedKey,
-        receiverKey: attestorKey,
-        id: amendmentID,
-        myKey: attestorKey,
-      }
       const log2encoder = attestor.log.sub(`<-Encoder ${encoderKey.toString('hex').substring(0,5)}`)
-
-      var id_streams1 = setTimeout(() => { log2encoder({ type: 'attestor', data: [`peerConnect timeout`] }) }, 500)
-      const encoderComm = await peerConnect(opts1, log2encoder)
-      clearTimeout(id_streams1)
-
-      const opts2 = {
-        plex: this.communication,
-        senderKey: attestorKey,
-        feedKey,
-        receiverKey: hosterKey,
-        id: amendmentID,
-        myKey: attestorKey,
-      }
       const log2hoster = attestor.log.sub(`->Hoster ${hosterKey.toString('hex').substring(0,5)}`)
-
-      var id_streams2 = setTimeout(() => { log2hoster({ type: 'attestor', data: [`peerConnect timeout`] }) }, 500)
-      const streams = await peerConnect(opts2, log2hoster)
-      clearTimeout(id_streams2)
-
-      // check the encoded data and if ok, send them to the hosters
-      log2encoder({ type: 'attestor', data: ['Start receiving data from the encoder'] })
+      
       const encodedReceived = []
       const comparedAndHosted = []
       const expectedMessageCount = getRangesCount(ranges)
       var encodedCount = 0
       var timeout
-
       // if it timeouts, we push failed encoders to failed array
       var timeoutID = setTimeout(encoderFailed, 5000)
-      function encoderFailed () {
-        console.log(`Timeout: encoder failed, amendment: ${amendmentID}`)
-        encoderComm.serialize$.end({ type: 'encoded:error', error: 'TIMEOUT' })
-        timeout = true
-        resolve(encoderKey)
-      }
       var failed
-      for await (const message of encoderComm.parse$) {
+      
+      // connect to encoder
+      const topic_encoder = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
+      const beam1 = new Hyperbeam(topic_encoder)
+
+      // connect to hoster
+      const topic_hoster = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID })
+      const beam2 = new Hyperbeam(topic_hoster)
+      
+      // get the key and replicate
+      const temp_topic = topic_encoder +'temp'
+      const beam_temp = new Hyperbeam(temp_topic)
+      beam_temp.once('data', async (data) => {
+        const message = JSON.parse(data.toString('utf-8'))
+        if (message.type === 'feedkey') replicate(Buffer.from(message.feedkey, 'hex'))
+        clearTimeout(timeoutID)
+      })
+
+      async function replicate (feedkey) {
+        const clone1 = toPromises(new hypercore(RAM, feedkey, {
+          valueEncoding: 'utf-8',
+          sparse: true
+        }))
+  
+        // pipe streams
+        const clone1Stream = clone1.replicate(false, { live: true })
+        clone1Stream.pipe(beam1).pipe(clone1Stream)
+
+        // // get replicated data
+        for (var i = 0; i < expectedMessageCount; i++) {
+          console.log('Getting replicated data')
+          const data = await clone1.get(i)
+          handle_encoded(data)
+        }
+
+      }
+
+      async function handle_encoded (data) {
+        const message = JSON.parse(data.toString('utf-8'))
+        const { type } = message
         if (timeout) return
         if (failed) return
-        log2encoder({ type: 'attestor', data: [`${message.index} RECV_MSG ${encoderKey.toString('hex')}`] })
-        encodedCount++
-        const { type } = message
+        
         if (type === 'encoded') {
+          encodedCount++
+          log2encoder({ type: 'attestor', data: [`${message.index} RECV_MSG count (${encodedCount}) from ${encoderKey.toString('hex')}`] })
           if (!merkleVerifyChunk(message)) {
             log2encoder({ type: 'attestor', data: [`Encoder failed ${encoderKey.toString('hex')} for message ${message.index}`] })
             failed = true
-            encoderComm.serialize$.end({ type: 'encoded:error', error: 'INVALID_CHUNK', messageType: type })
-            return resolve(encoderKey)
+            beam1.destroy({ type: 'encoded:error', error: 'INVALID_CHUNK', messageType: type })
+            // return resolve('Encoder failed', encoderKey)
           }
           encodedReceived.push({ message })
           comparedAndHosted.push(compareAndForwardPromise(message).catch(err => {
-            if (err.encoderKey) {
-              failed = true
-              encoderComm.serialize$.end({ type: 'encoded:error', error: 'INVALID_COMPRESSION', messageType: type })
-              resolve(err.encoderKey)
-            }
-            else if (err.hosterKey) resolve(err.hosterKey)
-            else resolve()
+            console.log('compareAndForwardPromise ERROR', err)
+            log2encoder(({ type: 'error', data: [`compareAndForwardPromise ERROR: ${err}`] }))
+            // if (err.encoderKey) {
+            //   failed = true
+            //   beam1.end({ type: 'encoded:error', error: 'INVALID_COMPRESSION', messageType: type })
+            //   resolve(err.encoderKey)
+            // }
+            // else if (err.hosterKey) resolve(err.hosterKey)
+            // else resolve()
           }))
-          if (encodedReceived.length === expectedMessageCount) break // TODO: do we need to END the stream here?
+          // if (encodedReceived.length === expectedMessageCount) break // TODO: do we need to END the stream here?
         } else {
           log2encoder({ type: 'attestor', data: [`encoded checking UNKNOWN_MESSAGE MESSAGE TYPE ${type} `] })
-          encoderComm.serialize$.end({ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', messageType: type })
+          beam1.end({ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', messageType: type })
           failed = true
-          resolve(encoderKey)
+          // resolve(encoderKey)
+        }
+        function merkleVerifyChunk (message) {
+          // TODO merkle verify chunk and re-use also in compareStorage
+          return true
         }
       }
 
-      function merkleVerifyChunk (message) {
-        // TODO merkle verify chunk and re-use also in compareStorage
-        return true
-      }
-
-      clearTimeout(timeoutID)
-      if (encodedReceived.length !== expectedMessageCount) return resolve(encoderKey)
-
+      // if (encodedReceived.length !== expectedMessageCount) return resolve(encoderKey)
       // prepare the report
       const results = await Promise.allSettled(comparedAndHosted)
       console.log({results})
+      if (results.length === expectedChunkCount) {
+        console.log('All encoded received and sent to the hoster')
+        resolve('All encoded received and sent to the hoster')
+        beam_temp.destroy()
+        beam1.destroy()
+        beam2.destroy()
+      }
+      
+      // const isFulfilled = this.allFulfilled(results)
+      // if (!isFulfilled) {
+      //   console.log(`Hoster failed: amendment: ${amendmentID} (${encodedReceived.length}/${expectedMessageCount})`)
+      //   log2encoder({ type: 'attestor', data: [`Hoster failed: amendment: ${amendmentID} (${encodedReceived.length}/${expectedMessageCount}))`] })
+      //   beam2.end()
+      //   resolve(hosterKey) // encoderKey
+      //   return
+      // }
+      // beam1.destroy()
+      // resolve()
+      // return
+
+      function encoderFailed () {
+        console.log(`Timeout: encoder failed, amendment: ${amendmentID}`)
+        beam1.end({ type: 'encoded:error', error: 'TIMEOUT' })
+        timeout = true
+        resolve('Encoder failed', encoderKey)
+      }
+
 
 // TODO: CHANGE ALL THE THINGS BELOW
 
-      // array<???> -> boolean
-      const isFulfilled = this.allFulfilled(results)
-      if (!isFulfilled) {
-        console.log(`Hoster failed: amendment: ${amendmentID} (${encodedReceived.length}/${expectedMessageCount})`)
-        log2encoder({ type: 'attestor', data: [`Hoster failed: amendment: ${amendmentID} (${encodedReceived.length}/${expectedMessageCount}))`] })
-        streams.end()
-        resolve(hosterKey) // encoderKey
-        return
-      }
-      streams.end()
-      resolve()
-      return
 
       function compareAndForwardPromise (message) {
         return new Promise((resolve, reject) => {
-          var timeoutOtherEncoder
+          // var timeoutOtherEncoder
           var timeoutHoster
-          var tid = setTimeout(() => { // something went wrong with another encoder
-            timeoutOtherEncoder = true
-            encoderComm.serialize$.end({ type: 'encoded:timeout' }) // @NOTE: new amendment is coming, encoder should keep all their data
-            resolve('timeout encoder')
-          }, 5000)
+          // var tid = setTimeout(() => { // something went wrong with another encoder
+          //   timeoutOtherEncoder = true
+          //   beam1.destroy() // @NOTE: new amendment is coming, encoder should keep all their data
+          //   log2encoder({ type: 'attestor', data: [`Timeout encoder`] })
+          //   resolve('timeout encoder')
+          // }, 5000)
           compareCB(message, encoderKey, async (err, res) => {
-            if (timeoutOtherEncoder) return resolve('timeoutOtherEncoder')
-            if (!err) {
-              log2encoder({ type: 'attestor', data: [`${message.index} SEND_ACK ${encoderKey.toString('hex')}`] })
-              encoderComm.serialize$.write({ type: 'encoded:checked', ok: true, index: message.index })
+            log2encoder({ type: 'attestor', data: [`RESPONSE for: Comparing index ${message.index} from encoder ${encoderKey.toString('hex')}`] })
+            // if (timeoutOtherEncoder) return resolve('timeoutOtherEncoder')
+            console.log({err})
+            console.log({res})
+            if (err) {
+              log2encoder({ type: 'attestor', data: [`Error from compare CB: ${err}`] })
+              return reject(err)
+            } else if (!err) {
               try {
                 const response = await sendToHoster(message, log2hoster)
+                log2hoster({ type: 'attestor', data: [`Got reponse`] })
                 return resolve('Got response')
               } catch (err) {
+                log2hoster({ type: 'attestor', data: [`Timeout hoster`] })
                 if (timeoutHoster) return
                 timeoutHoster = true
                 return resolve('hoster timeout', hosterKey)
               }
-            } else if (err) {
-              // TODO:future: make retry strategy (e.g. try again while waiting for others and stuff like that)
-              log2encoder({ type: 'attestor', data: ['encoded checking error'] })
-              encoderComm.serialize$.end({ type: 'encoded:error', error: 'INVALID_COMPRESSION', ...{ messageIndex: message.index } })
-              return reject(err)
-            }
             // 1. successful compare => write CHECKED:TRUE to encoder
             // 2. failed compare => end CHECKED:INVALID to encoder + ignore all further compare callbacks, because we dont notify encoder about more failed or unavailable chunks
             // 3. timeout compare => end CHECKED:UNAVAILABLE + ignore all further compare callbacks, because we dont notify encoder about more failed or unavailable chunks
+            }
           })
         })
+        async function sendToHoster (message, log2hoster) {
+          const { type, feed, index, encoded, proof, nodes, signature } = message
+          if (type !== 'encoded') return log({ type: 'attestor', data: [`Type not encoded, not sending to the hoster`] })
+          const msg = { type: 'verified', feed, index, encoded, proof, nodes, signature }
+        }
       }
-      async function sendToHoster (message, log2hoster) {
-        const { type, feed, index, encoded, proof, nodes, signature } = message
-        if (type !== 'encoded') return log({ type: 'attestor', data: [`Type not encoded, not sending to the hoster`] })
-
-        const msg = { type: 'verified', feed, index, encoded, proof, nodes, signature }
-        return requestResponse({ message: msg, sendStream: streams.serialize$, receiveStream: streams.parse$, log: log2hoster })
-      }
-
     })
   }
 
@@ -230,7 +248,7 @@ module.exports = class Attestor {
           // console.log(`Attestor received ${storageChallenge.chunks[index]}`)
           if (id === storageChallengeID) {
             if (proofIsVerified(message, feedKey, storageChallenge)) {
-              streams.serialize$.write({
+              streams.write({
                 type: 'StorageChallenge:verified',
                 ok: true
               })
@@ -266,7 +284,7 @@ module.exports = class Attestor {
       }
 
       function sendError (message, details = {}) {
-        streams.serialize$.end({
+        streams.end({
           type: 'StorageChallenge:error',
           error: message,
           ...details
@@ -325,17 +343,16 @@ module.exports = class Attestor {
     })
   }
 
-  // HELPERS
+  /* ----------------------------------------------------------------------
+                                  HELPERS
+  ---------------------------------------------------------------------- */
 
   allFulfilled(results) {
     var fulfilled = true
     for (var i = 0, len = results.length; i < len; i++) {
-      // fulfilled = status && (results[i].status === 'fulfilled')
-      fulfilled = results[i].status === 'fulfilled'
+      fulfilled = fulfilled && (results[i].status === 'fulfilled')
     }
     return fulfilled
   }
-
-
 
 }

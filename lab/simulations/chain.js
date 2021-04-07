@@ -653,7 +653,7 @@ async function activate_amendment (id, log) {
   amendment.providers = providers
   // emit event
   console.log(`New event emitted`, type, newJob)
-  log({ type, data: [type, newJob] })
+  log({ type: 'chain', data: [type, newJob] })
   emitEvent(type, [newJob], log)
 }
 
@@ -854,7 +854,7 @@ function tryNextChallenge ({ attestorID }, log) {
         }, log)
       }
       // emit event
-      log({ type, data: [type, newJob] })
+      log({ type: 'chain', data: [type, newJob] })
       emitEvent(type, [newJob], log)
     }
     if (next.fnName === 'NewPerformanceChallenge' && DB.status.idleAttestors.length >= 5) {
@@ -879,7 +879,7 @@ function tryNextChallenge ({ attestorID }, log) {
           newJob
         }, log)
         // emit event
-        log({ type, data: [type, newJob] })
+        log({ type: 'chain', data: [type, newJob] })
         emitEvent(type, [newJob], log)
       }
     }
@@ -1019,7 +1019,7 @@ async function makeStorageChallenge({ contract, hosterID, plan }, log) {
     newJob
   }, log)
   // emit event
-  log({ type, data: [type, newJob] })
+  log({ type: 'chain', data: [type, newJob] })
   emitEvent(type, [newJob], log)
 }
 async function makePerformanceChallenge ({ contractID, hosterID, plan }, log) {
@@ -1045,7 +1045,7 @@ async function makePerformanceChallenge ({ contractID, hosterID, plan }, log) {
     newJob
   }, log)
   // emit event
-  log({ type, data: [type, newJob] })
+  log({ type: 'chain', data: [type, newJob] })
   emitEvent(type, [newJob], log)
 }
 

@@ -24,7 +24,7 @@ function datdotService (profile) {
   ------------------------------------------------------------------ */
   async function encode ({ amendmentID, account, attestorKey, encoderKey, feedKey: feedKeyBuffer, ranges }) {
     log({ type: 'serviceAPI', data: [`Encode!`] })
-    return account.encoder.encodeFor(amendmentID, attestorKey, encoderKey, feedKeyBuffer, ranges)
+    return account.encoder.encodeFor({ amendmentID, attestorKey, encoderKey, feedKeyBuffer, ranges })
   }
 
   async function verifyAndForwardEncodings (data/*, currentState, signal*/) {
@@ -136,21 +136,19 @@ function datdotService (profile) {
   //  // STEP 4
 
   function compareEncodings ({messages, key, msg}, cb) {
-    const { index } = msg
     // get all three chunks from different encoders, compare and then respond to each
-    log({ type: 'serviceAPI', data: [`comparing encoding for index: ${index} (${messages[index] ? messages[index].length : 'none'}/3)`] })
-
-    const size = Buffer.from(msg.encoded).length // TODO or .bytelength
+    const { index, encoded  } = msg
+    const size = Buffer.from(encoded).byteLength // TODO or .length
     if (messages[index]) messages[index].push({ key, size, cb })
     else messages[index] = [{ key, size, cb }]
+    log({ type: 'serviceAPI', data: [`compareEncodings callback triggered for index: ${index} => (${messages[index].length}/3)`] })
     if (messages[index].length === 3) {
       log({ type: 'serviceAPI', data: [`Have 3 encodings, comparing them now!`] })
-      findInvalidEncoding(messages)
+      findInvalidEncoding(messages[index], cb)
     }
   }
-  function findInvalidEncoding (messages) {
+  function findInvalidEncoding (messages, cb) {
     const failedEncoders = []
-    // const { key, size, cb } =
     var smallest = messages[0].size
     for (var i = 0, len = messages.length; i < len; i++) {
       for (var k = i + 1; k < len; k++) {
@@ -166,7 +164,7 @@ function datdotService (profile) {
             cb(err)
           }
         }
-        else cb()
+        else cb(null, 'all good')
       }
     }
   }
