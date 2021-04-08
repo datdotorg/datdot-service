@@ -43,10 +43,9 @@ function datdotService (profile) {
   }
 
   async function host (data) {
-    const { account, amendmentID, feedKey, hosterKey, attestorKey, plan } = data
-    const opts = { amendmentID, feedKey, hosterKey, attestorKey, plan }
+    const { account, amendmentID, feedKey, hosterKey, attestorKey, plan, ranges } = data
+    const opts = { amendmentID, feedKey, hosterKey, attestorKey, plan, ranges }
     log({ type: 'serviceAPI', data: [`Host! ${JSON.stringify(opts)}`] })
-
     return await account.hoster.hostFor(opts)
   }
 
@@ -141,7 +140,7 @@ function datdotService (profile) {
     const size = Buffer.from(encoded).byteLength // TODO or .length
     if (messages[index]) messages[index].push({ key, size, cb })
     else messages[index] = [{ key, size, cb }]
-    log({ type: 'serviceAPI', data: [`compareEncodings callback triggered for index: ${index} => (${messages[index].length}/3)`] })
+    log({ type: 'serviceAPI', data: [`comparing encodings for index: ${index} => (${messages[index].length}/3)`] })
     if (messages[index].length === 3) {
       log({ type: 'serviceAPI', data: [`Have 3 encodings, comparing them now!`] })
       findInvalidEncoding(messages[index], cb)
@@ -164,7 +163,7 @@ function datdotService (profile) {
             cb(err)
           }
         }
-        else cb(null, 'all good')
+        else cb(null, 'all encodings valid')
       }
     }
   }

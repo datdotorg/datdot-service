@@ -42,6 +42,10 @@ module.exports = class Encoder {
     this.publicKey = noiseKeyPair.publicKey
   }
 
+    /* ----------------------------------------------------------------------
+                              ENCODE
+  ---------------------------------------------------------------------- */
+
   async encodeFor ({ amendmentID, attestorKey, encoderKey, feedKeyBuffer: feedKey, ranges }) {
     const encoder = this
     const log2Attestor = encoder.log.sub(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
@@ -60,7 +64,7 @@ module.exports = class Encoder {
       const topic = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
       const beam = new Hyperbeam(topic)
       // send the key
-      const temp_topic = topic +'temp'
+      const temp_topic = topic + 'temp'
       const beam_temp = new Hyperbeam(temp_topic)
       beam_temp.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
 
@@ -88,7 +92,6 @@ function sendDataToAttestor ({ core, encoder, range, feed, feedKey, beam, log })
 async function send (msg, { core, encoder, range, feed, feedKey, beam, log }) {
   return new Promise(async (resolve, reject) => {
     const message = await msg
-    console.log('Appending message', message.index)
     await core.append(JSON.stringify(message))
     log({ type: 'encoder', data: [`MSG appended ${message.index}`]})
   })

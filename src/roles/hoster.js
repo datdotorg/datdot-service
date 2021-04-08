@@ -51,8 +51,8 @@ async function role (profile, APIS) {
       const contract = await chainAPI.getContractByID(amendment.contract)
       const { hosters, attestors } = amendment.providers
       if (!await isForMe(hosters, event)) return
-      const { feedKey, attestorKey, plan } = await getHostingData(attestors, contract)
-      const data = { amendmentID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan }
+      const { feedKey, attestorKey, plan, ranges } = await getHostingData(attestors, contract)
+      const data = { amendmentID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan, ranges }
       await serviceAPI.host(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
       log({ type: 'hoster', data: [`Hosting for the amendment ${amendmentID} started`] })
     }
@@ -99,8 +99,9 @@ async function role (profile, APIS) {
     const feedKey = await chainAPI.getFeedKey(feedID)
     const objArr = ranges.map(range => ({ start: range[0], end: range[1] }))
     const plan = { ranges: objArr }
-    return { feedKey, attestorKey, plan }
+    return { feedKey, attestorKey, plan, ranges }
   }
+  
 
   async function getStorageChallengeData (storageChallenge, contract) {
     const feedID = contract.feed

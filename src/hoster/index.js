@@ -7,6 +7,12 @@ const { seedKeygen } = require('noise-peer')
 const HosterStorage = require('./hoster-storage')
 const peerConnect = require('../p2plex-connection')
 const requestResponse = require('../requestResponse')
+const hypercore = require('hypercore')
+const RAM = require('random-access-memory')
+const { toPromises } = require('hypercore-promisifier')
+const Hyperbeam = require('hyperbeam')
+const derive_topic = require('../derive_topic')
+const getRangesCount = require('../getRangesCount')
 
 const NAMESPACE = 'datdot-hoster'
 const NOISE_NAME = 'noise'
@@ -49,94 +55,131 @@ module.exports = class Hoster {
     return hoster
   }
 
-  async hostFor ({ amendmentID, feedKey, hosterKey, attestorKey, plan }) {
+      /* ------------------------------------------- 
+            1. GET ENCODED AND START HOSTING
+      -------------------------------------------- */
 
+  async hostFor ({ amendmentID, feedKey, hosterKey, attestorKey, plan, ranges }) {
     await this.setOpts(feedKey, plan)
     await this.addKey(feedKey, plan)
     await this.loadFeedData(feedKey)
-    await this.getEncodedDataFromAttestor({ amendmentID, hosterKey, attestorKey, feedKey })
-    this.log({ type: 'hoster', data: ['All done'] })
+    await this.getEncodedDataFromAttestor({ amendmentID, hosterKey, attestorKey, feedKey, ranges })
   }
-
-  async getEncodedDataFromAttestor ({ amendmentID, hosterKey, attestorKey, feedKey }) {
+  
+  async getEncodedDataFromAttestor ({ amendmentID, hosterKey, attestorKey, feedKey, ranges }) {
     const hoster = this
+    const log2attestor = hoster.log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
+
     return new Promise(async (resolve, reject) => {
-      const opts = {
-        plex: hoster.communication,
-        senderKey: attestorKey,
-        feedKey, 
-        receiverKey: hosterKey,
-        id: amendmentID,
-        myKey: hosterKey,
-      }
-      var counter = 0
-      const log2attestor = hoster.log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
-      // var id_stream = setTimeout(() => { log2attestor({ type: 'hoster', data: [`peerConnect timeout`] }) }, 5000)
-      const stream = await peerConnect(opts, log2attestor)
-      // clearTimeout(id_stream)
-
-      stream.on('data', message => on_encoder_data)
-
-      async function on_encoder_data (message) {
-        log2attestor({ type: 'hoster', data: [`RECV_MSG with index: ${message.index} from attestor ${attestorKey.toString('hex')}`] })
-        counter++
-        // TODO: decode and merkle verify each chunk (to see if it belongs to the feed) && verify the signature
-        const { type } = message
-        if (type === 'verified') {
-          const { feed, index, encoded, proof, nodes, signature } = message
-          if (!await isValidData(message)) return
-
-          async function isValidData (message) {
-            const { feed, index, encoded, proof, nodes, signature } = message
-            if (feed && index && encoded && proof && nodes && signature) return true
-          }
-
-          const key = Buffer.from(feed)
-          const isExisting = await hoster.hasKey(key)
-          // Fix up the JSON serialization by converting things to buffers
-          for (const node of nodes) node.hash = Buffer.from(node.hash)
-          if (!isExisting) {
-            const error = { type: 'encoded:error', error: 'UNKNOWN_FEED', ...{ key: key.toString('hex') } }
-            stream.write(error)
-            stream.end()
-            return reject(error)
-          }
-          try {
-            const data = {
-              key,
-              index,
-              proof: Buffer.from(proof),
-              encoded: Buffer.from(encoded),
-              nodes,
-              signature: Buffer.from(signature)
-            }
-            await hoster.storeEncoded(data)
-            log2attestor({ type: 'hoster', data: [`Hoster stored index: ${index}`] })
-            // log2attestor(index, ':attestor:MSG',attestorKey.toString('hex'))
-            stream.write({ type: 'encoded:stored', ok: true, index: message.index })
-          } catch (e) {
-            // Uncomment for better stack traces
-            const error = { type: 'encoded:error', error: `ERROR_STORING: ${e.message}`, ...{ e }, data }
-            stream.write(error)
-            log2attestor({ type: 'error', data: [`Error: ${error}`] })
-            stream.end()
-            return reject(error)
-          }
-        } else {
-          log2attestor({ type: 'error', data: [`UNKNOWN_MESSAGE messageType: ${type}`] })
-          const error ={ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', ...{ messageType: type } }
-          stream.write(error)
-          stream.end()
-          return reject(error)
+      const expectedChunkCount = getRangesCount(ranges)
+      const all_hosted = []
+      let counter = 0
+      
+      /* ------------------------------------------- 
+      a. CONNECT TO ATTESTOR
+      -------------------------------------------- */
+      const topic_attestor1 = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID })
+      const beam1 = new Hyperbeam(topic_attestor1)
+      
+      // get the key and replicate attestor hypercore
+      const temp_topic1 = topic_attestor1 + 'temp'
+      const beam_temp1 = new Hyperbeam(temp_topic1)
+      beam_temp1.once('data', async (data) => {
+        const message = JSON.parse(data.toString('utf-8'))
+        if (message.type === 'feedkey') replicate(Buffer.from(message.feedkey, 'hex'))
+      })
+      
+      async function replicate (feedkey) {
+        const clone1 = toPromises(new hypercore(RAM, feedkey, {
+          valueEncoding: 'utf-8',
+          sparse: true
+        }))
+        
+        // pipe streams
+        const clone1Stream = clone1.replicate(false, { live: true })
+        clone1Stream.pipe(beam1).pipe(clone1Stream)
+        
+        // // get replicated data
+        for (var i = 0; i < expectedChunkCount; i++) {
+          const message = await clone1.get(i)
+          const data = JSON.parse(message.toString('utf-8'))
+          all_hosted.push(await store_data(data).catch(err => {
+            console.log('Tried to store data, got this error', err)
+            // resolve(err) 
+          }))
+          beam_temp1.destroy()
         }
-      }
-
-      if (counter > 0) {
-        log2attestor({ type: 'hoster', data: [`Hoster received & stored all: ${counter}`] })
-        resolve()
+  
+        // store
+  
+        async function store_data (data) {
+          return new Promise(async (resolve, reject) => {
+            log2attestor({ type: 'hoster', data: [`RECV_MSG with index: ${data.index} from attestor ${attestorKey.toString('hex')}`] })
+            counter++
+            const { type } = data
+            if (type === 'verified') {
+              if (!(await is_valid_data(data))) return
+              const { feed, index, encoded, proof, nodes, signature } = data
+              const key = Buffer.from(feed)
+              const isExisting = await hoster.hasKey(key)
+              // Fix up the JSON serialization by converting things to buffers
+              for (const node of nodes) node.hash = Buffer.from(node.hash)
+              if (!isExisting) {
+                const error = { type: 'encoded:error', error: 'UNKNOWN_FEED', ...{ key: key.toString('hex') } }
+                // stream.write(error)
+                // stream.end()
+                return reject(error)
+              }
+              try {
+                await hoster.storeEncoded({
+                  key,
+                  index,
+                  proof: Buffer.from(proof),
+                  encoded: Buffer.from(encoded),
+                  nodes,
+                  signature: Buffer.from(signature)
+                })
+                console.log('Hoster stored.........................')
+                log2attestor({ type: 'hoster', data: [`Hoster received & stored index: ${index} (${counter}/${expectedChunkCount}`] })
+                resolve({ type: 'encoded:stored', ok: true, index: data.index })
+              } catch (e) {
+                // Uncomment for better stack traces
+                const error = { type: 'encoded:error', error: `ERROR_STORING: ${e.message}`, ...{ e }, data }
+                log2attestor({ type: 'error', data: [`Error: ${error}`] })
+                // beam1.destroy()
+                return reject(error)
+              }
+            } else {
+              log2attestor({ type: 'error', data: [`UNKNOWN_MESSAGE messageType: ${type}`] })
+              const error ={ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', ...{ messageType: type } }
+              // beam1.destroy()
+              return reject(error)
+            }
+          })
+    
+          async function is_valid_data (data) {
+            const { feed, index, encoded, proof, nodes, signature } = data
+            return !!(feed && index && encoded && proof && nodes && signature)
+          }
+        }
+  
+        // resolve
+        const results = await Promise.allSettled(all_hosted)
+        console.log({results})
+        if (results.length === expectedChunkCount) {
+          log2attestor({ type: 'hoster', data: [`All data successfully hosted`] })
+          beam1.destroy()
+          resolve('All data successfully hosted')
+        }
+  
       }
     })
+    
   }
+
+        /* ------------------------------------------- 
+            2. CHALLENGES
+      -------------------------------------------- */
 
   async removeFeed (key) {
     this.log({ type: 'hoster', data: [`Removing the feed`] })
@@ -328,4 +371,5 @@ module.exports = class Hoster {
       await storage.close()
     }
   }
+
 }
