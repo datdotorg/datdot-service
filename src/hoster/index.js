@@ -106,8 +106,8 @@ module.exports = class Hoster {
         }
 
         // resolve
-        const results = await Promise.all(all_hosted).catch(e => {
-          log2attestor({ type: 'error', data: [`Error getting results ${e}`] })
+        const results = await Promise.all(all_hosted).catch(err => {
+          log2attestor({ type: 'error', data: [`Error getting results ${err}`] })
         })
         // console.log({results})
         if (results.length === expectedChunkCount) {

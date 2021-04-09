@@ -143,7 +143,9 @@ function datdotService (profile) {
     log({ type: 'serviceAPI', data: [`comparing encodings for index: ${index} => (${messages[index].length}/3)`] })
     if (messages[index].length === 3) {
       log({ type: 'serviceAPI', data: [`Have 3 encodings, comparing them now!`] })
-      findInvalidEncoding(messages[index], cb)
+      findInvalidEncoding(messages[index], (err, res) => {
+        messages[index].forEach(obj => obj.cb(err, res))
+      })
     }
   }
   function findInvalidEncoding (messages, cb) {
@@ -160,6 +162,7 @@ function datdotService (profile) {
             cb(err)
           } else {
             smallest = b
+            failedEncoders.push(messages[i].key)
             cb(err)
           }
         }
