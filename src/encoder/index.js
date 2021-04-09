@@ -11,7 +11,7 @@ const getRangesCount = require('../getRangesCount')
 const NAMESPACE = 'datdot-encoder'
 const IDENITY_NAME = 'signing'
 const NOISE_NAME = 'noise'
-const DEFAULT_TIMEOUT = 5000
+const DEFAULT_TIMEOUT = 15000
 
 module.exports = class Encoder {
   constructor ({ sdk, EncoderDecoder }, log) {
@@ -49,51 +49,61 @@ module.exports = class Encoder {
   async encodeFor ({ amendmentID, attestorKey, encoderKey, feedKeyBuffer: feedKey, ranges }) {
     const encoder = this
     const log2Attestor = encoder.log.sub(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
+    const expectedChunkCount = getRangesCount(ranges)
+    let stats = {
+      ackCount: 0
+    }
     
     return new Promise(async (resolve, reject) => {
       if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
-      const expectedChunkCount = getRangesCount(ranges)
-      let ackCount = 0
       const feed = encoder.Hypercore(feedKey)
 
       // create temp hypercore
       const core = toPromises(new hypercore(RAM, { valueEncoding: 'utf-8' }))
       await core.ready()
+
       
       // connect to attestor
       const topic = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
       const beam = new Hyperbeam(topic)
+      
       // send the key
       const temp_topic = topic + 'temp'
       const beam_temp = new Hyperbeam(temp_topic)
       beam_temp.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
-
+      
       // pipe streams
       const coreStream = core.replicate(true, { live: true, ack: true })
       coreStream.pipe(beam).pipe(coreStream)
-      start(core)
+      coreStream.on('ack', ack => {
+        log2Attestor({ type: 'encoder', data: [`ACK from attestor: chunk received`] })
+        stats.ackCount++
+      })
 
-      async function start () {
+      start(core)
+      
+      async function start (core) {
         var total = 0
         for (const range of ranges) total += (range[1] + 1) - range[0]
         log2Attestor({ type: 'encoder', data: [`Start encoding and sending data to attestor`] })
-        for (const range of ranges) sendDataToAttestor({ core, encoder, range, feed, feedKey, beam, log: log2Attestor })
+        for (const range of ranges) sendDataToAttestor({ core, encoder, range, feed, feedKey, beam, log: log2Attestor, stats, expectedChunkCount })
       }
     })
   }
 }
 
-function sendDataToAttestor ({ core, encoder, range, feed, feedKey, beam, log }) {
+function sendDataToAttestor ({ core, encoder, range, feed, feedKey, beam, log, stats, expectedChunkCount }) {
   for (let index = range[0], len = range[1] + 1; index < len; index++) {
     const message = encode(encoder, index, feed, feedKey)
-    send(message, { core, encoder, range, feed, feedKey, beam, log })
+    send(message, { core, encoder, range, feed, feedKey, beam, log, stats, expectedChunkCount })
   }
 }
-async function send (msg, { core, encoder, range, feed, feedKey, beam, log }) {
+async function send (msg, { core, encoder, range, feed, feedKey, beam, log, stats, expectedChunkCount }) {
   return new Promise(async (resolve, reject) => {
     const message = await msg
     await core.append(JSON.stringify(message))
     log({ type: 'encoder', data: [`MSG appended ${message.index}`]})
+    if (stats.ackCount === expectedChunkCount) resolve(`Encoded ${message.index} sent`)
   })
 }
 async function encode (encoder, index, feed, feedKey) {

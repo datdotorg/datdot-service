@@ -14,7 +14,7 @@ const getRangesCount = require('../getRangesCount')
 
 const NAMESPACE = 'datdot-attestor'
 const NOISE_NAME = 'noise'
-const DEFAULT_TIMEOUT = 5000
+const DEFAULT_TIMEOUT = 7500
 
 module.exports = class Attestor {
   constructor ({ sdk, timeout = DEFAULT_TIMEOUT }, log) {
@@ -50,13 +50,13 @@ module.exports = class Attestor {
       const log2encoder = attestor.log.sub(`<-Encoder ${encoderKey.toString('hex').substring(0,5)}`)
       const log2hoster = attestor.log.sub(`->Hoster ${hosterKey.toString('hex').substring(0,5)}`)
       
-      const encodedReceived = []
       const comparedAndHosted = []
       const expectedChunkCount = getRangesCount(ranges)
-      var encodedCount = 0
+      let encodedCount = 0
+      let ackCount = 0
       var timeout
       // if it timeouts, we push failed encoders to failed array
-      var timeoutID = setTimeout(encoderFailed, 5000)
+      var timeoutID = setTimeout(encoderFailed, DEFAULT_TIMEOUT)
       var failed
       
       /* ------------------------------------------- 
@@ -73,6 +73,7 @@ module.exports = class Attestor {
         if (message.type === 'feedkey') replicate(Buffer.from(message.feedkey, 'hex'))
         clearTimeout(timeoutID)
       })
+
       
       async function replicate (feedkey) {
         const clone1 = toPromises(new hypercore(RAM, feedkey, {
@@ -85,12 +86,11 @@ module.exports = class Attestor {
         clone1Stream.pipe(beam1).pipe(clone1Stream)
 
         // // get replicated data
+        const allVerifiedAndForwarded = []
         for (var i = 0; i < expectedChunkCount; i++) {
-          const data = await clone1.get(i)
-          handle_encoded(data)
-          beam_temp1.destroy()
+          allVerifiedAndForwarded.push(handle_encoded(clone1.get(i)))
         }
-        prepare_report()
+        prepare_report(allVerifiedAndForwarded)
       }
 
       /* ------------------------------------------- 
@@ -106,6 +106,10 @@ module.exports = class Attestor {
       // pipe streams
       const coreStream = core.replicate(true, { live: true, ack: true })
       coreStream.pipe(beam2).pipe(coreStream)
+      coreStream.on('ack', ack => {
+        log2hoster({ type: 'attestor', data: [`ACK from hoster: chunk received`]})
+        ackCount++
+      })
 
       // send the feedkey
       const temp_topic2 = topic_hoster + 'temp'
@@ -115,72 +119,72 @@ module.exports = class Attestor {
 
       /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-      async function handle_encoded (data) {
-        const message = JSON.parse(data.toString('utf-8'))
-        const { type } = message
-        if (timeout) return
-        if (failed) return
-        
-        if (type === 'encoded') {
-          if (encodedReceived.length === expectedChunkCount) return
-          encodedCount++
-          log2encoder({ type: 'attestor', data: [`${message.index} RECV_MSG count (${encodedCount}) from ${encoderKey.toString('hex')}`] })
-          if (!merkleVerifyChunk(message)) {
-            log2encoder({ type: 'attestor', data: [`Encoder failed ${encoderKey.toString('hex')} for message ${message.index}`] })
-            failed = true
-            beam1.destroy({ type: 'encoded:error', error: 'INVALID_CHUNK', messageType: type })
-            // return resolve('Encoder failed', encoderKey)
-          }
-          encodedReceived.push({ message })
-          comparedAndHosted.push(compareAndForwardPromise(message).catch(err => {
-            console.log('compareAndForwardPromise ERROR', err)
-            log2encoder(({ type: 'error', data: [`compareAndForwardPromise ERROR: ${err}`] }))
-            if (err.encoderKey) {
+      async function handle_encoded (data_promise) {
+        return new Promise (async (resolve, reject) => {
+          const data = await data_promise
+          const message = JSON.parse(data.toString('utf-8'))
+          const { type } = message
+          if (timeout) return
+          if (failed) return
+          
+          if (type === 'encoded') {
+            encodedCount++
+            // if (ackCount === expectedChunkCount) resolve()
+            log2encoder({ type: 'attestor', data: [`${message.index} RECV_MSG from ${encoderKey.toString('hex')}`] })
+            if (!merkleVerifyChunk(message)) {
+              log2encoder({ type: 'attestor', data: [`Encoder failed ${encoderKey.toString('hex')} for message ${message.index}`] })
               failed = true
-              beam1.destroy({ type: 'encoded:error', error: 'INVALID_COMPRESSION', messageType: type })
-              resolve(err.encoderKey)
+              // beam1.destroy({ type: 'encoded:error', error: 'INVALID_CHUNK', messageType: type })
+              return resolve(encoderKey)
             }
-            else if (err.hosterKey) resolve(err.hosterKey)
-            else resolve(err)
-          }))
-        } else {
-          log2encoder({ type: 'attestor', data: [`encoded checking UNKNOWN_MESSAGE MESSAGE TYPE ${type} `] })
-          beam1.end({ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', messageType: type })
-          failed = true
-          // resolve(encoderKey)
-        }
-        function merkleVerifyChunk (message) {
-          // TODO merkle verify chunk and re-use also in compareStorage
-          return true
-        }
+            await compareAndForwardPromise(message).catch(err => {
+              log2encoder(({ type: 'error', data: [`compareAndForwardPromise ERROR: ${err}`] }))
+              if (err.encoderKey) {
+                failed = true
+                // beam1.destroy({ type: 'encoded:error', error: 'INVALID_COMPRESSION', messageType: type })
+                resolve(err.encoderKey)
+              }
+              else if (err.hosterKey) resolve(err.hosterKey)
+              // else resolve(err)
+            })
+            resolve()
+          } else {
+            log2encoder({ type: 'attestor', data: [`encoded checking UNKNOWN_MESSAGE MESSAGE TYPE ${type} `] })
+            // beam1.destroy({ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', messageType: type })
+            failed = true
+            resolve(err.encoderKey)
+          }
+          function merkleVerifyChunk (message) {
+            // TODO merkle verify chunk and re-use also in compareStorage
+            return true
+          }
+        })
       }
 
       function compareAndForwardPromise (message) {
         return new Promise((resolve, reject) => {
           var timeoutOtherEncoder
           var timeoutHoster
-          var tid = setTimeout(() => { // something went wrong with another encoder
+          var tid = setTimeout(() => {
             timeoutOtherEncoder = true
-            beam1.destroy() // @NOTE: new amendment is coming, encoder should keep all their data
             log2encoder({ type: 'attestor', data: [`Timeout encoder`] })
-            resolve('timeout encoder')
-          }, 15000)
+          }, DEFAULT_TIMEOUT)
           compareCB(message, encoderKey, async (err, res) => {
             log2encoder({ type: 'attestor', data: [`${res} (index ${message.index}, encoder ${encoderKey.toString('hex')})`] })
-            if (timeoutOtherEncoder) return resolve('timeoutOtherEncoder')
+            if (timeoutOtherEncoder) reject('timeoutOtherEncoder')
             if (err) {
               log2encoder({ type: 'attestor', data: [`Error from compare CB: ${err}`] })
-              return reject(err)
+              reject(err)
             } else if (!err) {
               try {
                 const response = await sendToHoster(message, log2hoster)
-                log2hoster({ type: 'attestor', data: [`Got reponse`] })
-                return resolve(`Hoster stored index ${message.index}`)
+                log2hoster({ type: 'attestor', data: [`Got response (kind of)`] })
+                resolve()
               } catch (err) {
                 log2hoster({ type: 'attestor', data: [`Timeout hoster`] })
                 if (timeoutHoster) return
                 timeoutHoster = true
-                return resolve('hoster timeout', hosterKey)
+                reject(hosterKey)
               }
             }
           })
@@ -189,25 +193,27 @@ module.exports = class Attestor {
  
       async function sendToHoster (message, log2hoster) {
         return new Promise(async (resolve, reject) => {
-          console.log('sending to hoster')
           message.type = 'verified'
           await core.append(JSON.stringify(message))
           log2hoster({ type: 'attestor', data: [`MSG appended ${message.index}`]})
-          // TODO: don't just asume, get some ack back before resolving)
-          setTimeout(() => { resolve({ type: 'attestor', message: [`Message stored: ${message.index}`]}) }, 2000)
+          // if (ackCount === encodedCount) resolve()
+          // resolve({ type: 'attestor', message: [`Message stored: ${message.index}`]})
+          setTimeout(() => {resolve({ type: 'attestor', message: [`Message stored: ${message.index}`]})}, 2000)
         })
       }
 
-      async function prepare_report () {
-        if (encodedReceived.length !== expectedChunkCount) return resolve(encoderKey)
-        const results = await Promise.allSettled(comparedAndHosted)
+      async function prepare_report (allVerifiedAndForwarded) {
+        if (allVerifiedAndForwarded.length !== expectedChunkCount) return console.log('Something went wrong')
+        const results = await Promise.all(allVerifiedAndForwarded).catch(e => {
+          console.log('ERROR', e)
+          log2hoster({ type: 'error', data: [`ERROR while preparing report ${e}`]})
+        })
         console.log({results})
-        if (results.length === expectedChunkCount) {
-          console.log('All encoded received and sent to the hoster')
-          beam1.destroy()
-          beam2.destroy()
-          resolve('All encoded received and sent to the hoster')
-        }
+        console.log('All encoded received and sent to the hoster')
+        console.log({ackCount})
+        resolve(results)
+        // beam1.destroy()
+        // beam2.destroy()
       }
 
       function encoderFailed () {

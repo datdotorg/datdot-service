@@ -18,7 +18,7 @@ const NAMESPACE = 'datdot-hoster'
 const NOISE_NAME = 'noise'
 const ALL_KEYS_KEY = 'all_keys'
 const DEFAULT_OPTS = { ranges: [{ start: 0, end: Infinity }], watch: true }
-const DEFAULT_TIMEOUT = 5000
+const DEFAULT_TIMEOUT = 7500
 
 module.exports = class Hoster {
   constructor ({ db, sdk, EncoderDecoder }, log) {
@@ -101,20 +101,26 @@ module.exports = class Hoster {
         
         // // get replicated data
         for (var i = 0; i < expectedChunkCount; i++) {
-          const message = await clone1.get(i)
-          const data = JSON.parse(message.toString('utf-8'))
-          all_hosted.push(await store_data(data).catch(err => {
-            console.log('Tried to store data, got this error', err)
-            // resolve(err) 
-          }))
-          beam_temp1.destroy()
+          all_hosted.push(store_data(clone1.get(i)))
+          // beam_temp1.destroy()
         }
-  
-        // store
-  
-        async function store_data (data) {
+
+        // resolve
+        const results = await Promise.all(all_hosted).catch(e => {
+          log2attestor({ type: 'error', data: [`Error getting results ${e}`] })
+        })
+        // console.log({results})
+        if (results.length === expectedChunkCount) {
+          log2attestor({ type: 'hoster', data: [`All data successfully hosted`] })
+          // beam1.destroy()
+          resolve('All data successfully hosted')
+        }
+    
+        async function store_data (data_promise) {
+          log2attestor({ type: 'hoster', data: [`RECV_MSG with index: ${data.index} from attestor ${attestorKey.toString('hex')}`] })
           return new Promise(async (resolve, reject) => {
-            log2attestor({ type: 'hoster', data: [`RECV_MSG with index: ${data.index} from attestor ${attestorKey.toString('hex')}`] })
+            const message = await data_promise
+            const data = JSON.parse(message.toString('utf-8'))
             counter++
             const { type } = data
             if (type === 'verified') {
@@ -139,7 +145,6 @@ module.exports = class Hoster {
                   nodes,
                   signature: Buffer.from(signature)
                 })
-                console.log('Hoster stored.........................')
                 log2attestor({ type: 'hoster', data: [`Hoster received & stored index: ${index} (${counter}/${expectedChunkCount}`] })
                 resolve({ type: 'encoded:stored', ok: true, index: data.index })
               } catch (e) {
@@ -161,15 +166,6 @@ module.exports = class Hoster {
             const { feed, index, encoded, proof, nodes, signature } = data
             return !!(feed && index && encoded && proof && nodes && signature)
           }
-        }
-  
-        // resolve
-        const results = await Promise.allSettled(all_hosted)
-        console.log({results})
-        if (results.length === expectedChunkCount) {
-          log2attestor({ type: 'hoster', data: [`All data successfully hosted`] })
-          beam1.destroy()
-          resolve('All data successfully hosted')
         }
   
       }
@@ -257,7 +253,7 @@ module.exports = class Hoster {
     var timeoutID = setTimeout(() => {
       timeout = true
       stream.end()
-    }, 5000)
+    }, DEFAULT_TIMEOUT)
     hoster.log({ type: 'hoster', data: [`Starting sendStorageChallenge`] })
     const storageChallengeID = storageChallenge.id
     const chunks = storageChallenge.chunks
@@ -272,7 +268,7 @@ module.exports = class Hoster {
         myKey: hosterKey,
       }
       const log2attestor4Challenge = hoster.log.sub(`<-Attestor4challenge ${attestorKey.toString('hex').substring(0,5)}`)
-      var id_stream = setTimeout(() => { log2attestor4Challenge({ type: 'hoster', data: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, 500)
+      var id_stream = setTimeout(() => { log2attestor4Challenge({ type: 'hoster', data: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, DEFAULT_TIMEOUT)
       const stream = await peerConnect(opts, log2attestor4Challenge)
       clearTimeout(id_stream)
       hoster.log({ type: 'hoster', data: [`Got the streams`] })
