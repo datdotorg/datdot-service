@@ -82,7 +82,7 @@ module.exports = class Hoster {
       const beam1 = new Hyperbeam(topic_attestor1)
       
       // get the key and replicate attestor hypercore
-      const temp_topic1 = topic_attestor1 + 'temp'
+      const temp_topic1 = topic_attestor1 + 'once'
       const beam_temp1 = new Hyperbeam(temp_topic1)
       beam_temp1.once('data', async (data) => {
         const message = JSON.parse(data.toString('utf-8'))
@@ -101,6 +101,7 @@ module.exports = class Hoster {
         
         // // get replicated data
         for (var i = 0; i < expectedChunkCount; i++) {
+          log2attestor({ type: 'hoster', data: [`Getting data: counter ${i}`] })
           all_hosted.push(store_data(clone1.get(i)))
           // beam_temp1.destroy()
         }
@@ -111,21 +112,27 @@ module.exports = class Hoster {
         })
         // console.log({results})
         if (results.length === expectedChunkCount) {
-          log2attestor({ type: 'hoster', data: [`All data successfully hosted`] })
+          log2attestor({ type: 'hoster', data: [`All data (${expectedChunkCount} chunks) successfully hosted`] })
           // beam1.destroy()
-          resolve('All data successfully hosted')
+          resolve(`All data chunks successfully hosted`)
         }
     
+        /* ------------------------------------------- 
+                    b. STORE
+        -------------------------------------------- */
+
         async function store_data (data_promise) {
+          const message = await data_promise
+          const data = JSON.parse(message.toString('utf-8'))
           log2attestor({ type: 'hoster', data: [`RECV_MSG with index: ${data.index} from attestor ${attestorKey.toString('hex')}`] })
+          
           return new Promise(async (resolve, reject) => {
-            const message = await data_promise
-            const data = JSON.parse(message.toString('utf-8'))
             counter++
             const { type } = data
             if (type === 'verified') {
-              if (!(await is_valid_data(data))) return
+              if (!is_valid_data(data)) return
               const { feed, index, encoded, proof, nodes, signature } = data
+              log2attestor({ type: 'hoster', data: [`Storing verified message with index: ${data.index}`] })
               const key = Buffer.from(feed)
               const isExisting = await hoster.hasKey(key)
               // Fix up the JSON serialization by converting things to buffers

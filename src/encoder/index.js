@@ -68,7 +68,7 @@ module.exports = class Encoder {
       const beam = new Hyperbeam(topic)
       
       // send the key
-      const temp_topic = topic + 'temp'
+      const temp_topic = topic + 'once'
       const beam_temp = new Hyperbeam(temp_topic)
       beam_temp.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
       

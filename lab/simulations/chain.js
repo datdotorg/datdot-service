@@ -341,7 +341,6 @@ async function unregisterAttestor (user, { name, nonce }, status) {
 async function _amendmentReport (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [ report ] = args
-  console.log('chain received a report -----------------------------')
   console.log({report})
   const { id: amendmentID, failed } = report // [2,6,8]
   const amendment = getAmendmentByID(amendmentID)
@@ -763,8 +762,6 @@ async function removeJob ({ providers, jobID }, log) {
 }
 
 function removeJobForRolesXXXX ({ providers, jobID }, log) {
-  console.log('Removing jobs')
-  console.log({providers})
   const { hosters = [], attestors = [], encoders = [] } = providers
   hosters.forEach((hosterID, i) => {
     removeJobForRoleYYYY({

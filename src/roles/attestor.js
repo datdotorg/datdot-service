@@ -69,27 +69,19 @@ async function role (profile, APIS) {
       const [planID] = event.data
       const jobIDs = unpublishedPlan_jobIDs(planID)
       jobIDs.forEach(jobID => {
-
         const job = jobsDB.get(jobID)
         if (job) { /* TODO: ... */ }
-
       })
     }
     if (event.method === 'DropHosting') {
-
       attestorAddress
-
       const [planID] = event.data
       const jobIDs = unpublishedPlan_jobIDs(planID)
-
       jobIDs.forEach(jobID => {
-
         const job = jobsDB.get(jobID)
         if (job) { /* TODO: ... */ }
-
       })
     }
-
 
     if (event.method === 'NewAmendment') {
       // console.log('NEW EVENT', event.method)
@@ -103,50 +95,20 @@ async function role (profile, APIS) {
       const { feedKey, encoderKeys, hosterKeys, ranges } = await getData(amendment, contract)
 
       const data = { account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges }
-      // const ref = amendmentID
-      // jobsDB.put(ref, task)
-
-      // jobsDB.list().forEach((ref, currentState) => {
-
-      //   var controller = new AbortController()
-      //   // controller.abort()
-      //   var signal = controller.signal
-
-      //   resume(ref, currentState, signal)
-      // })
-      // TODO: what if process crash and restart?
-      // TODO: how to lookup and abort on another event?
-      // var controller = new AbortController()
-      // // controller.abort()
-      // var signal = controller.signal
-      // signal.onabort = event => {}
-
-
-      const failedKeys = await serviceAPI.verifyAndForwardEncodings(data)
-      // .catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
+      const failedKeys = await serviceAPI.verifyAndForwardEncodings(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
       log({ type: 'attestor', data: [`Resolved all the responses for amendment: ${amendmentID}: ${failedKeys}`] })
-      if (failedKeys) {
-        const failed = []
-        if (failedKeys.length) {
-          for (var i = 0, len = failedKeys.length; i < len; i++) {
-            const key = failedKeys[i]
-            if (key) {
-              const id = await chainAPI.getUserIDByKey(key)
-              failed.push(id)
-            }
-          }
-        }
-        const report = { id: amendmentID, failed }
-        const encoders = amendment.encoders
-        const nonce = await vaultAPI.getNonce()
-        await chainAPI.amendmentReport({ report, signer, nonce })
-        // jobsDB.del(ref)
+      
+      const failed = []
+      for (var i = 0, len = failedKeys.length; i < len; i++) {
+        const id = await chainAPI.getUserIDByKey(failedKeys[i])
+        failed.push(id)
       }
-      // const contract = await getData(event.data, isForMe)
-      // if (!contract) return
-      // const { feedKey, encoderKeys, hosterKeys } = contract
-      // await serviceAPI.verifyEncoding({ account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, contractID })
+      const report = { id: amendmentID, failed }
+      const encoders = amendment.encoders
+      const nonce = await vaultAPI.getNonce()
+      await chainAPI.amendmentReport({ report, signer, nonce })
     }
+
     if (event.method === 'NewPerformanceChallenge') {
       const [performanceChallengeID] = event.data
       const performanceChallenge = await chainAPI.getPerformanceChallengeByID(performanceChallengeID)

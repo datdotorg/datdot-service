@@ -34,12 +34,12 @@ function datdotService (profile) {
     for (var i = 0, len = encoderKeys.length; i < len; i++) {
       const encoderKey = encoderKeys[i]
       const hosterKey = hosterKeys[i]
-      const opts = { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, compareCB: (msg, key, cb) => compareEncodings({messages, key, msg}, cb) }
+      const opts = { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, compareCB: (msg, key) => compareEncodings({messages, key, msg}) }
       log({ type: 'serviceAPI', data: [`Verify encodings!`] })
       responses.push(account.attestor.verifyAndForwardFor(opts))
     }
-    const failedKeys = await Promise.all(responses)
-    return failedKeys
+    const failedKeys = await Promise.all(responses) // can be 0 to 6 pubKeys of failed providers
+    return failedKeys.flat()
   }
 
   async function host (data) {
@@ -92,61 +92,27 @@ function datdotService (profile) {
   /******************************************************************************
     HELPER FUNCTIONS
   ******************************************************************************/
-  // FLOW:
-  // // STEP 0: ATTESTOR
-  // if (event.method === 'NewAmendment') {
-  //   // ...
-  //   const failed = await serviceAPI.verifyAndForwardEncodings(opts, signal)
-  //   // ...
-  //   const report = { id: amendmentID, failed }
-  //   await chainAPI.amendmentReport({ report })
-  // }
-  //  // STEP 1
-  //  async function verifyEncodings ({ account, amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges }) {
-  //    const messages = {}
-  //    const responses = []
-  //    for (var i = 0, len = encoderKeys.length; i < len; i++) {
-  //      const encoderKey = encoderKeys[i]
-  //      const hosterKey = hosterKeys[i]
-  //      const opts = { /*...*/ compareCB: (msg, cb) => compareEncodings(messages, msg, cb) }
-  //      responses.push(account.attestor.verifyEncodingFor(opts))
-  //    }
-  //    return await Promise.all(responses) // failedKeys
-  //  }
-  //  // STEP 2
-  //  async verifyEncodingFor (opts) {
-  //    // ...
-  //    for await (const message of encoderComm.parse$) {
-  //      //...
-  //      verifiedAndStored.push(compareEncodingsPromise(message).catch(err => {  ...  }))
-  //      //...
-  //   }
-  //   // ...
-  // }
-  // // STEP 3
-  //  function compareEncodingsPromise (message) {
-  //    return new Promise((resolve, reject) => {
-  //      compareCB(message, async (err, res) => {
-  //        if (!err) await sendToHoster(message, log2hoster)
-  //        else reject(err)
-  //      })
-  //    })
-  //  }
-  //  // STEP 4
 
-  function compareEncodings ({messages, key, msg}, cb) {
-    // get all three chunks from different encoders, compare and then respond to each
-    const { index, encoded  } = msg
-    const size = Buffer.from(encoded).byteLength // TODO or .length
-    if (messages[index]) messages[index].push({ key, size, cb })
-    else messages[index] = [{ key, size, cb }]
-    log({ type: 'serviceAPI', data: [`comparing encodings for index: ${index} => (${messages[index].length}/3)`] })
-    if (messages[index].length === 3) {
-      log({ type: 'serviceAPI', data: [`Have 3 encodings, comparing them now!`] })
-      findInvalidEncoding(messages[index], (err, res) => {
-        messages[index].forEach(obj => obj.cb(err, res))
-      })
-    }
+  async function compareEncodings ({messages, key, msg}) {
+    return new Promise(async (resolve, reject) => {
+      // get all three chunks from different encoders, compare and then respond to each
+      const message = await msg
+      const data = JSON.parse(message)
+      const { index, encoded  } = data
+      const size = Buffer.from(encoded).byteLength // TODO or .length
+      if (messages[index]) messages[index].push({ key, size, resolve, reject })
+      else messages[index] = [{ key, size, resolve, reject }]
+      log({ type: 'serviceAPI', data: [`comparing encodings for index: ${index} => (${messages[index].length}/3)`] })
+      if (messages[index].length === 3) {
+        log({ type: 'serviceAPI', data: [`Have 3 encodings, comparing them now!`] })
+        findInvalidEncoding(messages[index], (err, res) => {
+          messages[index].forEach(item => {
+            if (err) item.reject(err)
+            if (res) item.resolve(res)
+          })
+        })
+      }
+    })
   }
   function findInvalidEncoding (messages, cb) {
     const failedEncoders = []
@@ -158,15 +124,14 @@ function datdotService (profile) {
           if (a < b) {
             smallest = a
             failedEncoders.push(messages[k].key)
-            const err = { type: 'Encoding failed', failedEncoders }
-            cb(err)
+            cb({ type: 'invalid_encoding', key: failedEncoders })
           } else {
             smallest = b
             failedEncoders.push(messages[i].key)
-            cb(err)
+            cb({ type: 'invalid_encoding', key: failedEncoders })
           }
         }
-        else cb(null, 'all encodings valid')
+        else cb(null, { type: 'verified' })
       }
     }
   }
