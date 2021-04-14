@@ -39,10 +39,10 @@ module.exports = class Attestor {
   }
 
 /* ----------------------------------------------------------------------
-                            VERIFY ENCODING
+                            HOSTING SETUP
 ---------------------------------------------------------------------- */
 
-  async verifyAndForwardFor (opts) {
+  async hosting_setup (opts) {
     const { amendmentID, attestorKey, encoderKey, hosterKey, feedKey, ranges, compareCB } = opts
     const topic_encoder = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
     const topic_hoster = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID })
@@ -82,30 +82,34 @@ module.exports = class Attestor {
       try {
         if (type === 'FAIL') {
           STATUS = 'FAILED'
-          return hoster_channel('QUIT')
+          hoster_channel('QUIT')
+          return
         }
         if (type === 'DONE') {
-          STATUS = 'DONE'
+          STATUS = 'END'
           if (!pending) hoster_channel('QUIT')
           return
         }
-        if (type === 'DATA') pending++
-        await compareCB(chunk, encoderKey) // TODO: REFACTOR to promise and throw invalid_encoding or other_encoder_failed
-        if (STATUS === 'FAILED') {
+        if (type === 'DATA') {
+          pending++
+          await compareCB(chunk, encoderKey) // TODO: REFACTOR to promise and throw invalid_encoding or other_encoder_failed  
+          if (STATUS === 'FAILED') {
+            pending--
+            if (!pending) hoster_channel('QUIT')
+            return
+          }
+          await hoster_channel('SEND', chunk)
           pending--
-          if (!pending) hoster_channel('QUIT')
-          return
+          if (STATUS === 'END' || STATUS === 'FAILED') {
+            if (!pending) hoster_channel('QUIT')
+            return
+          }
+          console.log('return next')
         }
-        await hoster_channel('SEND', chunk)
-        pending--
-        if (STATUS === 'DONE' || STATUS === 'FAILED') {
-          if (!pending) hoster_channel('QUIT')
-          return
-        }
-        return 'NEXT'
+        // return 'NEXT'
       } catch (err) {
         pending--
-        if (STATUS === 'DONE') {
+        if (STATUS === 'END') {
           if (!pending) hoster_channel('QUIT')
           return
         }
@@ -113,16 +117,16 @@ module.exports = class Attestor {
           encoder_failed = true
           hoster_channel('QUIT')
           report.push(encoderKey)
-          STATUS = 'FAIL'
+          STATUS = 'FAILED'
           return 'QUIT'
         }
         else if (err.type === 'other_encoder_failed') {
-          STATUS = 'FAIL'
+          STATUS = 'FAILED'
           hoster_channel('QUIT')
           return 'MUTE' // keep receiving chunks, but stop listening
         }
         else if (err.type === 'hoster_timeout') {
-          STATUS = 'FAIL'
+          STATUS = 'FAILED'
           hoster_failed = true
           report.push(hosterKey)
           return 'MUTE'
@@ -138,15 +142,15 @@ module.exports = class Attestor {
       var beam_error
       return new Promise(async (resolve, reject) => {
         const tid = setTimeout(() => {
-          beam.destroy()
+          // beam.destroy()
           reject({ type: `${role}_timeout` })
         }, DEFAULT_TIMEOUT)
         const beam = new Hyperbeam(topic)
         beam.on('error', err => { 
           clearTimeout(tid)
-          beam.destroy()
+          // beam.destroy()
           if (beam_once) {
-            beam_once.destroy()
+            // beam_once.destroy()
             reject({ type: `${role}_connection_fail`, data: err })
           } else beam_error = err
         })
@@ -155,8 +159,8 @@ module.exports = class Attestor {
         var beam_once = new Hyperbeam(once_topic)
         beam_once.on('error', err => { 
           clearTimeout(tid)
-          beam_once.destroy()
-          beam.destroy()
+          // beam_once.destroy()
+          // beam.destroy()
           reject({ type: `${role}_connection_fail`, data: err })
         })
         if (isSender) {
@@ -168,8 +172,8 @@ module.exports = class Attestor {
               core = clone
               const cloneStream = clone.replicate(false, { live: true })
               cloneStream.pipe(beam).pipe(cloneStream)
-              beam_once.destroy()
-              beam_once = undefined
+              // beam_once.destroy()
+              // beam_once = undefined
               resolve(channel)
             }
           })
@@ -182,10 +186,13 @@ module.exports = class Attestor {
           const coreStream = core.replicate(true, { live: true, ack: true })
           coreStream.pipe(beam).pipe(coreStream)
           beam_once.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
-          coreStream.on('ack', ack => {
+          coreStream.on('ack', function (ack) {
+            console.log('ACK INDEX', ack.start)
             const index = ack.start
-            const resolve = chunks[index].resolve
+            const store = chunks[index]
+            const resolve = store.resolve
             delete chunks[index]
+            chunks[index] = ack
             resolve()
           })
           resolve(channel)
@@ -195,7 +202,7 @@ module.exports = class Attestor {
           if (type === 'QUIT') {
             return new Promise((resolve, reject) => {
               clearTimeout(tid)
-              beam.destroy()
+              // beam.destroy()
               resolve()
             })
           }
@@ -204,8 +211,10 @@ module.exports = class Attestor {
               const message = await data
               const parsed = JSON.parse(message.toString('utf-8'))
               parsed.type = 'verified'
-              chunks[parsed.index] = { resolve, reject }
-              await core.append(JSON.stringify(parsed))
+              const id = await core.append(JSON.stringify(parsed))
+              chunks[id] = { resolve, reject }
+              console.log('SENT INDEX', id)
+              // resolve()
             })
           }
           else if (type === 'HEAR') {
@@ -217,40 +226,40 @@ module.exports = class Attestor {
               core.on('error', err => {
                 error = err
                 clearTimeout(tid)
-                beam.destroy()
+                // beam.destroy()
                 reject({ type: `${role}_connection_fail`, data: err })
               })
               // get replicated data
               const chunks = []
               for (var i = 0; i < expectedChunkCount; i++) {
-                if (status === 'DONE') return
+                if (status === 'END') return
                 const chunk = core.get(i)
-                chunks.push(chunk)
                 if (status === 'MUTED') continue
                 const promise = handlerCB('DATA', chunk)
+                chunks.push(promise)
                 promise.catch(err => {
+                  console.log('ERROR promise handlerCB', err)
                   status = 'FAIL'
                   clearTimeout(tid)
-                  beam.destroy()
+                  // beam.destroy()
                   reject({ type: `${role}_connection_fail`, data: err })
                   handlerCB('FAIL', err)
                 }).then(type => {
-                  if (type === 'NEXT') return
-                  if (type === 'MUTE') status = 'MUTED'
+                  if (status === 'END') return
+                  if (type === 'MUTE') return status = 'MUTED'
                   if (type === 'QUIT') {
-                    status = 'DONE'
-                    clearTimeout(tid)
-                    beam.destroy()
-                    handlerCB('DONE')
-                    return resolve()
+                    // beam.destroy()
+                    // if (status !== 'MUTED')
+                    status = 'END'
                   }
                 })
               }
+              handlerCB('DONE')
+              status = 'END'
               await Promise.all(chunks)
               clearTimeout(tid)
-              beam.destroy()
+              // beam.destroy()
               resolve(report)
-              handlerCB('DONE')
             })
           }
         }
@@ -262,54 +271,92 @@ module.exports = class Attestor {
   /* ----------------------------------------------------------------------
                           VERIFY STORAGE CHALLENGE
   ---------------------------------------------------------------------- */
-
   async verifyStorageChallenge (data) {
     const attestor = this
     return new Promise(async (resolve, reject) => {
-      const { storageChallenge, attestorKey, hosterKey, feedKey } = data
-      const id = storageChallenge.id
       attestor.log({ type: 'attestor', data: [`Starting verifyStorageChallenge}`] })
+      const { storageChallenge: {id, chunks }, attestorKey, hosterKey, feedKey } = data
+      const topic = derive_topic({ senderKey: hosterKey, feedKey, receiverKey: attestorKey, id })
 
-      const opts3 = {
-        plex: this.communication,
-        senderKey: hosterKey,
-        feedKey,
-        receiverKey: attestorKey,
-        id,
-        myKey: attestorKey,
-      }
-      const log2hosterChallenge = attestor.log.sub(`<-HosterChallenge ${hosterKey.toString('hex').substring(0,5)}`)
-
-      // var id_streams = setTimeout(() => { log2hosterChallenge({ type: 'attestor', data: [`peerConnect timeout, ${JSON.stringify(opts3)}`] }) }, 500)
-      const streams = await peerConnect(opts3, log2hosterChallenge)
-      // clearTimeout(id_streams)
+      const tid = setTimeout(() => {
+        beam.destroy()
+        reject({ type: `attestor_timeout` })
+      }, DEFAULT_TIMEOUT)
+      const beam = new Hyperbeam(topic)
+      beam.on('error', err => { 
+        clearTimeout(tid)
+        beam.destroy()
+        if (beam_once) {
+          beam_once.destroy()
+          reject({ type: `attestor_connection_fail`, data: err })
+        }
+      })
+      let core
+      const once_topic = topic + 'once'
+      var beam_once = new Hyperbeam(once_topic)
+      beam_once.on('error', err => { 
+        clearTimeout(tid)
+        beam_once.destroy()
+        beam.destroy()
+        reject({ type: `${role}_connection_fail`, data: err })
+      })
+      beam_once.once('data', async (data) => {
+        const message = JSON.parse(data.toString('utf-8'))
+        if (message.type === 'feedkey') {
+          const feedKey = Buffer.from(message.feedkey, 'hex')
+          const clone = toPromises(new hypercore(RAM, feedKey, { valueEncoding: 'utf-8', sparse: true }))
+          core = clone
+          const cloneStream = clone.replicate(false, { live: true })
+          cloneStream.pipe(beam).pipe(cloneStream)
+          beam_once.destroy()
+          beam_once = undefined
+          resolve(channel)
+        }
+      })
 
       const all = []
-      for await (const message of streams.parse$) {
-        const { type } = message
-        if (type === 'StorageChallenge') {
-          const { storageChallengeID, data, index } = message
-          log2hosterChallenge({ type: 'attestor', data: [`Storage Proof received, ${message.index}`]})
-          // console.log(`Attestor received ${storageChallenge.chunks[index]}`)
-          if (id === storageChallengeID) {
-            if (proofIsVerified(message, feedKey, storageChallenge)) {
-              streams.write({
-                type: 'StorageChallenge:verified',
-                ok: true
-              })
-              log2hosterChallenge({ type: 'attestor', data: [`Storage verified for chunk ${storageChallenge.chunks[index]}`]})
-              all.push(data)
-              if (all.length === storageChallenge.chunks.length) resolve(all)
-            }
-          }
-        } else {
-          log2hosterChallenge({ type: 'attestor', data: [`UNKNOWN_MESSAGE messageType: ${type}`] })
-          sendError('UNKNOWN_MESSAGE', { messageType: type })
-          reject({ type: 'attestor', key: attestorKey })
-        }
+      for (var i = 0, len = chunks.length; i < len; i++) {
+        const index = chunk[i]
+        const chunk = await clone.get[index]
+        console.log(`Attestor received ${index}`)
+        all.push(verify_proof(chunk))
       }
 
-      async function proofIsVerified (message,feedKey, storageChallenge) {
+      
+      try {
+        const results = await Promise.all(all).catch((err) = {
+          
+        })
+        clearTimeout(tid)
+        beam.destroy()
+        resolve({ type: `DONE`, data: results })
+      } catch (err) {
+        log2hosterChallenge({ type: 'error', data: [`Error: ${err}`] })
+        clearTimeout(tid)
+        beam.destroy()
+        reject({ type: `hoster_proof_fail`, data: err })
+      }
+
+      function verify_proof (message) {
+        const { type } = message
+        return new Promise((resolve, reject) => {
+          if (type === 'storage_challenge') {
+            const { storageChallengeID, data, index } = message
+            log2hosterChallenge({ type: 'attestor', data: [`Storage proof received, ${message.index}`]})
+            if (id === storageChallengeID) {
+              if (proofIsVerified(message, feedKey, storageChallenge)) {
+                log2hosterChallenge({ type: 'attestor', data: [`Storage verified for ${index}`]})
+                resolve(data)
+              } else reject(index)
+            }
+          } else {
+            log2hosterChallenge({ type: 'attestor', data: [`UNKNOWN_MESSAGE messageType: ${type}`] })
+            resolve(index)
+          }
+        })
+      }
+
+      async function proofIsVerified (message, feedKey, storageChallenge) {
         // TODO merkleVerifyChunk does smae thing
         const { data, index } = message
         if (!data) console.log('No data')
@@ -328,17 +375,9 @@ module.exports = class Attestor {
         return true
       }
 
-      function sendError (message, details = {}) {
-        streams.end({
-          type: 'StorageChallenge:error',
-          error: message,
-          ...details
-        })
-      }
-      resolve()
     })
   }
-
+  
   /* ----------------------------------------------------------------------
                           CHECK PERFORMANCE
   ---------------------------------------------------------------------- */

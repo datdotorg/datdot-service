@@ -633,14 +633,14 @@ const queues = {
 /******************************************************************************
   OFFCHAIN STATUS
 ******************************************************************************/
-const activeStorageChallenges = {
+const storageChallenges = {
 /*
   challengeID1: true,
   challengeID_2: true,
   ...
 */
 }
-const activePerformanceChallenges = {
+const performanceChallenges = {
 /*
   challengeID1: true,
   challengeID_2: true,
@@ -649,8 +649,8 @@ const activePerformanceChallenges = {
 }
 const active = {
   // activeAmmendments (or contracts)
-  activePerformanceChallenges,
-  activeStorageChallenges
+  performanceChallenges,
+  storageChallenges
 }
 /*****************************************************************************/
 const DB = { storage, lookups, active, queues, status }

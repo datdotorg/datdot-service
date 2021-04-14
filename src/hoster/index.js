@@ -152,6 +152,7 @@ module.exports = class Hoster {
                   nodes,
                   signature: Buffer.from(signature)
                 })
+                // console.log('Received', index)
                 log2attestor({ type: 'hoster', data: [`Hoster received & stored index: ${index} (${counter}/${expectedChunkCount}`] })
                 resolve({ type: 'encoded:stored', ok: true, index: data.index })
               } catch (e) {
@@ -180,9 +181,83 @@ module.exports = class Hoster {
     
   }
 
-        /* ------------------------------------------- 
-            2. CHALLENGES
-      -------------------------------------------- */
+    /* ------------------------------------------- 
+        2. CHALLENGES
+  -------------------------------------------- */
+
+  async sendStorageChallenge ({ storageChallenge, hosterKey, feedKey, attestorKey }) {
+    const hoster = this
+    const log2attestor4Challenge = hoster.log.sub(`<-Attestor4challenge ${attestorKey.toString('hex').substring(0,5)}`)
+    const { id, chunks } = storageChallenge
+    const topic = derive_topic({ senderKey: hosterKey, feedKey, receiverKey: attestorKey, id })
+    const tid = setTimeout(() => {
+      beam.destroy()
+      reject({ type: `attestor_timeout` })
+    }, DEFAULT_TIMEOUT)
+    const beam = new Hyperbeam(topic)
+    beam.on('error', err => { 
+      clearTimeout(tid)
+      beam.destroy()
+      if (beam_once) {
+        beam_once.destroy()
+        reject({ type: `attestor_connection_fail`, data: err })
+      }
+    })
+    const once_topic = topic + 'once'
+    var beam_once = new Hyperbeam(once_topic)
+    beam_once.on('error', err => { 
+      clearTimeout(tid)
+      beam_once.destroy()
+      beam.destroy()
+      reject({ type: `hoster_connection_fail`, data: err })
+    })
+
+    const core = toPromises(new hypercore(RAM, { valueEncoding: 'utf-8' }))
+    await core.ready()
+    core.on('error', err => {
+      Object.values(chunks).forEach(({ reject }) => reject(err))
+    })
+    const coreStream = core.replicate(true, { live: true, ack: true })
+    coreStream.pipe(beam).pipe(coreStream)
+    beam_once.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
+    coreStream.on('ack', ack => {
+      const index = ack.start
+      console.log('ACK by the attestor')
+    })
+
+    const all = []
+    for (var i = 0; i < chunks.length; i++) {
+      const index = chunks[i]
+      const data = await hoster.getStorageChallenge(feedKey, index)
+      if (!data) return
+      console.log('Got data for', index)
+      const message = { type: 'storage_challenge', storageChallengeID, data, index }
+      log2attestor4Challenge({ type: 'hoster', data: [`Sending proof of storage chunk with value ${chunks[i]}, message index: ${message.index}, all chunks in this challenge ${chunks.length}`] })
+      all.push(core.append(JSON.stringify(message)))
+    }
+
+    try {
+      const results = await Promise.all(all).catch((error) => {
+        log2attestor4Challenge({ type: 'error', data: [`error: ${error}`] })
+        clearTimeout(tid)
+        beam_once.destroy()
+        beam.destroy()
+        reject({ type: `hoster_proof_fail`, data: error })
+      })
+      log2attestor4Challenge({ type: 'hoster', data: [`${all.length} responses received from the attestor`] })
+      log2attestor4Challenge({ type: 'hoster', data: [`Destroying communication with the attestor`] })
+      clearTimeout(tid)
+      beam_once.destroy()
+      beam.destroy()
+      resolve({ type: `DONE`, data: results })
+    } catch (err) {
+      log2attestor4Challenge({ type: 'error', data: [`Error: ${err}`] })
+      clearTimeout(tid)
+      beam_once.destroy()
+      beam.destroy()
+      reject({ type: `hoster_proof_fail`, data: err })
+    }
+  }
 
   async removeFeed (key) {
     this.log({ type: 'hoster', data: [`Removing the feed`] })
@@ -252,60 +327,6 @@ module.exports = class Hoster {
     // console.log({_db})
     const data = await storage.getStorageChallenge(index)
     return data
-  }
-
-  async sendStorageChallenge ({ storageChallenge, hosterKey, feedKey, attestorKey }) {
-    const hoster = this
-    var timeout
-    var timeoutID = setTimeout(() => {
-      timeout = true
-      stream.end()
-    }, DEFAULT_TIMEOUT)
-    hoster.log({ type: 'hoster', data: [`Starting sendStorageChallenge`] })
-    const storageChallengeID = storageChallenge.id
-    const chunks = storageChallenge.chunks
-    // console.log('CHUNKS', chunks)
-    return new Promise(async (resolve, reject) => {
-      const opts = {
-        plex: hoster.communication,
-        senderKey: hosterKey,
-        feedKey,
-        receiverKey: attestorKey,
-        id: storageChallengeID,
-        myKey: hosterKey,
-      }
-      const log2attestor4Challenge = hoster.log.sub(`<-Attestor4challenge ${attestorKey.toString('hex').substring(0,5)}`)
-      var id_stream = setTimeout(() => { log2attestor4Challenge({ type: 'hoster', data: [`peerConnect timeout, ${JSON.stringify(opts)}`] }) }, DEFAULT_TIMEOUT)
-      const stream = await peerConnect(opts, log2attestor4Challenge)
-      clearTimeout(id_stream)
-      hoster.log({ type: 'hoster', data: [`Got the streams`] })
-
-
-      const all = []
-      for (var i = 0; i < chunks.length; i++) {
-        const index = chunks[i]
-        const data = await hoster.getStorageChallenge(feedKey, index)
-        if (!data) return
-        // console.log('Got data for', index)
-        const message = { type: 'StorageChallenge', storageChallengeID, data, index }
-        log2attestor4Challenge({ type: 'hoster', data: [`Sending proof of storage chunk with value ${chunks[i]}, message index: ${message.index}, all chunks in this challenge ${chunks.length}`] })
-        const dataSent = requestResponse({ message, stream, log: log2attestor4Challenge })
-        all.push(dataSent)
-      }
-      try {
-        if (timeout) return
-        else clearTimeout(timeoutID)
-        const results = await Promise.allSettled(all).catch((error) => log2attestor4Challenge({ type: 'error', data: [`error: ${error}`] }))
-        log2attestor4Challenge({ type: 'hoster', data: [`${all.length} responses received from the attestor`] })
-        log2attestor4Challenge({ type: 'hoster', data: [`Destroying communication with the attestor`] })
-        stream.end()
-        resolve(results)
-      } catch (e) {
-        log2attestor4Challenge({ type: 'error', data: [`Error: ${e}`] })
-        reject(e)
-      }
-
-    })
   }
 
   async hasKey (key) {

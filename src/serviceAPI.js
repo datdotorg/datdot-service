@@ -36,7 +36,7 @@ function datdotService (profile) {
       const hosterKey = hosterKeys[i]
       const opts = { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, compareCB: (msg, key) => compareEncodings({messages, key, msg}) }
       log({ type: 'serviceAPI', data: [`Verify encodings!`] })
-      responses.push(account.attestor.verifyAndForwardFor(opts))
+      responses.push(account.attestor.hosting_setup(opts))
     }
     const failedKeys = await Promise.all(responses) // can be 0 to 6 pubKeys of failed providers
     return failedKeys.flat()

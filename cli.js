@@ -1,6 +1,6 @@
 const spawn = require('cross-spawn')
 const path = require('path')
-const scenario = require('./lab/scenarios/scenario_3')
+const scenario = require('./lab/scenarios/scenario_2')
 
 process.env.DEBUG = '*,-hypercore-protocol'
 
