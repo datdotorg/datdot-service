@@ -67,7 +67,6 @@ module.exports = class Encoder {
       const swarm = hyperswarm()
       swarm.join(feed.discoveryKey,  { announce: false, lookup: true })
       swarm.on('connection', (socket, info) => {
-        console.log('new connection')
         socket.pipe(feed.replicate(info.client)).pipe(socket)  // TODO: sparse replication and download only chunks we need, do not replicate whole feed
       })
 
@@ -132,7 +131,6 @@ async function encode (encoder, index, feed, feedKey) {
   const encoded = await encoder.EncoderDecoder.encode(data)
   const nodes = await get_nodes(feed, index)
   const signature = await get_signature(feed, index)
-  console.log({nodes, signature})
   // Allocate buffer for the proof
   const proof = Buffer.alloc(sodium.crypto_sign_BYTES)
   // Allocate buffer for the data that should be signed

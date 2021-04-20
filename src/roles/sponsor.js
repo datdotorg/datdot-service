@@ -122,7 +122,7 @@ async function role (profile, APIS) {
   }
 
   async function makeComponents (feedkey, topic) {
-    const feed1 = await get_feed_metadata(log, feedkey, topic)
+    const feed1 = { feedkey, swarmkey: topic }
     const feeds = [feed1]
     const dataset_items = [{ feed_id: -1, ranges: [[0,3], [5,8], [10,14]] }]
     const performance_items = [{ // OPTIONAL

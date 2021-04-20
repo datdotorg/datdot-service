@@ -187,7 +187,7 @@ module.exports = class Attestor {
           coreStream.pipe(beam).pipe(coreStream)
           beam_once.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
           coreStream.on('ack', function (ack) {
-            console.log('ACK INDEX', ack.start)
+            // console.log('ACK INDEX', ack.start)
             const index = ack.start
             const store = chunks[index]
             const resolve = store.resolve
@@ -213,7 +213,7 @@ module.exports = class Attestor {
               parsed.type = 'verified'
               const id = await core.append(JSON.stringify(parsed))
               chunks[id] = { resolve, reject }
-              console.log('SENT INDEX', id)
+              // console.log('SENT INDEX', id)
               // resolve()
             })
           }
@@ -315,7 +315,7 @@ module.exports = class Attestor {
           // beam_once.destroy()
           // beam_once = undefined
           get_data()
-          resolve(channel)
+          resolve()
         }
       })
 

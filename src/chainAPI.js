@@ -101,7 +101,7 @@ async function datdotChain (profile, provider) {
     // const feed = (await API.query.datVerify.getFeedByID(feedID)).unwrap()
     // return u8aToBuffer(feed.publickey.toU8a())
     const feed = (await API.query.datVerify.getFeedByID(feedID))
-    return Buffer.from(feed.publickey, 'hex')
+    return Buffer.from(feed.feedkey, 'hex')
   }
   async function getFeedByID (feedID) {
     // const feed = (await API.query.datVerify.getFeedByID(feedID)).unwrap()

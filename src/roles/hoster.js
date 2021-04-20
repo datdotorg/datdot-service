@@ -90,7 +90,6 @@ async function role (profile, APIS) {
   // HELPERS
 
   async function getHostingData (attestors, contract) {
-    console.log({attestors})
     const ranges = contract.ranges
     const [attestorID] = attestors
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
