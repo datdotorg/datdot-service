@@ -74,9 +74,10 @@ module.exports = class Encoder {
       // @NOTE:
       // sponsor provides only feedkey and swarmkey (no metadata)
       // when chain makes contracts, it checks if there is a signature for highest index of the contract
-      // if not, it emits signature: false
-      // encoders in this contract get the signature for the highest index and send it to attestor
-      // attestor compares the signatures and nodes and if they match, it sends them to the chain with the report
+      // if not, it emits signature: true (only when signature is needed)
+      // if (signature)
+        // encoders in this contract get the signature for the highest index and send it to attestor
+        // attestor compares the signatures and nodes and if they match, it sends them to the chain with the report
 
       // create temp hypercore
       const core = toPromises(new hypercore(RAM, { valueEncoding: 'utf-8' }))

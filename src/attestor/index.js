@@ -339,6 +339,7 @@ module.exports = class Attestor {
         }
       }
 
+      // @NOTE:
       // attestor receives: encoded data, signature (proof), nodes + signed event
       // attestor verifies signed event
       // attestor verifies if chunk is signed by the original encoder (signature, encoder's pubkey, encoded chunk)
