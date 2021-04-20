@@ -371,7 +371,7 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
     return
   }
   // NOT ALL SUCCESS => new amendment
-  const opts = { failed, providers, contractID, plan, meta, log }
+  const opts = { failed, amendment, contractID, plan, meta, log }
   retryAmendment(opts)
 }
 
@@ -396,9 +396,9 @@ async function _requestStorageChallenge ({ contractID, hosterID, meta, log }) {
   avoid[hosterID] = true
   const idleProviders = DB.status.idleAttestors
   const selectedProviders = select({ idleProviders, role: 'attestor', newJob, amount: 1, avoid, plan, log })
-  const [attestorID] = selectedProviders
-  if (!attestorID) return DB.queues.attestorsJobQueue.push({ fnName: 'NewStorageChallenge', opts: { storageChallenge } })
-  storageChallenge.attestor = attestorID
+  const [attestor] = selectedProviders
+  if (!attestor) return DB.queues.attestorsJobQueue.push({ fnName: 'NewStorageChallenge', opts: { storageChallenge } })
+  storageChallenge.attestor = attestor.id
   giveJobToRoles({ type, selectedProviders, idleProviders, role: 'attestor', newJob }, log)
   // emit event
   log({ type: 'chain', data: [type, newJob] })
@@ -816,10 +816,10 @@ function tryNextChallenge ({ attestorID }, log) {
       const type = 'NewStorageChallenge'
       const idleProviders = DB.status.idleAttestors
       const selectedProviders = select({ idleProviders, role: 'attestor', newJob, amount: 1, avoid, plan, log })
-      const [attestorID] = selectedProviders
+      const [attestor] = selectedProviders
       if (selectedProviders.length) {
         DB.queues.attestorsJobQueue.shift()
-        storageChallenge.attestor = attestorID
+        storageChallenge.attestor = attestor.id
         giveJobToRoles({ type, selectedProviders, idleProviders, role: 'attestor', newJob }, log)
       }
       // emit event
@@ -969,7 +969,7 @@ async function planValid ({ plan }) {
 }
 
 async function retryAmendment (opts) {
-  const { failed, providers, contractID, plan, meta, log } = opts
+  const { failed, amendment, contractID, plan, meta, log } = opts
   var reuse
   const [peerID] = failed
   const { hosters, attestors, encoders } = providers
@@ -984,7 +984,7 @@ async function retryAmendment (opts) {
     const successfulHosters = hosters.filter(id => !failed.includes(id))
     contract.activeHosters = [...contract.activeHosters, ...successfulHosters]
     for (var i = 0, len = successfulHosters.length; i < len; i++) {
-      console.log(`Hosting started: contract: ${contractID}, amendment: ${amendmentID}, hoster: ${successfulHosters[i]}`)
+      console.log(`Hosting started: contract: ${contractID}, amendment: ${amendment.id}, hoster: ${successfulHosters[i]}`)
       const data = { plan, hosterID: successfulHosters[i], contractID, meta, log }
       scheduleChallenges(data)
     }
@@ -997,10 +997,10 @@ async function retryAmendment (opts) {
 
   }
   // remove jobs from providers
-  removeJobForRolesXXXX({ providers: amendment.providers, jobID: amendmentID }, log)
+  removeJobForRolesXXXX({ providers: amendment.providers, jobID: amendment.id }, log)
   // TODO: ... who should drop jobs when??? ...
   // => emit Event to STOP JOB for EVERYONE who FAILED
-  emitEvent('DropJob', [amendmentID, failed], log)
+  emitEvent('DropJob', [amendment.id, failed], log)
   // TODO: add new amendment to contract only after it is taken from the queue
   // TODO: make amendments small (diffs) and show latest summary of all amendments under contract.activeHosters
   

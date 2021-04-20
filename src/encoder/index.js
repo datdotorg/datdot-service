@@ -7,6 +7,12 @@ const { toPromises } = require('hypercore-promisifier')
 const Hyperbeam = require('hyperbeam')
 const derive_topic = require('../derive_topic')
 const getRangesCount = require('../getRangesCount')
+const hyperswarm = require('hyperswarm')
+const ready = require('../hypercore-ready')
+const get_signature = require('../get-signature')
+const get_nodes = require('../get-nodes')
+const get_data = require('../get-data')
+const verify_signature = require('../verify-signature')
 
 const NAMESPACE = 'datdot-encoder'
 const IDENITY_NAME = 'signing'
@@ -56,7 +62,21 @@ module.exports = class Encoder {
     
     return new Promise(async (resolve, reject) => {
       if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
-      const feed = encoder.Hypercore(feedKey)
+      const feed = new hypercore(RAM, feedKey, { valueEncoding: 'utf-8', sparse: true })
+      await ready(feed)
+      const swarm = hyperswarm()
+      swarm.join(feed.discoveryKey,  { announce: false, lookup: true })
+      swarm.on('connection', (socket, info) => {
+        console.log('new connection')
+        socket.pipe(feed.replicate(info.client)).pipe(socket)  // TODO: sparse replication and download only chunks we need, do not replicate whole feed
+      })
+
+      // @NOTE:
+      // sponsor provides only feedkey and swarmkey (no metadata)
+      // when chain makes contracts, it checks if there is a signature for highest index of the contract
+      // if not, it emits signature: false
+      // encoders in this contract get the signature for the highest index and send it to attestor
+      // attestor compares the signatures and nodes and if they match, it sends them to the chain with the report
 
       // create temp hypercore
       const core = toPromises(new hypercore(RAM, { valueEncoding: 'utf-8' }))
@@ -94,11 +114,11 @@ module.exports = class Encoder {
 
 function sendDataToAttestor ({ core, encoder, range, feed, feedKey, beam, log, stats, expectedChunkCount }) {
   for (let index = range[0], len = range[1] + 1; index < len; index++) {
-    const message = encode(encoder, index, feed, feedKey)
-    send(message, { core, encoder, range, feed, feedKey, beam, log, stats, expectedChunkCount })
+    const msg = encode(encoder, index, feed, feedKey)
+    send({ msg, core, log, stats, expectedChunkCount })
   }
 }
-async function send (msg, { core, encoder, range, feed, feedKey, beam, log, stats, expectedChunkCount }) {
+async function send ({ msg, core, log, stats, expectedChunkCount }) {
   return new Promise(async (resolve, reject) => {
     const message = await msg
     await core.append(JSON.stringify(message))
@@ -107,9 +127,11 @@ async function send (msg, { core, encoder, range, feed, feedKey, beam, log, stat
   })
 }
 async function encode (encoder, index, feed, feedKey) {
-  const data = await feed.get(index)
+  const data = await get_data(feed, index)
   const encoded = await encoder.EncoderDecoder.encode(data)
-  const { nodes, signature } = await feed.proof(index)
+  const nodes = await get_nodes(feed, index)
+  const signature = await get_signature(feed, index)
+  console.log({nodes, signature})
   // Allocate buffer for the proof
   const proof = Buffer.alloc(sodium.crypto_sign_BYTES)
   // Allocate buffer for the data that should be signed
@@ -122,3 +144,8 @@ async function encode (encoder, index, feed, feedKey) {
   sodium.crypto_sign_detached(proof, toSign, encoder.signingSecretKey)
   return { type: 'encoded', feed: feedKey, index, encoded, proof, nodes, signature }
 }
+
+// @NOTE:
+// 1. encoded chunk has to be unique ([pos of encoder in the event, data]), so that hoster can not delete and download the encoded chunk from another hoster just in time
+// 2. encoded chunk has to be signed by the original encoder so that the hoster cannot encode a chunk themselves and send it to attester
+// 3. attestor verifies unique encoding data was signed by original encoder

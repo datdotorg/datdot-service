@@ -187,76 +187,93 @@ module.exports = class Hoster {
 
   async sendStorageChallenge ({ storageChallenge, hosterKey, feedKey, attestorKey }) {
     const hoster = this
-    const log2attestor4Challenge = hoster.log.sub(`<-Attestor4challenge ${attestorKey.toString('hex').substring(0,5)}`)
-    const { id, chunks } = storageChallenge
-    const topic = derive_topic({ senderKey: hosterKey, feedKey, receiverKey: attestorKey, id })
-    const tid = setTimeout(() => {
-      beam.destroy()
-      reject({ type: `attestor_timeout` })
-    }, DEFAULT_TIMEOUT)
-    const beam = new Hyperbeam(topic)
-    beam.on('error', err => { 
-      clearTimeout(tid)
-      beam.destroy()
-      if (beam_once) {
-        beam_once.destroy()
-        reject({ type: `attestor_connection_fail`, data: err })
-      }
-    })
-    const once_topic = topic + 'once'
-    var beam_once = new Hyperbeam(once_topic)
-    beam_once.on('error', err => { 
-      clearTimeout(tid)
-      beam_once.destroy()
-      beam.destroy()
-      reject({ type: `hoster_connection_fail`, data: err })
-    })
-
-    const core = toPromises(new hypercore(RAM, { valueEncoding: 'utf-8' }))
-    await core.ready()
-    core.on('error', err => {
-      Object.values(chunks).forEach(({ reject }) => reject(err))
-    })
-    const coreStream = core.replicate(true, { live: true, ack: true })
-    coreStream.pipe(beam).pipe(coreStream)
-    beam_once.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
-    coreStream.on('ack', ack => {
-      const index = ack.start
-      console.log('ACK by the attestor')
-    })
-
-    const all = []
-    for (var i = 0; i < chunks.length; i++) {
-      const index = chunks[i]
-      const data = await hoster.getStorageChallenge(feedKey, index)
-      if (!data) return
-      console.log('Got data for', index)
-      const message = { type: 'storage_challenge', storageChallengeID, data, index }
-      log2attestor4Challenge({ type: 'hoster', data: [`Sending proof of storage chunk with value ${chunks[i]}, message index: ${message.index}, all chunks in this challenge ${chunks.length}`] })
-      all.push(core.append(JSON.stringify(message)))
-    }
-
-    try {
-      const results = await Promise.all(all).catch((error) => {
-        log2attestor4Challenge({ type: 'error', data: [`error: ${error}`] })
+    const sent_chunks = {}
+    return new Promise(async (resolve, reject) => {
+      const log2attestor4Challenge = hoster.log.sub(`<-Attestor4challenge ${attestorKey.toString('hex').substring(0,5)}`)
+      const { id, chunks } = storageChallenge
+      const topic = derive_topic({ senderKey: hosterKey, feedKey, receiverKey: attestorKey, id })
+      const tid = setTimeout(() => {
+        beam.destroy()
+        reject({ type: `attestor_timeout` })
+      }, DEFAULT_TIMEOUT)
+      const beam = new Hyperbeam(topic)
+      beam.on('error', err => { 
+        console.log({err})
+        clearTimeout(tid)
+        beam.destroy()
+        if (beam_once) {
+          beam_once.destroy()
+          reject({ type: `attestor_connection_fail`, data: err })
+        }
+      })
+      const once_topic = topic + 'once'
+      var beam_once = new Hyperbeam(once_topic)
+      beam_once.on('error', err => {
         clearTimeout(tid)
         beam_once.destroy()
         beam.destroy()
-        reject({ type: `hoster_proof_fail`, data: error })
+        reject({ type: `hoster_connection_fail`, data: err })
       })
-      log2attestor4Challenge({ type: 'hoster', data: [`${all.length} responses received from the attestor`] })
-      log2attestor4Challenge({ type: 'hoster', data: [`Destroying communication with the attestor`] })
-      clearTimeout(tid)
-      beam_once.destroy()
-      beam.destroy()
-      resolve({ type: `DONE`, data: results })
-    } catch (err) {
-      log2attestor4Challenge({ type: 'error', data: [`Error: ${err}`] })
-      clearTimeout(tid)
-      beam_once.destroy()
-      beam.destroy()
-      reject({ type: `hoster_proof_fail`, data: err })
-    }
+      const core = toPromises(new hypercore(RAM, { valueEncoding: 'utf-8' }))
+      await core.ready()
+      core.on('error', err => {
+        Object.values(chunks).forEach(({ reject }) => reject(err))
+      })
+      const coreStream = core.replicate(true, { live: true, ack: true })
+      coreStream.pipe(beam).pipe(coreStream)
+      coreStream.on('ack', ack => {
+        const index = ack.start
+        const resolve = sent_chunks[index].resolve
+        delete sent_chunks[index]
+        resolve('attestor received storage proofs')
+      })
+      beam_once.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
+      const all = []
+      for (var i = 0; i < chunks.length; i++) {
+        const index = chunks[i]
+        const storageChallengeID = id
+        var signed_event = (i === 0) ? get_signed_event(storageChallengeID) : undefined
+        const data = await hoster.getStorageChallenge(feedKey, index) 
+        if (!data) return
+        const message = { type: 'proof', storageChallengeID, data, signed_event }
+        log2attestor4Challenge({ type: 'hoster', data: [`Storage proof: appending chunk ${i} for index ${index}`] })
+        all.push(send(message, i))
+      }
+      function get_signed_event (storageChallengeID) {
+        const sig = 'foobar'
+        return sig
+      }
+      function send (message, i) {
+        return new Promise(async (resolve, reject) => {
+          await core.append(JSON.stringify(message))
+          sent_chunks[i] = { resolve, reject }
+        })
+      }
+      try {
+        const results = await Promise.all(all).catch((error) => {
+          console.log({error})
+          log2attestor4Challenge({ type: 'error', data: [`error: ${error}`] })
+          clearTimeout(tid)
+          beam_once.destroy()
+          beam.destroy()
+          reject({ type: `hoster_proof_fail`, data: error })
+        })
+        if (!results) log2attestor4Challenge({ type: 'error', data: [`No results`] })
+        console.log({results})
+        log2attestor4Challenge({ type: 'hoster', data: [`${all.length} responses received from the attestor`] })
+        log2attestor4Challenge({ type: 'hoster', data: [`Destroying communication with the attestor`] })
+        clearTimeout(tid)
+        beam_once.destroy()
+        beam.destroy()
+        resolve({ type: `DONE`, data: results })
+      } catch (err) {
+        log2attestor4Challenge({ type: 'error', data: [`Error: ${err}`] })
+        clearTimeout(tid)
+        beam_once.destroy()
+        beam.destroy()
+        reject({ type: `hoster_proof_fail`, data: err })
+      }
+    })
   }
 
   async removeFeed (key) {

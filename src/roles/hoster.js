@@ -69,8 +69,8 @@ async function role (profile, APIS) {
     }
     if (event.method === 'NewStorageChallenge') {
       log({ type: 'hoster', data: [`NewStorageChallenge event for hoster`] })
-      const [storageChallengeID] = event.data
-      const storageChallenge = await chainAPI.getStorageChallengeByID(storageChallengeID)
+      const [id] = event.data
+      const storageChallenge = await chainAPI.getStorageChallengeByID(id)
       const contract = await chainAPI.getContractByID(storageChallenge.contract)
       const hosterID = storageChallenge.hoster
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
@@ -79,7 +79,6 @@ async function role (profile, APIS) {
         const data = await getStorageChallengeData(storageChallenge, contract)
         data.account = await vaultAPI
         data.hosterKey = hosterKey
-        data.storageChallenge = storageChallenge
         // log({ type: 'hoster', data: [`sendStorageChallengeToAttestor - ${data}`] })
         await serviceAPI.sendStorageChallengeToAttestor(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
         // await serviceAPI.sendStorageChallengeToAttestor(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
@@ -106,9 +105,10 @@ async function role (profile, APIS) {
   async function getStorageChallengeData (storageChallenge, contract) {
     const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
+    console.log({storageChallenge})
     const attestorID = storageChallenge.attestor
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
     // const proofs = await serviceAPI.getStorageChallenge({ account: vaultAPI, storageChallenge, feedKey }).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
-    return { feedKey, attestorKey }
+    return { feedKey, attestorKey, storageChallenge }
   }
 }

@@ -1,7 +1,11 @@
-module.exports = merkleVerify
+module.exports = merkle_verify
 
-async function merkleVerify () {
-  // TODO: merkle verify each chunk
-  console.log('TODO: decode and merkle verify each chunk (to see if it belongs to the feed) && verify the signature')
-  return true
+async function merkle_verify () {
+  return new Promise((resolve, reject) => {
+    console.log('merkle verifying')
+    feed.verify(index, signature, (err, res) => {
+      console.log('Got a verify cb', err, res)
+      return cb(err, res)
+    })
+  })
 }

@@ -275,7 +275,10 @@ module.exports = class Attestor {
     const attestor = this
     return new Promise(async (resolve, reject) => {
       attestor.log({ type: 'attestor', data: [`Starting verifyStorageChallenge}`] })
-      const { storageChallenge: {id, chunks }, attestorKey, hosterKey, feedKey } = data
+      const { storageChallenge, attestorKey, hosterKey, feedKey } = data
+      const {id, chunks } = storageChallenge
+      const log2hosterChallenge = attestor.log.sub(`<-HosterChallenge ${hosterKey.toString('hex').substring(0,5)}`)
+
       const topic = derive_topic({ senderKey: hosterKey, feedKey, receiverKey: attestorKey, id })
 
       const tid = setTimeout(() => {
@@ -291,7 +294,6 @@ module.exports = class Attestor {
           reject({ type: `attestor_connection_fail`, data: err })
         }
       })
-      let core
       const once_topic = topic + 'once'
       var beam_once = new Hyperbeam(once_topic)
       beam_once.on('error', err => { 
@@ -300,6 +302,8 @@ module.exports = class Attestor {
         beam.destroy()
         reject({ type: `${role}_connection_fail`, data: err })
       })
+      const all = []
+      let core
       beam_once.once('data', async (data) => {
         const message = JSON.parse(data.toString('utf-8'))
         if (message.type === 'feedkey') {
@@ -308,69 +312,72 @@ module.exports = class Attestor {
           core = clone
           const cloneStream = clone.replicate(false, { live: true })
           cloneStream.pipe(beam).pipe(cloneStream)
-          beam_once.destroy()
-          beam_once = undefined
+          // beam_once.destroy()
+          // beam_once = undefined
+          get_data()
           resolve(channel)
         }
       })
 
-      const all = []
-      for (var i = 0, len = chunks.length; i < len; i++) {
-        const index = chunk[i]
-        const chunk = await clone.get[index]
-        console.log(`Attestor received ${index}`)
-        all.push(verify_proof(chunk))
+      async function get_data () {
+        for (var i = 0, len = chunks.length; i < len; i++) {
+          const chunk = core.get(i)
+          all.push(verify_chunk(chunk, i))
+        }
+        try {
+          const results = await Promise.all(all).catch(err => { console.log(err) })
+          if (!results) log2hosterChallenge({ type: 'error', data: [`No results`] })
+          console.log({results})
+          clearTimeout(tid)
+          beam.destroy()
+          resolve({ type: `DONE`, data: results })
+        } catch (err) {
+          log2hosterChallenge({ type: 'error', data: [`Error: ${err}`] })
+          clearTimeout(tid)
+          beam.destroy()
+          reject({ type: `hoster_proof_fail`, data: err })
+        }
       }
 
-      
-      try {
-        const results = await Promise.all(all).catch((err) = {
-          
-        })
-        clearTimeout(tid)
-        beam.destroy()
-        resolve({ type: `DONE`, data: results })
-      } catch (err) {
-        log2hosterChallenge({ type: 'error', data: [`Error: ${err}`] })
-        clearTimeout(tid)
-        beam.destroy()
-        reject({ type: `hoster_proof_fail`, data: err })
-      }
+      // attestor receives: encoded data, signature (proof), nodes + signed event
+      // attestor verifies signed event
+      // attestor verifies if chunk is signed by the original encoder (signature, encoder's pubkey, encoded chunk)
+      // attestor decompresses the chunk and takes out the original data (arr[1])
+      // attestor merkle verifies the data: (feedkey, root signature from the chain (published by attestor after published plan)  )
+      // attestor sends to the chain: nodes, signature, hash of the data & signed event
 
-      function verify_proof (message) {
-        const { type } = message
-        return new Promise((resolve, reject) => {
-          if (type === 'storage_challenge') {
-            const { storageChallengeID, data, index } = message
-            log2hosterChallenge({ type: 'attestor', data: [`Storage proof received, ${message.index}`]})
-            if (id === storageChallengeID) {
-              if (proofIsVerified(message, feedKey, storageChallenge)) {
-                log2hosterChallenge({ type: 'attestor', data: [`Storage verified for ${index}`]})
-                resolve(data)
-              } else reject(index)
-            }
+      function verify_chunk (data_promise, i) {
+        return new Promise(async (resolve, reject) => {
+          const chunk = await data_promise
+          const message = JSON.parse(chunk.toString('utf-8'))
+          const { type, storageChallengeID, data, signed_event } = message
+          log2hosterChallenge({ type: 'attestor', data: [`Storage proof received, ${data.index}`]})
+          if (id !== storageChallengeID) return log2hosterChallenge({ type: 'attestor', data: [`Wrong id: ${id}`] })
+          if (type === 'proof') {
+            if (i === 0 && !is_valid_event(signed_event)) reject(data)
+            // if (await !is_merkle_verified()) reject(data)
+            if (!is_valid_proof(message, feedKey, storageChallenge)) reject(data.index)
+            log2hosterChallenge({ type: 'attestor', data: [`Storage verified for ${data.index}`]})
+            console.log('proof verified')
+            resolve(data)
           } else {
             log2hosterChallenge({ type: 'attestor', data: [`UNKNOWN_MESSAGE messageType: ${type}`] })
-            resolve(index)
+            reject(index)
           }
         })
       }
 
-      async function proofIsVerified (message, feedKey, storageChallenge) {
-        // TODO merkleVerifyChunk does smae thing
-        const { data, index } = message
+      function is_valid_event (sig) {
+        // verify if right signature & right signed event
+        return true
+      }
+
+      async function is_valid_proof (message, feedKey, storageChallenge) {
+        const { data } = message
         if (!data) console.log('No data')
-        // console.log('verifying index', storageChallenge.chunks[index])
-        // const feed = attestor.Hypercore(feedKey, { persist: false })
-        // await feed.ready()
-        // ...
-        // await feed.close()
-        // console.log('PROOF', data.proof)
-        const encoded = Buffer.from(data.encoded)
-        const decoded = await EncoderDecoder.decode(encoded)
-        // proof.encoded
-        // TODO: merkle verify each chunk (to see if it belongs to the feed) && verify the signature
-        // check the proof
+        const { index, encoded, proof } = data
+        const decoded = await EncoderDecoder.decode(Buffer.from(encoded))
+        // console.log({data})
         // hash the data
         return true
       }

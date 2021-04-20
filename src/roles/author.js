@@ -1,7 +1,10 @@
-const Hypercore = require('hypercore')
-const reallyReady = require('hypercore-really-ready')
-const ram = require('random-access-memory')
+const hypercore = require('hypercore')
 const hyperswarm = require('hyperswarm')
+const RAM = require('random-access-memory')
+const get_signature = require('../get-signature')
+const ready = require('../hypercore-ready')
+const verify_signature = require('../verify-signature')
+const append = require('../hypercore-append')
 /******************************************************************************
   ROLE: Author
 ******************************************************************************/
@@ -17,29 +20,27 @@ async function role (profile, APIS) {
 
   log({ type: 'author', data: [`Make a feed and share it`] })
 
-  const feed = Hypercore(ram)
+  const feed = new hypercore(RAM, { valueEncoding: 'utf-8' })
+  await ready(feed)
 
-  await feed.ready()
+  await append(feed, 'Hello World!')
+  await append(feed, 'Pozdravljen svet!')
+  await append(feed, '你好，世界!')
+  await append(feed, 'Hola Mundo!')
+  await append(feed, 'สวัสดีชาวโลก!')
+  await append(feed, 'Hallo Welt!')
+  await append(feed, 'Bonjour le monde!')
+  await append(feed, 'Здраво Свете!')
+  await append(feed, 'Hai dunia!')
+  await append(feed, 'Mhoro nyika!')
+  await append(feed, 'Salom Dunyo!')
+  await append(feed, 'Halo Dunia!')
+  await append(feed, 'Kumusta kalibutan!')
+  await append(feed, 'Hei Verden!')
+  await append(feed, 'Ahoj svet!')
+  await append(feed, 'Hej världen!')
+  await append(feed, 'Helló Világ!')
 
-  await feed.append('Hello World!')
-  await feed.append('Pozdravljen svet!')
-  await feed.append('你好，世界!')
-  await feed.append('Hola Mundo!')
-  await feed.append('สวัสดีชาวโลก!')
-  await feed.append('Hallo Welt!')
-  await feed.append('Bonjour le monde!')
-  await feed.append('Здраво Свете!')
-  await feed.append('Hai dunia!')
-  await feed.append('Mhoro nyika!')
-  await feed.append('Salom Dunyo!')
-  await feed.append('Halo Dunia!')
-  await feed.append('Kumusta kalibutan!')
-  await feed.append('Hei Verden!')
-  await feed.append('Ahoj svet!')
-  await feed.append('Hej världen!')
-  await feed.append('Helló Világ!')
-
-  await reallyReady(feed)
   const feedkey = feed.key
   const topic = feed.discoveryKey
   const swarm = hyperswarm()
