@@ -62,7 +62,10 @@ module.exports = class Hoster {
   async hostFor ({ amendmentID, feedKey, hosterKey, attestorKey, plan, ranges }) {
     await this.setOpts(feedKey, plan)
     await this.addKey(feedKey, plan)
+
+    // const storage = await this.getStorage(key)
     await this.loadFeedData(feedKey)
+    
     await this.getEncodedDataFromAttestor({ amendmentID, hosterKey, attestorKey, feedKey, ranges })
   }
   
@@ -158,7 +161,7 @@ module.exports = class Hoster {
               } catch (e) {
                 // Uncomment for better stack traces
                 const error = { type: 'encoded:error', error: `ERROR_STORING: ${e.message}`, ...{ e }, data }
-                log2attestor({ type: 'error', data: [`Error: ${error}`] })
+                log2attestor({ type: 'error', data: [`Error: ${JSON.stringify(error)}`] })
                 // beam1.destroy()
                 return reject(error)
               }

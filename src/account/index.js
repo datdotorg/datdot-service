@@ -86,10 +86,9 @@ module.exports = class Account {
     return this.hoster
   }
 
-  async initEncoder (opts = {}, log) {
-    const { sdk, EncoderDecoder } = this
+  async initEncoder (log) {
 
-    this.encoder = await Encoder.load({ sdk, EncoderDecoder, ...opts }, log)
+    this.encoder = await Encoder.load(log)
 
     return this.encoder
   }

@@ -1,10 +1,10 @@
 run()
 async function run (){
-  await new Promise(resolve => setTimeout(resolve, 2000))
+  await new Promise(resolve => setTimeout(resolve, 250))
 
   const spawn = require('cross-spawn')
   const path = require('path')
-  const scenario = require('./lab/scenarios/scenario_1')
+  const scenario = require('./lab/scenarios/scenario_2')
   
   process.env.DEBUG = '*,-hypercore-protocol'
   

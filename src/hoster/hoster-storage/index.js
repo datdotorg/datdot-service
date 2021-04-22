@@ -25,10 +25,10 @@ module.exports = class HosterStorage {
   }
 
   // Invoked by the encoder so that the host will store the encoded data
-  async storeEncoded (index, proof, encoded, nodes, signature) {
+  async storeEncoded (index, proof, encoded, nodes, signature) {``
     // Get the decoded data at the index
     // In parallel, decode the encoded data
-    encoded = Buffer.from(encoded)
+
     const decoded = await this.EncoderDecoder.decode(encoded)
     stuff.storeEnc[index] = encoded
     stuff.storeDec[index] = decoded
@@ -42,7 +42,10 @@ module.exports = class HosterStorage {
     // This should throw if the data is invalid
     await new Promise((resolve, reject) => {
       this.feed._putBuffer(index, decoded, packet, {}, (err) => {
-        if (err) reject(err)
+        if (err) {
+          console.log({err})
+          reject(err)
+        }
         else resolve()
       })
     })
@@ -103,6 +106,9 @@ module.exports = class HosterStorage {
       if (err1 || err2) {
         console.log('NOW', {NOW})
         console.log({DB})
+        Object.entries(DB).forEach(([ index, data]) => {
+          console.log({index})
+        })    
         console.log('OLD', {OLD})
       }
 

@@ -254,6 +254,7 @@ module.exports = class Attestor {
                   }
                 })
               }
+              console.log('Sending report', expectedChunkCount, chunks.length)
               handlerCB('DONE')
               status = 'END'
               await Promise.all(chunks)

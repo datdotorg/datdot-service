@@ -1,7 +1,10 @@
+const Service = require('./service')
+
 module.exports = datdotService
 
 function datdotService (profile) {
   const log = profile.log.sub('service')
+  const service = Service(log)
 
   const serviceAPI = {
     host,
@@ -24,7 +27,7 @@ function datdotService (profile) {
   ------------------------------------------------------------------ */
   async function encode ({ amendmentID, account, attestorKey, encoderKey, feedKey: feedKeyBuffer, ranges }) {
     log({ type: 'serviceAPI', data: [`Encode!`] })
-    return account.encoder.encodeFor({ amendmentID, attestorKey, encoderKey, feedKeyBuffer, ranges })
+    return service.encodeFor({ account, amendmentID, attestorKey, encoderKey, feedKeyBuffer, ranges })
   }
 
   async function verifyAndForwardEncodings (data/*, currentState, signal*/) {

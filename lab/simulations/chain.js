@@ -946,7 +946,7 @@ async function retryAmendment (opts) {
   const { failed, amendment, contractID, plan, meta, log } = opts
   var reuse
   const [peerID] = failed
-  const { hosters, attestors, encoders } = providers
+  const { hosters, attestors, encoders } = amendment.providers
 
   if (attestors.includes(peerID)) {
     // if failed is attestor (report was automatically triggered by amendmentFollowUp)

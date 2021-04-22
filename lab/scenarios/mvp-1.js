@@ -1,5 +1,5 @@
 const debug = require('debug')
-const makeAccount = require('../../src/wallet.js')
+const makeAccount = require('../../src/vault.js')
 /*****************************************************************************/
 // const ROLE = __filename.split('/').pop().split('.')[0].toUpperCase()
 const ROLE = __filename.split('/').slice(-2, -1)[0].split('.')[0].toUpperCase()

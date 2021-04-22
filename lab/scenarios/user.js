@@ -2,7 +2,7 @@ const debug = require('debug')
 const getChainAPI = require('../../src/chainAPI')
 const logkeeper = require('./logkeeper')
 const getServiceAPI = require('../../src/serviceAPI')
-const getVaultAPI = require('../../src/wallet.js')
+const getVaultAPI = require('../../src/vault.js')
 // const getChatAPI = require('./chatAPI')
 
 /******************************************************************************

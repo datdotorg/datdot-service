@@ -104,7 +104,6 @@ async function role (profile, APIS) {
   async function getStorageChallengeData (storageChallenge, contract) {
     const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
-    console.log({storageChallenge})
     const attestorID = storageChallenge.attestor
     const attestorKey = await chainAPI.getAttestorKey(attestorID)
     // const proofs = await serviceAPI.getStorageChallenge({ account: vaultAPI, storageChallenge, feedKey }).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
