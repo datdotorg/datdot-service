@@ -9,6 +9,5 @@ module.exports = [
   { "name": "hoster1", "roles": ["peer", "hoster"] },
   { "name": "hoster2", "roles": ["peer", "hoster"] },
   { "name": "hoster3", "roles": ["peer", "hoster"] },
-  { "name": "publisher", "roles": ["peer", "publisher"] },
   { "name": "author", "roles": ["peer", "author"] },
 ]

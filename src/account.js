@@ -1,21 +1,25 @@
-const Hoster = require('../hoster')
-const Encoder = require('../encoder')
-const Attestor = require('../attestor')
+const sodium = require('sodium-universal')
+const { seedKeygen } = require('noise-peer')
 const SDK = require('hyper-sdk')
-const DefaultEncoderDecoder = require('../EncoderDecoder')
+const DefaultEncoderDecoder = require('EncoderDecoder')
 const RAM = require('random-access-memory')
 const envPaths = require('env-paths')
 const path = require('path')
 const fs = require('fs-extra')
-const levelup = require('levelup')
 const encode = require('encoding-down')
 const memdown = require('memdown')
 const { Keyring } = require('@polkadot/api')
 const keyring = new Keyring({ type: 'sr25519' })
+const levelup = require('levelup')
+const sub = require('subleveldown')
 
 const DEFAULT_SDK_APPLICATION = 'datdot-account'
 const NAMESPACE = 'datdot-account'
 const IDENTITY_NAME = 'identity'
+
+const DEFAULT_TIMEOUT = 15000
+
+
 
 module.exports = class Account {
   constructor ({ sdk, EncoderDecoder, application, persist }, log) {
@@ -71,33 +75,64 @@ module.exports = class Account {
     return account
   }
 
-  async initHoster ({ db, ...opts } = {}, log) {
-    const { sdk, EncoderDecoder } = this
-
-    // if (!opts.onNeedsEncoding) throw new TypeError('Must specify onNeedsEncoding function')
-
-    if (!db) {
-      const storage = this.persist ? path.resolve(this.storageLocation, './hosterDB') : memdown()
-      db = levelup(encode(storage, { valueEncoding: 'binary' }))
+  async initHoster (log) {
+    const NAMESPACE = 'datdot-hoster'
+    const NOISE_NAME = 'noise'
+    const storage = this.persist ? path.resolve(this.storageLocation, './hosterDB') : memdown()
+    const db = levelup(encode(storage, { valueEncoding: 'binary' }))
+    const hoster = {
+      storages: new Map(),
+      keyOptions: new Map(),
+      watchingFeeds: new Set(),
+      loaderCache: new Map(),
+      db,
+      hosterDB: sub(db, 'hoster')
     }
-
-    this.hoster = await Hoster.load({ sdk, db, EncoderDecoder, ...opts }, log)
-
+    const sdk = await SDK({ aplication: 'datdot-account', storage: RAM})
+    const noiseSeed = await sdk.deriveSecret(NAMESPACE, NOISE_NAME)
+    const noiseKeyPair = seedKeygen(noiseSeed)
+    hoster.publicKey = noiseKeyPair.publicKey
+    // TODO: see how to restore 
+    // const keys = (await hoster.hosterDB.get('all_keys').catch(e => {})) || []
+    // for (const { key, options } of keys) {
+    //   await hoster.setOpts(key, options)
+    //   await hoster.getStorage(key)
+    //   await hoster.loadFeedData(key)
+    // }
+    this.hoster = hoster
     return this.hoster
   }
 
   async initEncoder (log) {
-
-    this.encoder = await Encoder.load(log)
-
+    const NAMESPACE = 'datdot-encoder'
+    const IDENITY_NAME = 'signing'
+    const NOISE_NAME = 'noise'
+    const encoder = {}
+    const sdk = await SDK({ aplication: 'datdot-account', storage: RAM})
+    const { publicKey: replicationPublicKey } = sdk.keyPair
+    const signingSeed = await sdk.deriveSecret(NAMESPACE, IDENITY_NAME)
+    const signingPublicKey = Buffer.alloc(sodium.crypto_sign_PUBLICKEYBYTES)
+    const signingSecretKey = Buffer.alloc(sodium.crypto_sign_SECRETKEYBYTES)
+    sodium.crypto_sign_seed_keypair(signingPublicKey, signingSecretKey, signingSeed)
+    const noiseSeed = await sdk.deriveSecret(NAMESPACE, NOISE_NAME)
+    const noiseKeyPair = seedKeygen(noiseSeed)
+    encoder.signingPublicKey = signingPublicKey
+    encoder.signingSecretKey = signingSecretKey
+    encoder.replicationPublicKey = replicationPublicKey
+    encoder.publicKey = noiseKeyPair.publicKey
+    this.encoder = encoder
     return this.encoder
   }
 
-  async initAttestor (opts = {}, log) {
-    const { sdk } = this
-
-    this.attestor = await Attestor.load({ sdk, ...opts }, log)
-
+  async initAttestor (log) {
+    const NAMESPACE = 'datdot-attestor'
+    const NOISE_NAME = 'noise'
+    const attestor = {}
+    const sdk = await SDK({ aplication: 'datdot-account', storage: RAM})
+    const noiseSeed = await sdk.deriveSecret(NAMESPACE, NOISE_NAME)
+    const noiseKeyPair = seedKeygen(noiseSeed)
+    attestor.publicKey = noiseKeyPair.publicKey
+    this.attestor = attestor
     return this.attestor
   }
 

@@ -1,5 +1,5 @@
-const registrationForm = require('../registrationForm')
-const dateToBlockNumber = require('../dateToBlockNumber')
+const registrationForm = require('registrationForm')
+const dateToBlockNumber = require('dateToBlockNumber')
 /******************************************************************************
   ROLE: Hoster
 ******************************************************************************/
@@ -10,7 +10,7 @@ async function role (profile, APIS) {
   const { serviceAPI, chainAPI, vaultAPI } = APIS
 
   log({ type: 'hoster', data: [`Register as hoster`] })
-  await vaultAPI.initHoster({}, log)
+  await vaultAPI.initHoster(log)
   const hosterKey = await vaultAPI.hoster.publicKey
   const myAddress = await vaultAPI.chainKeypair.address
   log({ type: 'hoster', data: [`My address ${myAddress}`] })
@@ -52,7 +52,8 @@ async function role (profile, APIS) {
       const { hosters, attestors } = amendment.providers
       if (!await isForMe(hosters, event)) return
       const { feedKey, attestorKey, plan, ranges } = await getHostingData(attestors, contract)
-      const data = { amendmentID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan, ranges }
+      const data = { amendmentID, account: vaultAPI, hosterKey, feedKey, attestorKey, plan, ranges, log }
+      data.account = await vaultAPI
       await serviceAPI.host(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
       log({ type: 'hoster', data: [`Hosting for the amendment ${amendmentID} started`] })
     }
@@ -79,8 +80,9 @@ async function role (profile, APIS) {
         const data = await getStorageChallengeData(storageChallenge, contract)
         data.account = await vaultAPI
         data.hosterKey = hosterKey
+        data.log = log
         // log({ type: 'hoster', data: [`sendStorageChallengeToAttestor - ${data}`] })
-        await serviceAPI.sendStorageChallengeToAttestor(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
+        await serviceAPI.send_storage_proofs(data).catch((error) => log({ type: 'error', data: [`Error: ${JSON.stringify(error)}`] }))
         // await serviceAPI.sendStorageChallengeToAttestor(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
         log({ type: 'hoster', data: [`sendStorageChallengeToAttestor completed`] })
       }

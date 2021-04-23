@@ -1,5 +1,5 @@
-const registrationForm = require('../registrationForm')
-const dateToBlockNumber = require('../dateToBlockNumber')
+const registrationForm = require('registrationForm')
+const dateToBlockNumber = require('dateToBlockNumber')
 const tempDB = require('../tempdb')
 
 /******************************************************************************
@@ -14,7 +14,7 @@ async function role (profile, APIS) {
 
   log({ type: 'attestor', data: [`Register as attestor`] })
 
-  await vaultAPI.initAttestor({}, log)
+  await vaultAPI.initAttestor(log)
   const attestorKey = await vaultAPI.attestor.publicKey
   const myAddress = await vaultAPI.chainKeypair.address
   const signer = await vaultAPI.chainKeypair
@@ -95,7 +95,7 @@ async function role (profile, APIS) {
       const { feedKey, encoderKeys, hosterKeys, ranges } = await getData(amendment, contract)
 
       const data = { account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges }
-      const failedKeys = await serviceAPI.verifyAndForwardEncodings(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
+      const failedKeys = await serviceAPI.attest_hosting_setup(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
       log({ type: 'attestor', data: [`Resolved all the responses for amendment: ${amendmentID}: ${failedKeys}`] })
       
       const failed = []

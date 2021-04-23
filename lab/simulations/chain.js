@@ -1,9 +1,9 @@
 const DB = require('../../src/DB')
-const makeSets = require('../../src/makeSets')
-const blockgenerator = require('../../src/scheduleAction')
+const makeSets = require('../../src/node_modules/makeSets')
+const blockgenerator = require('../../src/node_modules/scheduleAction')
 const logkeeper = require('../scenarios/logkeeper')
 const WebSocket = require('ws')
-const PriorityQueue = require('../../src/priority-queue')
+const PriorityQueue = require('../../src/node_modules/priority-queue')
 const priority_queue= PriorityQueue(compare)
 const connections = {}
 const handlers = []

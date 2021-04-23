@@ -3,7 +3,7 @@
 module.exports = [
   { "name": "alice", "roles": ["peer", "sponsor", "attestor", "hoster", "encoder"] },
   { "name": "bob", "roles": ["peer", "hoster", "attestor", "encoder", "hoster"] },
-  { "name": "charlie", "roles": ["peer", "encoder", "publisher", "hoster", "attestor"] },
+  { "name": "charlie", "roles": ["peer", "encoder", "hoster", "attestor"] },
   { "name": "dave", "roles": ["peer", "encoder", "hoster", "attestor"] },
   { "name": "eve", "roles": ["peer", "author"] },
   { "name": "janice", "roles": ["peer", "encoder", "hoster", "attestor"] },

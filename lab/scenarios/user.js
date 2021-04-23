@@ -10,7 +10,6 @@ const getVaultAPI = require('../../src/vault.js')
 ******************************************************************************/
 const ROLES = {
   peer: require('../../src/roles/peer.js'),
-  publisher: require('../../src/roles/publisher.js'),
   sponsor: require('../../src/roles/sponsor.js'),
   hoster: require('../../src/roles/hoster.js'),
   encoder: require('../../src/roles/encoder.js'),

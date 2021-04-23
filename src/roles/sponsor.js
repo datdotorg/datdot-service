@@ -1,5 +1,5 @@
-const dateToBlockNumber = require('../dateToBlockNumber')
-const get_feed_metadata = require('../get_feed_metadata')
+const dateToBlockNumber = require('dateToBlockNumber')
+const get_feed_metadata = require('get_feed_metadata')
 /******************************************************************************
   ROLE: sponsor
 ******************************************************************************/

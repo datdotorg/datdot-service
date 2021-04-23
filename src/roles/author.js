@@ -1,10 +1,10 @@
 const hypercore = require('hypercore')
 const hyperswarm = require('hyperswarm')
 const RAM = require('random-access-memory')
-const get_signature = require('../get-signature')
-const ready = require('../hypercore-ready')
-const verify_signature = require('../verify-signature')
-const append = require('../hypercore-append')
+const get_signature = require('get-signature')
+const ready = require('hypercore-ready')
+const verify_signature = require('verify-signature')
+const append = require('hypercore-append')
 /******************************************************************************
   ROLE: Author
 ******************************************************************************/

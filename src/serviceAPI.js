@@ -7,12 +7,12 @@ function datdotService (profile) {
   const service = Service(log)
 
   const serviceAPI = {
-    host,
     encode,
-    verifyAndForwardEncodings,
+    host,
+    attest_hosting_setup,
     // getStorageChallenge,
     removeFeed,
-    sendStorageChallengeToAttestor,
+    send_storage_proofs,
     verifyStorageChallenge,
     checkPerformance
   }
@@ -22,15 +22,12 @@ function datdotService (profile) {
     API FUNCTIONS
   ******************************************************************************/
 
-  /* ----------------------------------------------------------------
-                 BEFORE HOSTING => ENCODING, VERIFYING, STORING
-  ------------------------------------------------------------------ */
   async function encode ({ amendmentID, account, attestorKey, encoderKey, feedKey: feedKeyBuffer, ranges }) {
     log({ type: 'serviceAPI', data: [`Encode!`] })
-    return service.encodeFor({ account, amendmentID, attestorKey, encoderKey, feedKeyBuffer, ranges })
+    return service.encode_hosting_setup({ account, amendmentID, attestorKey, encoderKey, feedKeyBuffer, ranges })
   }
 
-  async function verifyAndForwardEncodings (data/*, currentState, signal*/) {
+  async function attest_hosting_setup (data/*, currentState, signal*/) {
     const { account, amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges } = data
     const messages = {}
     const responses = []
@@ -39,55 +36,42 @@ function datdotService (profile) {
       const hosterKey = hosterKeys[i]
       const opts = { amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, compareCB: (msg, key) => compareEncodings({messages, key, msg}) }
       log({ type: 'serviceAPI', data: [`Verify encodings!`] })
-      responses.push(account.attestor.hosting_setup(opts))
+      responses.push(service.verify_and_forward_encodings(opts))
     }
     const failedKeys = await Promise.all(responses) // can be 0 to 6 pubKeys of failed providers
     return failedKeys.flat()
   }
 
   async function host (data) {
-    const { account, amendmentID, feedKey, hosterKey, attestorKey, plan, ranges } = data
-    const opts = { amendmentID, feedKey, hosterKey, attestorKey, plan, ranges }
-    log({ type: 'serviceAPI', data: [`Host! ${JSON.stringify(opts)}`] })
-    return await account.hoster.hostFor(opts)
+    log({ type: 'serviceAPI', data: [`Host! ${data.amendmentID}`] })
+    return await service.receive_data_and_start_hosting(data)
   }
 
   async function removeFeed ({ feedKey, account }) {
     const hasKey = await account.hoster.hasKey(feedKey)
     log({ type: 'serviceAPI', data: [`DropHosting hasKey? ${hasKey}`] })
     // TODO fix errors in hoster storage when trying to remove feed
-    if (hasKey) return await account.hoster.removeFeed(feedKey)
+    if (hasKey) return await service.removeFeed(account, feedKey)
     // TODO ELSE => cancelHostFor process (disconnect from attestor and removeKey) <= for hosters that didn't start hosting on time
   }
 
-  /* ----------------------------------------------------------------
-                     WHILE HOSTING => proof
------------------------------------------------------------------- */
-  // async function getStorageChallenge ({ account, storageChallenge, feedKey }) {
-  //   const data = await Promise.all(storageChallenge.chunks.map(async (index) => {
-  //     return await account.hoster.getStorageChallenge(feedKey, index)
-  //   }))
-  //   return data
-  // }
-
-  async function sendStorageChallengeToAttestor (data) {
-    const { account, hosterKey, storageChallenge, feedKey, attestorKey } = data
+  async function send_storage_proofs (data) {
     log({ type: 'serviceAPI', data: [`send storage to attestor!`] })
-    return account.hoster.sendStorageChallenge({ storageChallenge, hosterKey, feedKey, attestorKey })
+    return service.send_storage_proofs_to_attestor(data)
   }
 
   async function verifyStorageChallenge (data) {
     const { account, attestorKey, hosterKey, feedKey, storageChallenge } = data
     log({ type: 'serviceAPI', data: [`verify storage!`] })
     // TODO prepare the response: hash, proof etc. instead of sending the full chunk
-    return await account.attestor.verifyStorageChallenge({ storageChallenge, attestorKey, feedKey, hosterKey })
+    return await service.attest_storage_challenge({ storageChallenge, attestorKey, feedKey, hosterKey })
   }
 
   async function checkPerformance (data) {
     const { account, randomChunks, feedKey } = data
     log({ type: 'serviceAPI', data: [`check performance!`] })
     const report = await Promise.all(randomChunks.map(async (chunk) => {
-      return await account.attestor.checkPerformance(feedKey, chunk)
+      return await service.attest_performance(feedKey, chunk)
     }))
     return report
   }

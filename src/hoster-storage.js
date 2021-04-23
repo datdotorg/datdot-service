@@ -1,4 +1,5 @@
 const intercept = require('intercept-hypercore-storage')
+const EncoderDecoder = require('EncoderDecoder')
 
 const ENCODED_PREFIX = 0
 const DECODED_PREFIX = 1
@@ -13,8 +14,7 @@ module.exports = class HosterStorage {
   db is a levelup instance
   feed is a hypercore instance that will be used to store / seed the hosted hypercore
   **/
-  constructor ({ EncoderDecoder, db, feed, log }) {
-    this.EncoderDecoder = EncoderDecoder
+  constructor ({ db, feed, log }) {
     this.db = db
     this.log = log
     this.feed = feed
@@ -29,7 +29,7 @@ module.exports = class HosterStorage {
     // Get the decoded data at the index
     // In parallel, decode the encoded data
 
-    const decoded = await this.EncoderDecoder.decode(encoded)
+    const decoded = await EncoderDecoder.decode(encoded)
     stuff.storeEnc[index] = encoded
     stuff.storeDec[index] = decoded
     const packet = {
@@ -134,7 +134,7 @@ module.exports = class HosterStorage {
       .then(async (encoded) => {
         // Got encoded data!
         // Decode and return it
-        const decoded = await this.EncoderDecoder.decode(encoded)
+        const decoded = await EncoderDecoder.decode(encoded)
         return decoded
       }, async () => {
         // Key doesn't exist? Try to get decoded version

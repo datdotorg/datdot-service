@@ -1,5 +1,5 @@
-const registrationForm = require('../registrationForm')
-const dateToBlockNumber = require('../dateToBlockNumber')
+const registrationForm = require('registrationForm')
+const dateToBlockNumber = require('dateToBlockNumber')
 /******************************************************************************
   ROLE: Encoder
 ******************************************************************************/
