@@ -253,7 +253,6 @@ async function _registerRoles (user, { name, nonce }, status, args) {
   form.regions = form.regions.map(ref => { if (ref < 0) return regions_ids[(Math.abs(ref) - 1)] })
   form.performances = form.performances.map(ref => { if (ref < 0) return performances_ids[(Math.abs(ref) - 1)] })
   form.resources = form.resources.map(ref => { if (ref < 0) return resources_ids[(Math.abs(ref) - 1)] })
-  console.log(JSON.stringify(form.resources))
   const userID = user.id
   const registration = [userID]
   // registered.push(role)

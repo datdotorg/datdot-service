@@ -56,6 +56,7 @@ async function encode_hosting_setup ({ account, amendmentID, attestorKey, encode
     swarm.on('connection', (socket, info) => {
       socket.pipe(feed.replicate(info.client)).pipe(socket)  // TODO: sparse replication and download only chunks we need, do not replicate whole feed
     })
+
     // @NOTE:
     // sponsor provides only feedkey and swarmkey (no metadata)
     // when chain makes contracts, it checks if there is a signature for highest index of the contract
@@ -95,7 +96,7 @@ async function encode_hosting_setup ({ account, amendmentID, attestorKey, encode
     }
   })
 }
-function sendDataToAttestor ({ account, core, range, feed, feedKey, beam, log, stats, expectedChunkCount }) {
+async function sendDataToAttestor ({ account, core, range, feed, feedKey, beam, log, stats, expectedChunkCount }) {
   for (let index = range[0], len = range[1] + 1; index < len; index++) {
     const msg = encode(account, index, feed, feedKey)
     send({ msg, core, log, stats, expectedChunkCount })
@@ -114,8 +115,9 @@ async function encode (account, index, feed, feedKey) {
   const data = await get_index(feed, index)  
   const encoded = await EncoderDecoder.encode(data)
   const nodes = await get_nodes(feed, index)
-  const signature = await get_signature(feed, index)  
-
+  const signature = await get_signature(feed, index)
+    
+  
   // Allocate buffer for the proof
   const proof = Buffer.alloc(sodium.crypto_sign_BYTES)
   // Allocate buffer for the data that should be signed
@@ -127,7 +129,6 @@ async function encode (account, index, feed, feedKey) {
   // Sign the data with our signing secret key and write it to the proof buffer
   const signingSecretKey = account.encoder.signingSecretKey
   sodium.crypto_sign_detached(proof, toSign, signingSecretKey)
-  console.log({proof})
   return { type: 'encoded', feed: feedKey, index, encoded, proof, nodes, signature }
 }
 
@@ -148,10 +149,8 @@ async function encode (account, index, feed, feedKey) {
 -------------------------------------------- */
 
 async function receive_data_and_start_hosting ({ account, amendmentID, feedKey, hosterKey, attestorKey, plan, ranges, log }) {
-  console.log('receive data and start hosting')
-  await setOpts(account, feedKey, plan)
   await addKey(account, feedKey, plan)
-  await loadFeedData(account, feedKey)    
+  await loadFeedData(account, ranges, feedKey, log)    
   await getEncodedDataFromAttestor({ account, amendmentID, hosterKey, attestorKey, feedKey, ranges, log })
 }
   
@@ -196,6 +195,7 @@ async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, at
       const results = await Promise.all(all_hosted).catch(err => {
         log2attestor({ type: 'error', data: [`Error getting results ${err}`] })
       })
+      if (!results) console.log('Error storing data')
       // console.log({results})
       if (results.length === expectedChunkCount) {
         log2attestor({ type: 'hoster', data: [`All data (${expectedChunkCount} chunks) successfully hosted`] })
@@ -272,11 +272,10 @@ async function removeFeed (account, key, log) {
     await storage.destroy()
     account.hoster.storages.delete(stringKey)
   }
-  await setOpts(account, stringKey, null)
   await removeKey(key)
 }
 
-async function loadFeedData (account, key, log) {
+async function loadFeedData (account, ranges, key, log) {
   const stringKey = key.toString('hex')
   const deferred = defer()
   // If we're already loading this feed, queue up our promise after the current one
@@ -292,15 +291,15 @@ async function loadFeedData (account, key, log) {
     account.hoster.loaderCache.set(stringKey, deferred.promise)
   }
   try {
-    const { ranges, watch } = await getOpts(account, key)
     const storage = await getStorage(account, key)
     const { feed } = storage
     // await feed.ready()
-    for (const { start, end: wantedEnd } of ranges) {
-      const end = Math.min(wantedEnd, feed.length)
-      await feed.download({ start, end })
-    }
-    if (watch) watchFeed(account, feed)
+    ranges.forEach(async (range) => {
+      for (let index = range[0], len = range[1] + 1; index < len; index++) {
+         await feed.download({ start: index, end: index+1 })
+      }
+    })
+    // if (watch) watchFeed(account, feed)
     account.hoster.loaderCache.delete(stringKey)
     deferred.resolve()
   } catch (e) {
@@ -374,17 +373,6 @@ async function removeKey (account, key) {
   log({ type: 'hoster', data: [`Key removed`] })
 }
 
-async function setOpts (account, key, options) {
-  const stringKey = key.toString('hex')
-  account.hoster.keyOptions.set(stringKey, options)
-}
-
-async function getOpts (account, key) {
-  const stringKey = key.toString('hex')
-  const DEFAULT_OPTS = { ranges: [{ start: 0, end: Infinity }], watch: true }
-  return account.hoster.keyOptions.get(stringKey) || DEFAULT_OPTS
-}
-
 async function close () {
   // Close the DB and hypercores
   for (const storage of account.hoster.storages.values()) {
@@ -403,16 +391,16 @@ async function close () {
           const { id, chunks } = storageChallenge
           const topic = derive_topic({ senderKey: hosterKey, feedKey, receiverKey: attestorKey, id })
           const tid = setTimeout(() => {
-            beam.destroy()
+            // beam.destroy()
             reject({ type: `attestor_timeout` })
           }, DEFAULT_TIMEOUT)
           const beam = new Hyperbeam(topic)
           beam.on('error', err => { 
             console.log({err})
             clearTimeout(tid)
-            beam.destroy()
+            // beam.destroy()
             if (beam_once) {
-              beam_once.destroy()
+              // beam_once.destroy()
               reject({ type: `attestor_connection_fail`, data: err })
             }
           })
@@ -420,8 +408,8 @@ async function close () {
           var beam_once = new Hyperbeam(once_topic)
           beam_once.on('error', err => {
             clearTimeout(tid)
-            beam_once.destroy()
-            beam.destroy()
+            // beam_once.destroy()
+            // beam.destroy()
             reject({ type: `hoster_connection_fail`, data: err })
           })
           const core = toPromises(new hypercore(RAM, { valueEncoding: 'utf-8' }))
@@ -464,8 +452,8 @@ async function close () {
               console.log({error})
               log2attestor4Challenge({ type: 'error', data: [`error: ${error}`] })
               clearTimeout(tid)
-              beam_once.destroy()
-              beam.destroy()
+              // beam_once.destroy()
+              // beam.destroy()
               reject({ type: `hoster_proof_fail`, data: error })
             })
             if (!results) log2attestor4Challenge({ type: 'error', data: [`No results`] })
@@ -473,14 +461,14 @@ async function close () {
             log2attestor4Challenge({ type: 'hoster', data: [`${all.length} responses received from the attestor`] })
             log2attestor4Challenge({ type: 'hoster', data: [`Destroying communication with the attestor`] })
             clearTimeout(tid)
-            beam_once.destroy()
-            beam.destroy()
+            // beam_once.destroy()
+            // beam.destroy()
             resolve({ type: `DONE`, data: results })
           } catch (err) {
             log2attestor4Challenge({ type: 'error', data: [`Error: ${err}`] })
             clearTimeout(tid)
-            beam_once.destroy()
-            beam.destroy()
+            // beam_once.destroy()
+            // beam.destroy()
             reject({ type: `hoster_proof_fail`, data: err })
           }
         })
@@ -498,7 +486,6 @@ async function close () {
                             HOSTING SETUP
 ---------------------------------------------------------------------- */
 async function verify_and_forward_encodings (opts) {
-  console.log('starting to verify and forward encodings')
   const { amendmentID, attestorKey, encoderKey, hosterKey, feedKey, ranges, compareCB } = opts
   const topic_encoder = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
   const topic_hoster = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID })
@@ -736,15 +723,15 @@ async function verify_and_forward_encodings (opts) {
       const topic = derive_topic({ senderKey: hosterKey, feedKey, receiverKey: attestorKey, id })
 
       const tid = setTimeout(() => {
-        beam.destroy()
+        // beam.destroy()
         reject({ type: `attestor_timeout` })
       }, DEFAULT_TIMEOUT)
       const beam = new Hyperbeam(topic)
       beam.on('error', err => { 
         clearTimeout(tid)
-        beam.destroy()
+        // beam.destroy()
         if (beam_once) {
-          beam_once.destroy()
+          // beam_once.destroy()
           reject({ type: `attestor_connection_fail`, data: err })
         }
       })
@@ -752,8 +739,8 @@ async function verify_and_forward_encodings (opts) {
       var beam_once = new Hyperbeam(once_topic)
       beam_once.on('error', err => { 
         clearTimeout(tid)
-        beam_once.destroy()
-        beam.destroy()
+        // beam_once.destroy()
+        // beam.destroy()
         reject({ type: `${role}_connection_fail`, data: err })
       })
       const all = []
@@ -783,12 +770,12 @@ async function verify_and_forward_encodings (opts) {
           if (!results) log2hosterChallenge({ type: 'error', data: [`No results`] })
           console.log({results})
           clearTimeout(tid)
-          beam.destroy()
+          // beam.destroy()
           resolve({ type: `DONE`, data: results })
         } catch (err) {
           log2hosterChallenge({ type: 'error', data: [`Error: ${err}`] })
           clearTimeout(tid)
-          beam.destroy()
+          // beam.destroy()
           reject({ type: `hoster_proof_fail`, data: err })
         }
       }

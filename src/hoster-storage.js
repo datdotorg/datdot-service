@@ -26,8 +26,6 @@ module.exports = class HosterStorage {
   // Invoked by the encoder so that the host will store the encoded data
   async storeEncoded (index, proof, encoded, nodes, signature) {
 
-    console.log({index, proof, encoded, nodes, signature})
-
     // Get the decoded data at the index
     // In parallel, decode the encoded data
 
@@ -46,9 +44,9 @@ module.exports = class HosterStorage {
       this.feed._putBuffer(index, decoded, packet, {}, async (err) => {
         if (err) {
           console.log({err})
-          // console.log({index, signature})
-          // console.log(decoded.toString('utf-8'))
-          // await audit(this.feed)
+          console.log({index, signature})
+          console.log(decoded.toString('utf-8'))
+          await audit(this.feed)
           reject(err)
         }
         else resolve()

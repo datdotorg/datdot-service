@@ -82,7 +82,7 @@ module.exports = class Account {
     const db = levelup(encode(storage, { valueEncoding: 'binary' }))
     const hoster = {
       storages: new Map(),
-      keyOptions: new Map(),
+      // keyOptions: new Map(),
       watchingFeeds: new Set(),
       loaderCache: new Map(),
       db,
