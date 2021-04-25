@@ -1,6 +1,5 @@
 const sodium = require('sodium-universal')
 const varint = require('varint')
-const SDK = require('hyper-sdk')
 const hypercore = require('hypercore')
 const RAM = require('random-access-memory')
 const { toPromises } = require('hypercore-promisifier')
@@ -11,13 +10,14 @@ const hyperswarm = require('hyperswarm')
 const ready = require('hypercore-ready')
 const get_signature = require('get-signature')
 const get_nodes = require('get-nodes')
-const get_data = require('get-data')
+const get_index = require('get-index')
+const download_range = require('download-range')
 const verify_signature = require('verify-signature')
 const { performance } = require('perf_hooks')
 const EncoderDecoder = require('EncoderDecoder')
 const sub = require('subleveldown')
 const defer = require('promise-defer')
-const reallyReady = require('hypercore-really-ready')
+const audit = require('audit-hypercore')
 const HosterStorage = require('./hoster-storage')
 const DEFAULT_TIMEOUT = 7500
 
@@ -35,11 +35,11 @@ function service (log) {
     receive_data_and_start_hosting,
     send_storage_proofs_to_attestor,
   }
-    /* ----------------------------------------------------------------------
-    //////////////////////////////////////////////////////////////////////////
-                                    ENCODER
-    //////////////////////////////////////////////////////////////////////////
-    ---------------------------------------------------------------------- */
+    /* -----------------------------------------------------------------------------------------------------------------------------
+    
+                                                        ENCODER
+
+    ----------------------------------------------------------------------------------------------------------------------------- */
 
 async function encode_hosting_setup ({ account, amendmentID, attestorKey, encoderKey, feedKeyBuffer: feedKey, ranges }) {
   const log2Attestor = log.sub(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
@@ -110,10 +110,12 @@ async function send ({ msg, core, log, stats, expectedChunkCount }) {
   })
 }
 async function encode (account, index, feed, feedKey) {
-  const data = await get_data(feed, index)
+  await download_range(feed, { start: index, end: index+1 })
+  const data = await get_index(feed, index)  
   const encoded = await EncoderDecoder.encode(data)
   const nodes = await get_nodes(feed, index)
-  const signature = await get_signature(feed, index)
+  const signature = await get_signature(feed, index)  
+
   // Allocate buffer for the proof
   const proof = Buffer.alloc(sodium.crypto_sign_BYTES)
   // Allocate buffer for the data that should be signed
@@ -125,6 +127,7 @@ async function encode (account, index, feed, feedKey) {
   // Sign the data with our signing secret key and write it to the proof buffer
   const signingSecretKey = account.encoder.signingSecretKey
   sodium.crypto_sign_detached(proof, toSign, signingSecretKey)
+  console.log({proof})
   return { type: 'encoded', feed: feedKey, index, encoded, proof, nodes, signature }
 }
 
@@ -133,140 +136,261 @@ async function encode (account, index, feed, feedKey) {
 // 2. encoded chunk has to be signed by the original encoder so that the hoster cannot encode a chunk themselves and send it to attester
 // 3. attestor verifies unique encoding data was signed by original encoder
 
-    /* ----------------------------------------------------------------------
-    //////////////////////////////////////////////////////////////////////////
-                                HOSTER
-    //////////////////////////////////////////////////////////////////////////
-  ---------------------------------------------------------------------- */
+/* -----------------------------------------------------------------------------------------------------------------------------
+    
+                                                        HOSTER
+
+----------------------------------------------------------------------------------------------------------------------------- */
 
   
-      /* ------------------------------------------- 
-            1. GET ENCODED AND START HOSTING
-      -------------------------------------------- */
+/* ------------------------------------------- 
+      1. GET ENCODED AND START HOSTING
+-------------------------------------------- */
 
-      async function receive_data_and_start_hosting ({ account, amendmentID, feedKey, hosterKey, attestorKey, plan, ranges, log }) {
-        console.log('receive data and start hosting')
-        await setOpts(account, feedKey, plan)
-        await addKey(account, feedKey, plan)
-        await loadFeedData(account, feedKey)    
-        await getEncodedDataFromAttestor({ account, amendmentID, hosterKey, attestorKey, feedKey, ranges, log })
+async function receive_data_and_start_hosting ({ account, amendmentID, feedKey, hosterKey, attestorKey, plan, ranges, log }) {
+  console.log('receive data and start hosting')
+  await setOpts(account, feedKey, plan)
+  await addKey(account, feedKey, plan)
+  await loadFeedData(account, feedKey)    
+  await getEncodedDataFromAttestor({ account, amendmentID, hosterKey, attestorKey, feedKey, ranges, log })
+}
+  
+async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, attestorKey, feedKey, ranges, log }) {
+  const log2attestor = log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
+
+  return new Promise(async (resolve, reject) => {
+    const expectedChunkCount = getRangesCount(ranges)
+    const all_hosted = []
+    let counter = 0
+    
+    // connect to attestor
+    const topic_attestor1 = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID })
+    const beam1 = new Hyperbeam(topic_attestor1)
+    
+    // get the key and replicate attestor hypercore
+    const temp_topic1 = topic_attestor1 + 'once'
+    const beam_temp1 = new Hyperbeam(temp_topic1)
+    beam_temp1.once('data', async (data) => {
+      const message = JSON.parse(data.toString('utf-8'))
+      if (message.type === 'feedkey') replicate(Buffer.from(message.feedkey, 'hex'))
+    })
+    
+    async function replicate (feedkey) {
+      const clone1 = toPromises(new hypercore(RAM, feedkey, {
+        valueEncoding: 'utf-8',
+        sparse: true
+      }))
+      
+      // pipe streams
+      const clone1Stream = clone1.replicate(false, { live: true })
+      clone1Stream.pipe(beam1).pipe(clone1Stream)
+      
+      // // get replicated data
+      for (var i = 0; i < expectedChunkCount; i++) {
+        log2attestor({ type: 'hoster', data: [`Getting data: counter ${i}`] })
+        all_hosted.push(store_data(account, clone1.get(i)))
+        // beam_temp1.destroy()
       }
-      
-      async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, attestorKey, feedKey, ranges, log }) {
-        const log2attestor = log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
-    
+
+      // resolve
+      const results = await Promise.all(all_hosted).catch(err => {
+        log2attestor({ type: 'error', data: [`Error getting results ${err}`] })
+      })
+      // console.log({results})
+      if (results.length === expectedChunkCount) {
+        log2attestor({ type: 'hoster', data: [`All data (${expectedChunkCount} chunks) successfully hosted`] })
+        // beam1.destroy()
+        resolve(`All data chunks successfully hosted`)
+      }
+  
+      // store data
+      async function store_data (account, data_promise) {
+        const message = await data_promise
+        const data = JSON.parse(message.toString('utf-8'))
+        log2attestor({ type: 'hoster', data: [`RECV_MSG with index: ${data.index} from attestor ${attestorKey.toString('hex')}`] })
+        
         return new Promise(async (resolve, reject) => {
-          const expectedChunkCount = getRangesCount(ranges)
-          const all_hosted = []
-          let counter = 0
-          
-          /* ------------------------------------------- 
-          a. CONNECT TO ATTESTOR
-          -------------------------------------------- */
-          const topic_attestor1 = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID })
-          const beam1 = new Hyperbeam(topic_attestor1)
-          
-          // get the key and replicate attestor hypercore
-          const temp_topic1 = topic_attestor1 + 'once'
-          const beam_temp1 = new Hyperbeam(temp_topic1)
-          beam_temp1.once('data', async (data) => {
-            const message = JSON.parse(data.toString('utf-8'))
-            if (message.type === 'feedkey') replicate(Buffer.from(message.feedkey, 'hex'))
-          })
-          
-          async function replicate (feedkey) {
-            const clone1 = toPromises(new hypercore(RAM, feedkey, {
-              valueEncoding: 'utf-8',
-              sparse: true
-            }))
-            
-            // pipe streams
-            const clone1Stream = clone1.replicate(false, { live: true })
-            clone1Stream.pipe(beam1).pipe(clone1Stream)
-            
-            // // get replicated data
-            for (var i = 0; i < expectedChunkCount; i++) {
-              log2attestor({ type: 'hoster', data: [`Getting data: counter ${i}`] })
-              all_hosted.push(store_data(account, clone1.get(i)))
-              // beam_temp1.destroy()
+          counter++
+          const { type } = data
+          if (type === 'verified') {
+            if (!is_valid_data(data)) return
+            const { feed, index, encoded, proof, nodes, signature } = data
+            log2attestor({ type: 'hoster', data: [`Storing verified message with index: ${data.index}`] })
+            const key = Buffer.from(feed)
+            const stringKey = key.toString('hex')
+            const isExisting = await account.hoster.storages.has(stringKey)
+            // Fix up the JSON serialization by converting things to buffers
+            for (const node of nodes) node.hash = Buffer.from(node.hash)
+            if (!isExisting) {
+              const error = { type: 'encoded:error', error: 'UNKNOWN_FEED', ...{ key: key.toString('hex') } }
+              // stream.write(error)
+              // stream.end()
+              return reject(error)
             }
-    
-            // resolve
-            const results = await Promise.all(all_hosted).catch(err => {
-              log2attestor({ type: 'error', data: [`Error getting results ${err}`] })
-            })
-            // console.log({results})
-            if (results.length === expectedChunkCount) {
-              log2attestor({ type: 'hoster', data: [`All data (${expectedChunkCount} chunks) successfully hosted`] })
-              // beam1.destroy()
-              resolve(`All data chunks successfully hosted`)
-            }
-        
-            /* ------------------------------------------- 
-                        b. STORE
-            -------------------------------------------- */
-    
-            async function store_data (account, data_promise) {
-              const message = await data_promise
-              const data = JSON.parse(message.toString('utf-8'))
-              log2attestor({ type: 'hoster', data: [`RECV_MSG with index: ${data.index} from attestor ${attestorKey.toString('hex')}`] })
-              
-              return new Promise(async (resolve, reject) => {
-                counter++
-                const { type } = data
-                if (type === 'verified') {
-                  if (!is_valid_data(data)) return
-                  const { feed, index, encoded, proof, nodes, signature } = data
-                  log2attestor({ type: 'hoster', data: [`Storing verified message with index: ${data.index}`] })
-                  const key = Buffer.from(feed)
-                  const stringKey = key.toString('hex')
-                  const isExisting = await account.hoster.storages.has(stringKey)
-                  // Fix up the JSON serialization by converting things to buffers
-                  for (const node of nodes) node.hash = Buffer.from(node.hash)
-                  if (!isExisting) {
-                    const error = { type: 'encoded:error', error: 'UNKNOWN_FEED', ...{ key: key.toString('hex') } }
-                    // stream.write(error)
-                    // stream.end()
-                    return reject(error)
-                  }
-                  try {
-                    await storeEncoded({
-                      account,
-                      key,
-                      index,
-                      proof: Buffer.from(proof),
-                      encoded: Buffer.from(encoded),
-                      nodes,
-                      signature: Buffer.from(signature)
-                    })
-                    // console.log('Received', index)
-                    log2attestor({ type: 'hoster', data: [`Hoster received & stored index: ${index} (${counter}/${expectedChunkCount}`] })
-                    resolve({ type: 'encoded:stored', ok: true, index: data.index })
-                  } catch (e) {
-                    // Uncomment for better stack traces
-                    const error = { type: 'encoded:error', error: `ERROR_STORING: ${e.message}`, ...{ e }, data }
-                    log2attestor({ type: 'error', data: [`Error: ${JSON.stringify(error)}`] })
-                    // beam1.destroy()
-                    return reject(error)
-                  }
-                } else {
-                  log2attestor({ type: 'error', data: [`UNKNOWN_MESSAGE messageType: ${type}`] })
-                  const error ={ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', ...{ messageType: type } }
-                  // beam1.destroy()
-                  return reject(error)
-                }
+            try {
+              await storeEncoded({
+                account,
+                key,
+                index,
+                proof: Buffer.from(proof),
+                encoded: Buffer.from(encoded),
+                nodes,
+                signature: Buffer.from(signature)
               })
-        
-              async function is_valid_data (data) {
-                const { feed, index, encoded, proof, nodes, signature } = data
-                return !!(feed && index && encoded && proof && nodes && signature)
-              }
+              // console.log('Received', index)
+              log2attestor({ type: 'hoster', data: [`Hoster received & stored index: ${index} (${counter}/${expectedChunkCount}`] })
+              resolve({ type: 'encoded:stored', ok: true, index: data.index })
+            } catch (e) {
+              // Uncomment for better stack traces
+              const error = { type: 'encoded:error', error: `ERROR_STORING: ${e.message}`, ...{ e }, data }
+              log2attestor({ type: 'error', data: [`Error: ${JSON.stringify(error)}`] })
+              // beam1.destroy()
+              return reject(error)
             }
-      
+          } else {
+            log2attestor({ type: 'error', data: [`UNKNOWN_MESSAGE messageType: ${type}`] })
+            const error ={ type: 'encoded:error', error: 'UNKNOWN_MESSAGE', ...{ messageType: type } }
+            // beam1.destroy()
+            return reject(error)
           }
         })
-        
+  
+        async function is_valid_data (data) {
+          const { feed, index, encoded, proof, nodes, signature } = data
+          return !!(feed && index && encoded && proof && nodes && signature)
+        }
       }
+    }
+  })
+}
+
+async function removeFeed (account, key, log) {
+  log({ type: 'hoster', data: [`Removing the feed`] })
+  const stringKey = key.toString('hex')
+  if (account.hoster.storages.has(stringKey)) {
+    const storage = await getStorage(account, key)
+    await storage.destroy()
+    account.hoster.storages.delete(stringKey)
+  }
+  await setOpts(account, stringKey, null)
+  await removeKey(key)
+}
+
+async function loadFeedData (account, key, log) {
+  const stringKey = key.toString('hex')
+  const deferred = defer()
+  // If we're already loading this feed, queue up our promise after the current one
+  if (account.hoster.loaderCache.has(stringKey)) {
+    // Get the existing promise for the loader
+    const existing = account.hoster.loaderCache.get(stringKey)
+    // Create a new promise that will resolve after the previous one and
+    account.hoster.loaderCache.set(stringKey, existing.then(() => deferred.promise))
+    // Wait for the existing loader to resolve
+    await existing
+  } else {
+    // If the feed isn't already being loaded, set this as the current loader
+    account.hoster.loaderCache.set(stringKey, deferred.promise)
+  }
+  try {
+    const { ranges, watch } = await getOpts(account, key)
+    const storage = await getStorage(account, key)
+    const { feed } = storage
+    // await feed.ready()
+    for (const { start, end: wantedEnd } of ranges) {
+      const end = Math.min(wantedEnd, feed.length)
+      await feed.download({ start, end })
+    }
+    if (watch) watchFeed(account, feed)
+    account.hoster.loaderCache.delete(stringKey)
+    deferred.resolve()
+  } catch (e) {
+    account.hoster.loaderCache.delete(stringKey)
+    deferred.reject(e)
+  }
+}
+
+async function watchFeed (account, feed) {
+  warn('Watching is not supported since we cannot ask the chain for attestors')
+  /* const stringKey = feed.key.toString('hex')
+  if (account.hoster.watchingFeeds.has(stringKey)) return
+  account.hoster.watchingFeeds.add(stringKey)
+  feed.on('update', onUpdate)
+  async function onUpdate () {
+    await loadFeedData(feed.key)
+  } */
+}
+
+async function storeEncoded ({ account, key, index, proof, encoded, nodes, signature }) {
+  const storage = await getStorage(account, key)
+  return storage.storeEncoded(index, proof, encoded, nodes, signature)
+}
+
+async function getStorageChallenge (account, key, index) {
+  const storage = await getStorage(account, key)
+  // const _db = storage.db
+  // console.log({_db})
+  const data = await storage.getStorageChallenge(index)
+  return data
+}
+
+async function getStorage (account, key) {
+  const stringKey = key.toString('hex')
+  if (account.hoster.storages.has(stringKey)) {
+    return account.hoster.storages.get(stringKey)
+  }
+
+  const feed = new hypercore(RAM, key, { valueEncoding: 'utf-8', sparse: true })
+  await ready(feed)
+  const swarm = hyperswarm()
+  swarm.join(feed.discoveryKey,  { announce: false, lookup: true })
+  swarm.on('connection', (socket, info) => {
+    socket.pipe(feed.replicate(info.client)).pipe(socket)
+  })
+
+  const db = sub(account.hoster.db, stringKey, { valueEncoding: 'binary' })
+  const storage = new HosterStorage({ db, feed, log })
+  account.hoster.storages.set(stringKey, storage)
+  return storage
+}
+
+async function saveKeys (account, keys) {
+  await account.hoster.hosterDB.put('all_keys', keys)
+}
+
+async function addKey (account, key, options) {
+  const stringKey = key.toString('hex')
+  const existing = (await account.hoster.hosterDB.get('all_keys').catch(e => {})) || []
+  const data = { key: stringKey, options }
+  const final = existing.concat(data)
+  await saveKeys(account, final)
+}
+
+async function removeKey (account, key) {
+  log({ type: 'hoster', data: [`Removing the key`] })
+  const stringKey = key.toString('hex')
+  const existing = (await account.hoster.hosterDB.get('all_keys').catch(e => {})) || []
+  const final = existing.filter((data) => data.key !== stringKey)
+  await saveKeys(account, final)
+  log({ type: 'hoster', data: [`Key removed`] })
+}
+
+async function setOpts (account, key, options) {
+  const stringKey = key.toString('hex')
+  account.hoster.keyOptions.set(stringKey, options)
+}
+
+async function getOpts (account, key) {
+  const stringKey = key.toString('hex')
+  const DEFAULT_OPTS = { ranges: [{ start: 0, end: Infinity }], watch: true }
+  return account.hoster.keyOptions.get(stringKey) || DEFAULT_OPTS
+}
+
+async function close () {
+  // Close the DB and hypercores
+  for (const storage of account.hoster.storages.values()) {
+    await storage.close()
+  }
+}
     
         /* ------------------------------------------- 
             2. CHALLENGES
@@ -361,144 +485,18 @@ async function encode (account, index, feed, feedKey) {
           }
         })
       }
-    
-      async function removeFeed (account, key, log) {
-        log({ type: 'hoster', data: [`Removing the feed`] })
-        const stringKey = key.toString('hex')
-        if (account.hoster.storages.has(stringKey)) {
-          const storage = await getStorage(account, key)
-          await storage.destroy()
-          account.hoster.storages.delete(stringKey)
-        }
-        await setOpts(account, stringKey, null)
-        await removeKey(key)
-      }
-    
-      async function loadFeedData (account, key, log) {
-        const stringKey = key.toString('hex')
-        const deferred = defer()
-        // If we're already loading this feed, queue up our promise after the current one
-        if (account.hoster.loaderCache.has(stringKey)) {
-          // Get the existing promise for the loader
-          const existing = account.hoster.loaderCache.get(stringKey)
-          // Create a new promise that will resolve after the previous one and
-          account.hoster.loaderCache.set(stringKey, existing.then(() => deferred.promise))
-          // Wait for the existing loader to resolve
-          await existing
-        } else {
-          // If the feed isn't already being loaded, set this as the current loader
-          account.hoster.loaderCache.set(stringKey, deferred.promise)
-        }
-        try {
-          const { ranges, watch } = await getOpts(account, key)
-          const storage = await getStorage(account, key)
-          const { feed } = storage
-          await feed.ready()
-          const { length } = feed
-          for (const { start, wantedEnd } of ranges) {
-            const end = Math.min(wantedEnd, length)
-            feed.download({ start, end })
-          }
-          if (watch) watchFeed(account, feed)
-          account.hoster.loaderCache.delete(stringKey)
-          deferred.resolve()
-        } catch (e) {
-          account.hoster.loaderCache.delete(stringKey)
-          deferred.reject(e)
-        }
-      }
-    
-      async function watchFeed (account, feed) {
-        warn('Watching is not supported since we cannot ask the chain for attestors')
-        /* const stringKey = feed.key.toString('hex')
-        if (account.hoster.watchingFeeds.has(stringKey)) return
-        account.hoster.watchingFeeds.add(stringKey)
-        feed.on('update', onUpdate)
-        async function onUpdate () {
-          await loadFeedData(feed.key)
-        } */
-      }
-    
-      async function storeEncoded ({ account, key, index, proof, encoded, nodes, signature }) {
-        const storage = await getStorage(account, key)
-        return storage.storeEncoded(index, proof, encoded, nodes, signature)
-      }
-    
-      async function getStorageChallenge (account, key, index) {
-        const storage = await getStorage(account, key)
-        // const _db = storage.db
-        // console.log({_db})
-        const data = await storage.getStorageChallenge(index)
-        return data
-      }
-    
-      async function getStorage (account, key) {
-        const stringKey = key.toString('hex')
-        if (account.hoster.storages.has(stringKey)) {
-          return account.hoster.storages.get(stringKey)
-        }
-        const sdk = await SDK({ aplication: 'datdot-account', storage: RAM})
-        const feed = sdk.Hypercore(key, { sparse: true })
-        // const feed = new hypercore(RAM, key, { valueEncoding: 'utf-8', sparse: true })
-        const db = sub(account.hoster.db, stringKey, { valueEncoding: 'binary' })
-        await reallyReady(feed)
-        const storage = new HosterStorage({ db, feed, log })
-        account.hoster.storages.set(stringKey, storage)
-        return storage
-      }
-    
-      async function saveKeys (account, keys) {
-        await account.hoster.hosterDB.put('all_keys', keys)
-      }
-    
-      async function addKey (account, key, options) {
-        const stringKey = key.toString('hex')
-        const existing = (await account.hoster.hosterDB.get('all_keys').catch(e => {})) || []
-        const data = { key: stringKey, options }
-        const final = existing.concat(data)
-        await saveKeys(account, final)
-      }
-    
-      async function removeKey (account, key) {
-        log({ type: 'hoster', data: [`Removing the key`] })
-        const stringKey = key.toString('hex')
-        const existing = (await account.hoster.hosterDB.get('all_keys').catch(e => {})) || []
-        const final = existing.filter((data) => data.key !== stringKey)
-        await saveKeys(account, final)
-        log({ type: 'hoster', data: [`Key removed`] })
-      }
-    
-      async function setOpts (account, key, options) {
-        const stringKey = key.toString('hex')
-        account.hoster.keyOptions.set(stringKey, options)
-      }
-    
-      async function getOpts (account, key) {
-        const stringKey = key.toString('hex')
-        const DEFAULT_OPTS = { ranges: [{ start: 0, end: Infinity }], watch: true }
-        return account.hoster.keyOptions.get(stringKey) || DEFAULT_OPTS
-      }
-    
-      async function close () {
-        // Close the DB and hypercores
-        for (const storage of account.hoster.storages.values()) {
-          await storage.close()
-        }
-      }
+  
 
+    /* -----------------------------------------------------------------------------------------------------------------------------
+    
+                                                        ATTESTOR
 
-
-    /* ----------------------------------------------------------------------
-    //////////////////////////////////////////////////////////////////////////
-                                ATTESTOR
-    //////////////////////////////////////////////////////////////////////////
-  ---------------------------------------------------------------------- */
+    ----------------------------------------------------------------------------------------------------------------------------- */
 
 
 /* ----------------------------------------------------------------------
                             HOSTING SETUP
 ---------------------------------------------------------------------- */
-
 async function verify_and_forward_encodings (opts) {
   console.log('starting to verify and forward encodings')
   const { amendmentID, attestorKey, encoderKey, hosterKey, feedKey, ranges, compareCB } = opts
@@ -592,8 +590,6 @@ async function verify_and_forward_encodings (opts) {
       else console.log(err)
     }
   }
-  
-  ///////////////////////////////////////////////////////////
 
   async function connect_to (role, isSender, topic, expectedChunkCount) {
     const chunks = {}
@@ -845,54 +841,54 @@ async function verify_and_forward_encodings (opts) {
   }
 
   
-  /* ----------------------------------------------------------------------
-                          CHECK PERFORMANCE
-  ---------------------------------------------------------------------- */
+/* ----------------------------------------------------------------------
+                        CHECK PERFORMANCE
+---------------------------------------------------------------------- */
 
-  async function attest_performance (key, index) { // key = feedkey, index = chunk index
-    return new Promise(async (resolve, reject) => {
-      const feed = new hypercore(RAM, key, { persist: false })
-      try {
-        const start = performance.now()
-        await Promise.race([
-          feed.get(index),
-          delay(DEFAULT_TIMEOUT).then(() => { throw new Error('Timed out') })
-        ])
-        const end = performance.now()
-        const latency = end - start
-        const stats = await getFeedStats(feed)
-        resolve([stats, latency])
-      } catch (e) {
-        log(`Error: ${key}@${index} ${e.message}`)
-        reject()
-        return [null, null]
-      } finally {
-        await feed.close()
-      }
+async function attest_performance (key, index) { // key = feedkey, index = chunk index
+  return new Promise(async (resolve, reject) => {
+    const feed = new hypercore(RAM, key, { persist: false })
+    try {
+      const start = performance.now()
+      await Promise.race([
+        feed.get(index),
+        delay(DEFAULT_TIMEOUT).then(() => { throw new Error('Timed out') })
+      ])
+      const end = performance.now()
+      const latency = end - start
+      const stats = await getFeedStats(feed)
+      resolve([stats, latency])
+    } catch (e) {
+      log(`Error: ${key}@${index} ${e.message}`)
+      reject()
+      return [null, null]
+    } finally {
+      await feed.close()
+    }
 
-      async function getFeedStats (feed) {
-        if (!feed) return {}
-        const stats = feed.stats
-        const openedPeers = feed.peers.filter(p => p.remoteOpened)
-        const networkingStats = {
-          key: feed.key,
-          discoveryKey: feed.discoveryKey,
-          peerCount: feed.peers.length,
-          peers: openedPeers.map(p => {
-            return { ...p.stats, remoteAddress: p.remoteAddress }
-          })
-        }
-        return {
-          ...networkingStats,
-          uploadedBytes: stats.totals.uploadedBytes,
-          uploadedChunks: stats.totals.uploadedBlocks,
-          downloadedBytes: stats.totals.downloadedBytes,
-          downloadedChunks: feed.downloaded(),
-          totalBlocks: feed.length
-        }
+    async function getFeedStats (feed) {
+      if (!feed) return {}
+      const stats = feed.stats
+      const openedPeers = feed.peers.filter(p => p.remoteOpened)
+      const networkingStats = {
+        key: feed.key,
+        discoveryKey: feed.discoveryKey,
+        peerCount: feed.peers.length,
+        peers: openedPeers.map(p => {
+          return { ...p.stats, remoteAddress: p.remoteAddress }
+        })
       }
-    })
-  }
+      return {
+        ...networkingStats,
+        uploadedBytes: stats.totals.uploadedBytes,
+        uploadedChunks: stats.totals.uploadedBlocks,
+        downloadedBytes: stats.totals.downloadedBytes,
+        downloadedChunks: feed.downloaded(),
+        totalBlocks: feed.length
+      }
+    }
+  })
+}
 
 
 

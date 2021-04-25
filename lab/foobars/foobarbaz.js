@@ -25,19 +25,22 @@ async function make_feed () {
 }
 
 async function clone_feed (feedkey, topic) {
-  const feed = new hypercore(RAM, feedkey, { valueEncoding: 'utf-8' })
-  await ready(feed)
+  const feed = new hypercore(RAM, feedkey, { valueEncoding: 'utf-8', sparse: true })
+  console.log('Really ready')
   const swarm = hyperswarm()
   swarm.join(topic,  { announce: false, lookup: true })
   swarm.on('connection', async (socket, info) => {
     socket.pipe(feed.replicate(info.client)).pipe(socket)
     console.log('new connection')
-    feed.on('sync', () => {
-      audit(feed)
-      // get_and_verify_signatures(feed)
-      swarm.leave(topic)
-    })
+    // feed.on('sync', () => {
+    //   audit(feed)
+    //   // get_and_verify_signatures(feed)
+    //   swarm.leave(topic)
+    // })
   })
+  await reallyReady(feed)
+  const range = await download_range(feed, {start: 1, end: NaN  })
+  console.log({range})
 }
 
 async function get_and_verify_signatures (feed) {
@@ -61,6 +64,17 @@ async function audit (feed) {
 
 // HELPERS
 ///////////////////////////////////////////////////////////
+
+async function download_range (feed,{ start, end }) {
+  console.log({feed})
+  return new Promise((resolve, reject) => {
+    feed.download({ start, end }, (err, res) => {
+      console.log({err, res})
+      if (err) reject(err)
+      resolve(res)
+    })
+  })
+}
 
 async function get_data (feed, index) {
   return new Promise((resolve, reject) => {
@@ -112,4 +126,24 @@ async function get_root_sig (feed) {
       resolve(res.signature) // res = { index, signature }
     })
   }) 
+}
+
+function reallyReady (feed) {
+  return new Promise(function (resolve, reject) {
+    function onupdate (err, result) {
+      if (err && err.message !== 'No update available from peers') reject(err)
+      else resolve()
+    }
+
+    feed.ready(function () {
+    if (feed.writable) resolve()
+    if (feed.peers.length) {
+      feed.update({ ifAvailable: true }, onupdate)
+    } else {
+      feed.once('peer-add', function () {
+        feed.update({ ifAvailable: true }, onupdate)
+      })
+    }
+    })
+  })
 }

@@ -115,9 +115,9 @@ function getUserIDByKey(key) {
 async function signAndSend (data, name, status) {
   const log = connections[name].log
   const { type, args, nonce, address } = data
-
+  
   status({ events: [], status: { isInBlock:1 } })
-
+  
   const user = await _loadUser(address, { name, nonce }, status)
   if (!user) return log({ type: 'chain', data: [`UNKNOWN SENDER of: ${data}`] }) // TODO: maybe use status() ??
 
@@ -139,16 +139,18 @@ async function signAndSend (data, name, status) {
 async function _loadUser (address, { name, nonce }, status) {
   const log = connections[name].log
   let user
-  if (DB.lookups.userByAddress[address]) {
+  log({ type: 'chain', data: [`All users by address: ${name}, ${JSON.stringify(DB.lookups.userByAddress)}`] })
+  if (DB.lookups.userByAddress[address] !== undefined) {
     const pos = DB.lookups.userByAddress[address]
     user = getUserByID(pos)
+    log({ type: 'chain', data: [`Existing user: ${name}, ${user.id}, ${address}`] })
   }
   else {
     // const id = DB.storage.length
     // user = { id, address: address }
     // DB.storage.push(user) // @NOTE: set id
     user = { address }
-    await addItem(user)
+    addItem(user)
     DB.lookups.userByAddress[address] = user.id // push to userByAddress lookup array
     log({ type: 'chain', data: [`New user: ${name}, ${user.id}, ${address}`] })
   }
@@ -225,7 +227,7 @@ async function _publishPlan (user, { name, nonce }, status, args) {
   plan.sponsor = user.id
 
   plan.contracts = []
-  const id = await addItem(plan)
+  const id = addItem(plan)
 
   priority_queue.add({ type: 'plan', id })
   take_next_from_priority(priority_queue.take(), log) // schedule the plan execution
@@ -251,7 +253,7 @@ async function _registerRoles (user, { name, nonce }, status, args) {
   form.regions = form.regions.map(ref => { if (ref < 0) return regions_ids[(Math.abs(ref) - 1)] })
   form.performances = form.performances.map(ref => { if (ref < 0) return performances_ids[(Math.abs(ref) - 1)] })
   form.resources = form.resources.map(ref => { if (ref < 0) return resources_ids[(Math.abs(ref) - 1)] })
-
+  console.log(JSON.stringify(form.resources))
   const userID = user.id
   const registration = [userID]
   // registered.push(role)
@@ -349,7 +351,7 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
   const { status: { schedulerID }, plan: planID } = contract
   const plan = getPlanByID(planID)
   const [attestorID] = attestors
-  if (user.id !== attestorID) return log({ type: 'chain', data: [`Error: this user can not submit the attestation`] })
+  if (user.id !== attestorID) return log({ type: 'chain', data: [`Error: this user can not submit the attestation, ${JSON.stringify(attestors)}, ${user.id}`] })
   if (contract.amendments[contract.amendments.length - 1] !== amendmentID) return log({ type: 'chain', data: [`Error: this amendment has expired`] })
   // cancel amendment schedule
   const { scheduleAction, cancelAction } = await scheduler
@@ -392,7 +394,7 @@ async function _requestStorageChallenge ({ contractID, hosterID, meta, log }) {
   var chunks = []
   getRandomChunks({ ranges: contract.ranges, chunks })
   const storageChallenge = { contract: contract.id, hoster: hosterID, chunks }
-  const id = await addItem(storageChallenge)
+  const id = addItem(storageChallenge)
   DB.active.storageChallenges[id] = true
   // find attestor
   const newJob = storageChallenge.id
@@ -475,7 +477,7 @@ async function publish_feed (feed, sponsor_id, log) {
   // check if feed already exists
   if (DB.lookups.feedByKey[feedkeyBuf.toString('hex')]) return
   feed = { feedkey: feedkeyBuf.toString('hex'), swarmkey: swarmkeyBuf.toString('hex')  }
-  const feedID = await addItem(feed)
+  const feedID = addItem(feed)
   DB.lookups.feedByKey[feedkeyBuf.toString('hex')] = feedID
   feed.publisher = sponsor_id
   emitEvent('FeedPublished', [feedID], log)
@@ -486,19 +488,19 @@ async function publish_components (log, components, feed_ids) {
   const { dataset_items, performance_items, timetable_items, region_items } = components
   const dataset_ids = await Promise.all(dataset_items.map(async item => {
     if (item.feed_id < 0) item.feed_id = feed_ids[(Math.abs(item.feed_id) - 1)]
-    return await addItem(item)
+    return addItem(item)
   }))
-  const performances_ids = await Promise.all(performance_items.map(async item => await addItem(item)))
-  const timetables_ids = await Promise.all(timetable_items.map(async item => await addItem(item)))
-  const regions_ids = await Promise.all(region_items.map(async item => await addItem(item)))
+  const performances_ids = await Promise.all(performance_items.map(async item => addItem(item)))
+  const timetables_ids = await Promise.all(timetable_items.map(async item => addItem(item)))
+  const regions_ids = await Promise.all(region_items.map(async item => addItem(item)))
   return { dataset_ids, performances_ids, timetables_ids, regions_ids }
 } 
 async function publish_form_components (components) {
   const {  timetable_items, region_items, performance_items, resource_items } = components
-  const timetables_ids = await Promise.all(timetable_items.map(async item => await addItem(item)))
-  const regions_ids = await Promise.all(region_items.map(async item => await addItem(item)))
-  const performances_ids = await Promise.all(performance_items.map(async item => await addItem(item)))
-  const resources_ids = await Promise.all(resource_items.map(async item => await addItem(item)))
+  const timetables_ids = await Promise.all(timetable_items.map(async item => addItem(item)))
+  const regions_ids = await Promise.all(region_items.map(async item => addItem(item)))
+  const performances_ids = await Promise.all(performance_items.map(async item => addItem(item)))
+  const resources_ids = await Promise.all(resource_items.map(async item => addItem(item)))
   return { resources_ids, performances_ids, timetables_ids, regions_ids }
 }
 function handleNew (item, ids) {
@@ -558,7 +560,7 @@ async function make_contracts (plan, log) {
         activeHosters: [],
         status: {}
        }
-      await addItem(contract)
+      addItem(contract)
       log({ type: 'chain', data: [`New Contract: ${JSON.stringify(contract)}`] })
       return contract.id 
     }))
@@ -572,7 +574,7 @@ async function init_amendment (contractID, reuse, log) {
   // const id = DB.amendments.length
   const amendment = { contract: contractID }
   // DB.amendments.push(amendment) // @NOTE: set id
-  const id = await addItem(amendment)
+  const id = addItem(amendment)
   amendment.providers = reuse
   contract.amendments.push(id)
   console.log({id})
@@ -1001,7 +1003,7 @@ async function makePerformanceChallenge ({ contractID, hosterID, plan }, log) {
   // const id = DB.performanceChallenge.length
   const performanceChallenge = { contract: contractID, hoster: hosterID }
   // DB.performanceChallenges.push(performanceChallenge) // @NOTE: set id
-  const id = await addItem(performanceChallenge)
+  const id = addItem(performanceChallenge)
   DB.active.performanceChallenges[id] = true
   // select attestors
   const avoid = makeAvoid(plan)
