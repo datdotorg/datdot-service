@@ -117,19 +117,15 @@ async function encode (account, index, feed, feedKey) {
   const nodes = await get_nodes(feed, index)
   const signature = await get_signature(feed, index)
     
-  
-  // Allocate buffer for the proof
-  const proof = Buffer.alloc(sodium.crypto_sign_BYTES)
   // Allocate buffer for the data that should be signed
   const toSign = Buffer.alloc(encoded.length + varint.encodingLength(index))
   // Write the index to the buffer that will be signed
   varint.encode(index, toSign, 0)
   // Copy the encoded data into the buffer that will be signed
   encoded.copy(toSign, varint.encode.bytes)
-  // Sign the data with our signing secret key and write it to the proof buffer
-  const signingSecretKey = account.encoder.signingSecretKey
-  sodium.crypto_sign_detached(proof, toSign, signingSecretKey)
+  const proof = account.sign(toSign)
   return { type: 'encoded', feed: feedKey, index, encoded, proof, nodes, signature }
+
 }
 
 // @NOTE:
@@ -218,7 +214,7 @@ async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, at
             log2attestor({ type: 'hoster', data: [`Storing verified message with index: ${data.index}`] })
             const key = Buffer.from(feed)
             const stringKey = key.toString('hex')
-            const isExisting = await account.hoster.storages.has(stringKey)
+            const isExisting = await account.storages.has(stringKey)
             // Fix up the JSON serialization by converting things to buffers
             for (const node of nodes) node.hash = Buffer.from(node.hash)
             if (!isExisting) {
@@ -267,10 +263,10 @@ async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, at
 async function removeFeed (account, key, log) {
   log({ type: 'hoster', data: [`Removing the feed`] })
   const stringKey = key.toString('hex')
-  if (account.hoster.storages.has(stringKey)) {
+  if (account.storages.has(stringKey)) {
     const storage = await getStorage(account, key)
     await storage.destroy()
-    account.hoster.storages.delete(stringKey)
+    account.storages.delete(stringKey)
   }
   await removeKey(key)
 }
@@ -279,16 +275,16 @@ async function loadFeedData (account, ranges, key, log) {
   const stringKey = key.toString('hex')
   const deferred = defer()
   // If we're already loading this feed, queue up our promise after the current one
-  if (account.hoster.loaderCache.has(stringKey)) {
+  if (account.loaderCache.has(stringKey)) {
     // Get the existing promise for the loader
-    const existing = account.hoster.loaderCache.get(stringKey)
+    const existing = account.loaderCache.get(stringKey)
     // Create a new promise that will resolve after the previous one and
-    account.hoster.loaderCache.set(stringKey, existing.then(() => deferred.promise))
+    account.loaderCache.set(stringKey, existing.then(() => deferred.promise))
     // Wait for the existing loader to resolve
     await existing
   } else {
     // If the feed isn't already being loaded, set this as the current loader
-    account.hoster.loaderCache.set(stringKey, deferred.promise)
+    account.loaderCache.set(stringKey, deferred.promise)
   }
   try {
     const storage = await getStorage(account, key)
@@ -299,10 +295,10 @@ async function loadFeedData (account, ranges, key, log) {
       }
     })
     // if (watch) watchFeed(account, feed)
-    account.hoster.loaderCache.delete(stringKey)
+    account.loaderCache.delete(stringKey)
     deferred.resolve()
   } catch (e) {
-    account.hoster.loaderCache.delete(stringKey)
+    account.loaderCache.delete(stringKey)
     deferred.reject(e)
   }
 }
@@ -310,8 +306,8 @@ async function loadFeedData (account, ranges, key, log) {
 async function watchFeed (account, feed) {
   warn('Watching is not supported since we cannot ask the chain for attestors')
   /* const stringKey = feed.key.toString('hex')
-  if (account.hoster.watchingFeeds.has(stringKey)) return
-  account.hoster.watchingFeeds.add(stringKey)
+  if (account.watchingFeeds.has(stringKey)) return
+  account.watchingFeeds.add(stringKey)
   feed.on('update', onUpdate)
   async function onUpdate () {
     await loadFeedData(feed.key)
@@ -333,8 +329,8 @@ async function getStorageChallenge (account, key, index) {
 
 async function getStorage (account, key) {
   const stringKey = key.toString('hex')
-  if (account.hoster.storages.has(stringKey)) {
-    return account.hoster.storages.get(stringKey)
+  if (account.storages.has(stringKey)) {
+    return account.storages.get(stringKey)
   }
 
   const feed = new hypercore(RAM, key, { valueEncoding: 'utf-8', sparse: true })
@@ -345,19 +341,19 @@ async function getStorage (account, key) {
     socket.pipe(feed.replicate(info.client)).pipe(socket)
   })
 
-  const db = sub(account.hoster.db, stringKey, { valueEncoding: 'binary' })
+  const db = sub(account.db, stringKey, { valueEncoding: 'binary' })
   const storage = new HosterStorage({ db, feed, log })
-  account.hoster.storages.set(stringKey, storage)
+  account.storages.set(stringKey, storage)
   return storage
 }
 
 async function saveKeys (account, keys) {
-  await account.hoster.hosterDB.put('all_keys', keys)
+  await account.hosterDB.put('all_keys', keys)
 }
 
 async function addKey (account, key, options) {
   const stringKey = key.toString('hex')
-  const existing = (await account.hoster.hosterDB.get('all_keys').catch(e => {})) || []
+  const existing = (await account.hosterDB.get('all_keys').catch(e => {})) || []
   const data = { key: stringKey, options }
   const final = existing.concat(data)
   await saveKeys(account, final)
@@ -366,7 +362,7 @@ async function addKey (account, key, options) {
 async function removeKey (account, key) {
   log({ type: 'hoster', data: [`Removing the key`] })
   const stringKey = key.toString('hex')
-  const existing = (await account.hoster.hosterDB.get('all_keys').catch(e => {})) || []
+  const existing = (await account.hosterDB.get('all_keys').catch(e => {})) || []
   const final = existing.filter((data) => data.key !== stringKey)
   await saveKeys(account, final)
   log({ type: 'hoster', data: [`Key removed`] })
@@ -374,7 +370,7 @@ async function removeKey (account, key) {
 
 async function close () {
   // Close the DB and hypercores
-  for (const storage of account.hoster.storages.values()) {
+  for (const storage of account.storages.values()) {
     await storage.close()
   }
 }
@@ -420,7 +416,7 @@ async function send_storage_proofs_to_attestor ({ account, storageChallenge, hos
 
     // send signed event as an extension message
     ext = core.registerExtension(`challenge${id}`, { encoding: 'utf-8 '})
-    ext.broadcast(get_signed_event())
+    ext.broadcast(get_signed_event(id))
 
     const once_topic = topic + 'once'
     var beam_once = new Hyperbeam(once_topic)
@@ -436,16 +432,15 @@ async function send_storage_proofs_to_attestor ({ account, storageChallenge, hos
     for (var i = 0; i < chunks.length; i++) {
       const index = chunks[i]
       const storageChallengeID = id
-      var signed_event = (i === 0) ? get_signed_event(storageChallengeID) : undefined
       const data = await getStorageChallenge(account, feedKey, index) 
       if (!data) return
-      const message = { type: 'proof', storageChallengeID, data, signed_event }
+      const message = { type: 'proof', storageChallengeID, data }
       log2attestor4Challenge({ type: 'hoster', data: [`Storage proof: appending chunk ${i} for index ${index}`] })
       all.push(send(message, i))
     }
     function get_signed_event (storageChallengeID) {
-      const sig = 'foobar'
-      return sig
+      const data = Buffer.from(storageChallengeID.toString(), 'hex')
+      return account.sign(data)
     }
     function send (message, i) {
       return new Promise(async (resolve, reject) => {

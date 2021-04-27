@@ -14,8 +14,7 @@ async function role (profile, APIS) {
 
   log({ type: 'attestor', data: [`Register as attestor`] })
 
-  await vaultAPI.initAttestor(log)
-  const attestorKey = await vaultAPI.attestor.publicKey
+  const attestorKey = await vaultAPI.publicKey
   const myAddress = await vaultAPI.chainKeypair.address
   const signer = await vaultAPI.chainKeypair
   const nonce = await vaultAPI.getNonce()

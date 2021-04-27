@@ -10,8 +10,7 @@ async function role (profile, APIS) {
   const { serviceAPI, chainAPI, vaultAPI } = APIS
 
   log({ type: 'hoster', data: [`Register as hoster`] })
-  await vaultAPI.initHoster(log)
-  const hosterKey = await vaultAPI.hoster.publicKey
+  const hosterKey = await vaultAPI.publicKey
   const myAddress = await vaultAPI.chainKeypair.address
   log({ type: 'hoster', data: [`My address ${myAddress}`] })
   const signer = await vaultAPI.chainKeypair

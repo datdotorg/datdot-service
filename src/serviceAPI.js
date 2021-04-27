@@ -48,7 +48,7 @@ function datdotService (profile) {
   }
 
   async function removeFeed ({ feedKey, account }) {
-    const hasKey = await account.hoster.hasKey(feedKey)
+    const hasKey = await account.storages.has(stringKey)
     log({ type: 'serviceAPI', data: [`DropHosting hasKey? ${hasKey}`] })
     // TODO fix errors in hoster storage when trying to remove feed
     if (hasKey) return await service.removeFeed(account, feedKey)
