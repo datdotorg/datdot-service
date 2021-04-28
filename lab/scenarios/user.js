@@ -11,10 +11,8 @@ const getVaultAPI = require('../../src/vault.js')
 const ROLES = {
   peer: require('../../src/roles/peer.js'),
   sponsor: require('../../src/roles/sponsor.js'),
-  hoster: require('../../src/roles/hoster.js'),
-  encoder: require('../../src/roles/encoder.js'),
-  attestor: require('../../src/roles/attestor.js'),
   author: require('../../src/roles/author.js'),
+  worker: require('../../src/roles/worker.js'),
 }
 /******************************************************************************
   USER

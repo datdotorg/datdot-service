@@ -790,11 +790,11 @@ connection.query(sql, true, (error, results, fields) => {
 
 // --------------------------------------------------------------------------
 function doesQualify ({ plan, provider, role }) {
-  const form = provider[role].form
+  const form = provider.form
   if (
     isScheduleCompatible({ plan, form, role }) &&
     hasCapacity({ provider, role }) &&
-    hasEnoughStorage({ role, provider })
+    hasEnoughStorage(provider)
   ) return true
 }
 async function isScheduleCompatible ({ plan, form, role }) {
@@ -811,8 +811,8 @@ function hasCapacity ({ provider, role }) {
   const jobs = provider[role].jobs
   if (Object.keys(jobs).length < provider[role].capacity) return true
 }
-function hasEnoughStorage ({ role, provider }) {
-  if (provider[role].idleStorage > size) return true
+function hasEnoughStorage (provider) {
+  if (provider.idleStorage > size) return true
 }
 
 ```

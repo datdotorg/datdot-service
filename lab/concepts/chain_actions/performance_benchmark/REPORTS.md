@@ -41,27 +41,26 @@ user.rating = {
 // we decide, whether a provider fits a job description, based on all reports that are relevant
 // => in order to check the provider, we instead check all attestations about the provider, which match the job
 
+user.form = {
+  from:,
+  until,
+  performance: { bandwidth, latency, speed },
+  storage_availability
+  ...
+},
+
 user.hoster = {
-  form: { },
   measured_at_registration: {},
   measured_by_attestors: {},
   self_reports: {},
 }
 user.attestor = {
-  form: {},
   measured_at_registration: {},
   measured_by_attestors: {},
   // self_reports: {},
 }
 
 user.hoster = {
-  form: {
-    from:,
-    until,
-    performance: { bandwidth, latency, speed },
-    storage_availability
-    ...
-  },
   reports: {
     rating: {
       region1: {reliability, quality},

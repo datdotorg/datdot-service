@@ -6,40 +6,18 @@ const tempDB = require('../tempdb')
   ROLE: Attestor
 ******************************************************************************/
 
-module.exports = role
+module.exports = attest
 
-async function role (profile, APIS) {
-  const { name, log } = profile
+async function attest (identity, log, APIS) {
   const { serviceAPI, chainAPI, vaultAPI } = APIS
-
-  log({ type: 'attestor', data: [`Register as attestor`] })
-
-  const attestorKey = await vaultAPI.publicKey
-  const myAddress = await vaultAPI.chainKeypair.address
-  const signer = await vaultAPI.chainKeypair
-  const nonce = await vaultAPI.getNonce()
-  log({ type: 'attestor', data: [`My address ${myAddress}`] })
-
+  const { myAddress, signer, noiseKey: attestorKey } = identity
+  log({ type: 'attestor', data: [`Listening to events for attestor role`] })
   const jobsDB = await tempDB(attestorKey)
-
-  const blockNow = await chainAPI.getBlockNumber()
-  const until = new Date('Dec 26, 2021 23:55:00')
-  const untilBlock = dateToBlockNumber ({ dateNow: new Date(), blockNow, date: until })
-  const duration = { from: blockNow, until: untilBlock }
-  const form = registrationForm('attestor', duration)
-  await chainAPI.registerAttestor({ form, attestorKey, signer, nonce })
-
+  
   chainAPI.listenToEvents(handleEvent)
 
   // EVENTS
-  // async function isForMe (peerids) {
-  //   peerids = [].concat(peerids)
-  //   for (var i = 0, len = peerids.length; i < len; i++) {
-  //     const id = peerids[i]
-  //     const peerAddress = await chainAPI.getUserAddress(id)
-  //     if (peerAddress === myAddress) return true
-  //   }
-  // }
+  
   async function handleEvent (event) {
     if (event.method === 'RegisteredForAttesting') {
       const [userID] = event.data

@@ -27,9 +27,7 @@ module.exports = {
       createType: (nonce) => nonce,
       tx: { datVerify: {
         newUser: newUser.bind(name),
-        registerEncoder: registerEncoder.bind(name),
-        registerAttestor: registerAttestor.bind(name),
-        registerHoster: registerHoster.bind(name),
+        registerForWork: registerForWork.bind(name),
         publishFeed: publishFeed.bind(name),
         publishPlan: publishPlan.bind(name),
         amendmentReport: amendmentReport.bind(name),
@@ -79,9 +77,7 @@ module.exports = {
   TRANSACTIONS (=EXTRINSICS)
 ******************************************************************************/
 async function newUser (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'newUser' }) } }
-async function registerEncoder (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'registerEncoder' }) } }
-async function registerAttestor (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'registerAttestor' }) } }
-async function registerHoster (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'registerHoster' }) } }
+async function registerForWork (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'registerForWork' }) } }
 async function publishFeed (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'publishFeed'}) } }
 async function publishPlan (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'publishPlan'}) } }
 async function amendmentReport (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'amendmentReport'}) } }

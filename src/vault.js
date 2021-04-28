@@ -75,7 +75,7 @@ async function account ({name, log}) {
     // Allocate buffer for the proof
     const signature = Buffer.alloc(sodium.crypto_sign_BYTES)
     // Sign the data with our signing secret key and write it to the proof buffer
-    sodium.crypto_sign_detached(proof, toSign, signingSecretKey)
+    sodium.crypto_sign_detached(signature, toSign, signingSecretKey)
     return signature
   }
 }

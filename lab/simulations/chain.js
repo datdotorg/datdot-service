@@ -29,21 +29,22 @@ async function init () {
       const { flow, type, data } = JSON.parse(message)
       const [from, id] = flow
 
-      if (id === 0) { // a new connection
+      if (id === 0 && type === 'newUser') { // a new connection
+        const { args, nonce, address } = data
         // 1. do we have that user in the database already?
-        // 2. is the message verifiable?
-        // 3. => add to database
-        // TODO:
-        // OLD:
-        if (!connections[from]) {
+        if  (from && address && !connections[from] && !DB.lookups.userByAddress[address]) {
           connections[from] = { name: from, counter: id, ws, log: log.sub(from) }
           handlers.push([from, data => ws.send(JSON.stringify({ data }))])
+          // @TODO: ...
+          if (!messageVerifiable(message)) return
+          _newUser(args, from, address, log)
+          // 2. is the message verifiable, pubkeys, noisekeys, signatures?
+          // 3. => add user and address and user data to database
         }
         else return ws.send(JSON.stringify({
           cite: [flow], type: 'error', data: 'name is already taken'
         }))
-
-        return
+        // return
       }
       // 1. is that message verifiable
       // ...
@@ -69,6 +70,10 @@ async function init () {
       channel.ws.send(JSON.stringify(blockMessage))
     })
   })
+}
+
+function messageVerifiable (message) {
+  return true
 }
 /******************************************************************************
   QUERIES
@@ -118,13 +123,11 @@ async function signAndSend (data, name, status) {
   
   status({ events: [], status: { isInBlock:1 } })
   
-  const user = await _loadUser(address, { name, nonce }, status)
+  const user = await _getUser(address, { name, nonce }, status)
   if (!user) return log({ type: 'chain', data: [`UNKNOWN SENDER of: ${data}`] }) // TODO: maybe use status() ??
 
   else if (type === 'publishPlan') _publishPlan(user, { name, nonce }, status, args)
-  else if (type === 'registerEncoder') _registerEncoder(user, { name, nonce }, status, args)
-  else if (type === 'registerAttestor') _registerAttestor(user, { name, nonce }, status, args)
-  else if (type === 'registerHoster') _registerHoster(user, { name, nonce }, status, args)
+  else if (type === 'registerForWork') _registerForWork(user, { name, nonce }, status, args)
   else if (type === 'amendmentReport') _amendmentReport(user, { name, nonce }, status, args)
   else if (type === 'requestStorageChallenge') _requestStorageChallenge(user, { name, nonce }, status, args)
   else if (type === 'requestPerformanceChallenge') _requestPerformanceChallenge(user, { name, nonce }, status, args)
@@ -136,26 +139,14 @@ async function signAndSend (data, name, status) {
   API
 ******************************************************************************/
 
-async function _loadUser (address, { name, nonce }, status) {
+async function _getUser (address, { name, nonce }, status) {
   const log = connections[name].log
-  let user
-  log({ type: 'chain', data: [`All users by address: ${name}, ${JSON.stringify(DB.lookups.userByAddress)}`] })
-  if (DB.lookups.userByAddress[address] !== undefined) {
-    const pos = DB.lookups.userByAddress[address]
-    user = getUserByID(pos)
-    log({ type: 'chain', data: [`Existing user: ${name}, ${user.id}, ${address}`] })
-  }
-  else {
-    // const id = DB.storage.length
-    // user = { id, address: address }
-    // DB.storage.push(user) // @NOTE: set id
-    user = { address }
-    addItem(user)
-    DB.lookups.userByAddress[address] = user.id // push to userByAddress lookup array
-    log({ type: 'chain', data: [`New user: ${name}, ${user.id}, ${address}`] })
-  }
+  const pos = DB.lookups.userByAddress[address]
+  const user = getUserByID(pos)
+  log({ type: 'chain', data: [`Existing user: ${name}, ${user.id}, ${address}`] })
   return user
 }
+
 /*----------------------
       STORE ITEM
 ------------------------*/
@@ -195,6 +186,44 @@ function updateItem (id, item) {
   if (!Array.isArray(history)) return
   return !!history.push(item)
 }
+
+/*----------------------
+      NEW USER
+------------------------*/
+async function _newUser (args, name, address, log) {
+  let [data] = args
+  const { signingPublicKey, noiseKey } = data
+
+  const user = { address }
+  addItem(user)
+  DB.lookups.userByAddress[address] = user.id
+  log({ type: 'chain', data: [`New user: ${name}, ${JSON.stringify(user)}`] })
+
+  user.signingPublicKey = signingPublicKey
+  user.noiseKey = noiseKey
+  const keyBuf = Buffer.from(noiseKey, 'hex')
+  DB.lookups.userIDByKey[keyBuf.toString('hex')] = user.id
+}
+
+/*----------------------
+      REGISTER FOR WORK
+------------------------*/
+async function _registerForWork (user, { name, nonce }, status, args) {
+  const log = connections[name].log
+  let [form] = args
+  const { components } = form
+  const { resources_ids, performances_ids, timetables_ids, regions_ids } = await publish_form_components(components)
+
+  form.timetables = form.timetables.map(ref => { if (ref < 0) return timetables_ids[(Math.abs(ref) - 1)] })
+  form.regions = form.regions.map(ref => { if (ref < 0) return regions_ids[(Math.abs(ref) - 1)] })
+  form.performances = form.performances.map(ref => { if (ref < 0) return performances_ids[(Math.abs(ref) - 1)] })
+  form.resources = form.resources.map(ref => { if (ref < 0) return resources_ids[(Math.abs(ref) - 1)] })
+  user.form = form
+  user.idleStorage = getItem(form.resources[0]).storage
+
+  ;['encoder', 'hoster', 'attestor'].forEach(role => registerRole (user, role, log))
+}
+
 /*----------------------
       PUBLISH FEED
 ------------------------*/
@@ -214,7 +243,7 @@ async function _publishPlan (user, { name, nonce }, status, args) {
   let [plan] = args
   const { duration, swarmkey, program, components }  = plan
   const feed_ids = await Promise.all(components.feeds.map(async feed => await publish_feed(feed, user.id, log)))
-  const component_ids = await publish_components(log, components, feed_ids)
+  const component_ids = await publish_plan_components(log, components, feed_ids)
 
   const updated_program = []
   for (var i = 0, len = program.length; i < len; i++) {
@@ -242,100 +271,24 @@ async function unpublishPlan (user, { name, nonce }, status, args) {
 /*----------------------
   (UN)REGISTER ROLES
 ------------------------*/
-async function _registerRoles (user, { name, nonce }, status, args) {
-  const log = connections[name].log
-  if (!verify_registerRoles(args)) throw new Error('invalid args')
-  const [role, roleKey, form] = args
-  const { components } = form
-  const { resources_ids, performances_ids, timetables_ids, regions_ids } = await publish_form_components(components)
-
-  form.timetables = form.timetables.map(ref => { if (ref < 0) return timetables_ids[(Math.abs(ref) - 1)] })
-  form.regions = form.regions.map(ref => { if (ref < 0) return regions_ids[(Math.abs(ref) - 1)] })
-  form.performances = form.performances.map(ref => { if (ref < 0) return performances_ids[(Math.abs(ref) - 1)] })
-  form.resources = form.resources.map(ref => { if (ref < 0) return resources_ids[(Math.abs(ref) - 1)] })
+async function registerRole (user, role, log) {
   const userID = user.id
-  const registration = [userID]
   // registered.push(role)
-  if (!user[role]) user[role] = {}
-  if (user[role][roleKey]) return log({ type: 'chain', data: [`User is already registered as a ${role}`] })
-  const keyBuf = Buffer.from(roleKey, 'hex')
-  DB.lookups.userIDByKey[keyBuf.toString('hex')] = user.id // push to userByRoleKey lookup array
-  user[role] = {
-    key: keyBuf.toString('hex'),
-    form,
-    jobs: {},
-    idleStorage: getItem(form.resources[0]).storage,
-    capacity: 5, // TODO: calculate capacity for each job based on the form
+  if (!user[role]) {
+    user[role] = {
+      jobs: {},
+      capacity: 5, // TODO: calculate capacity for each job based on the form
+    }
   }
   const first = role[0].toUpperCase()
   const rest = role.substring(1)
   DB.status[`idle${first + rest}s`].push(userID)
+  try_next_amendment(log)
   // TODO: replace with: `findNextJob()`
-  try_next_amendment(log) // see if enough providers for new contract
   // tryNextChallenge({ attestorID: userID }, log) // check for attestor only jobs (storage & perf challenge)
-  emitEvent(`RegistrationSuccessful`, registration, log)
+  emitEvent(`RegistrationSuccessful`, [role, userID], log)
 }
-function verify_registerRoles (args) {
-  // TODO: verify args
-  return true
-}
-async function unregisterRoles (user, { name, nonce }, status, args) {
-  args.forEach(role => {
-    const first = role[0].toUpperCase()
-    const rest = role.substring(1)
-    const idleProviders = DB[`idle${first + rest}s`]
-    for (var i = 0; i < idleProviders.length; i++) {
-      const providerID = idleProviders[i]
-      if (providerID === id) idleProviders.splice(i, 1)
-    }
-    const { id, [role]: { jobs, key, form } } = user
-    const jobIDs = Object.keys(jobs)
-    jobsIDs.map(jobID => {
-      // TODO: user[role].jobs
-      // => ...see what to do? find REPLACEMENT users?
-      if (role === 'hoster') {
-        const feedID = getContractByID(contractID).feed
-        const contract = getContractByID(contractID)
-        for (var i = 0, len = contract.activeHosters.length; i < len; i++) {
-          const { hosterID, amendmentID } = contract.activeHosters[i]
-          if (hosterID !== user.id) continue
-          contract.activeHosters.splice(i, 1)
-          removeJob({ id: hosterID, role: 'hoster', doneJob: contractID, idleProviders: DB.status.idleHosters, action: () => try_next_amendment(log) }, log)
-        }
-      }
-      else if (role === 'encoder') {}
-      else if (role === 'attestor') {}
-    })
-    user[role] = void 0
-  })
-}
-/*----------------------
-  (UN)REGISTER HOSTER
-------------------------*/
-async function _registerHoster (user, { name, nonce }, status, args) {
-  _registerRoles(user, { name, nonce }, status, ['hoster', ...args])
-}
-async function unregisterHoster (user, { name, nonce }, status) {
-  unregisterRoles(user, { name, nonce }, status, ['hoster'])
-}
-/*----------------------
-  (UN)REGISTER ENCODER
-------------------------*/
-async function _registerEncoder (user, { name, nonce }, status, args) {
-  _registerRoles(user, { name, nonce }, status, ['encoder', ...args])
-}
-async function unregisterEncoder (user, { name, nonce }, status) {
-  unregisterRoles(user, { name, nonce }, status, ['encoder'])
-}
-/*----------------------
-  (UN)REGISTER ATTESTOR
-------------------------*/
-async function _registerAttestor (user, { name, nonce }, status, args) {
-  _registerRoles(user, { name, nonce }, status, ['attestor', ...args])
-}
-async function unregisterAttestor (user, { name, nonce }, status) {
-  unregisterRoles(user, { name, nonce }, status, ['attestor'])
-}
+
 /*----------------------
   AMENDMENT REPORT
 ------------------------*/
@@ -483,7 +436,7 @@ async function publish_feed (feed, sponsor_id, log) {
   return feedID
 }
 
-async function publish_components (log, components, feed_ids) {
+async function publish_plan_components (log, components, feed_ids) {
   const { dataset_items, performance_items, timetable_items, region_items } = components
   const dataset_ids = await Promise.all(dataset_items.map(async item => {
     if (item.feed_id < 0) item.feed_id = feed_ids[(Math.abs(item.feed_id) - 1)]
@@ -715,7 +668,7 @@ function giveJobToRoles ({ type, selectedProviders, idleProviders, role, newJob 
     // TODO currently we reduce idleStorage for all providers
     // and for all jobs (also challenge)
     // => take care that it is INCREASED again when job is done
-    provider[role].idleStorage -= size
+    provider.idleStorage -= size
     return id
   })
   // returns array of selected providers for select function
@@ -746,16 +699,16 @@ function removeJob ({ id, role, doneJob, idleProviders, action }, log) {
     log({ type: 'chain', data: [`Removing the job ${doneJob}`] })
     delete provider[role].jobs[doneJob]
     if (!idleProviders.includes(id)) idleProviders.push(id)
-    provider[role].idleStorage += size
+    provider.idleStorage += size
     action()
   }
 }
 function doesQualify (plan, provider, role) {
-  const form = provider[role].form
+  const form = provider.form
   if (
     isScheduleCompatible(plan, form, role) &&
     hasCapacity(provider, role) &&
-    hasEnoughStorage(role, provider)
+    hasEnoughStorage(provider)
   ) return true
 }
 async function isScheduleCompatible (plan, form, role) {
@@ -772,8 +725,8 @@ function hasCapacity (provider, role) {
   const jobs = provider[role].jobs
   return (Object.keys(jobs).length < provider[role].capacity)
 }
-function hasEnoughStorage (role, provider) {
-  return (provider[role].idleStorage > size)
+function hasEnoughStorage (provider) {
+  return (provider.idleStorage > size)
 }
 function tryNextChallenge ({ attestorID }, log) {
   if (DB.queues.attestorsJobQueue.length) {

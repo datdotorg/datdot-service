@@ -4,25 +4,13 @@ const dateToBlockNumber = require('dateToBlockNumber')
   ROLE: Encoder
 ******************************************************************************/
 
-module.exports = role
+module.exports = encode
 
-async function role (profile, APIS) {
-  const { name, log } = profile
+async function encode (identity, log, APIS) {
   const { serviceAPI, chainAPI, vaultAPI } = APIS
+  const { myAddress, noiseKey: encoderKey } = identity
+  log({ type: 'encoder', data: [`Listening to events for encoder role`] })
 
-  log({ type: 'encoder', data: [`Register as encoder`] })
-  const encoderKey = await vaultAPI.publicKey
-  const myAddress = await vaultAPI.chainKeypair.address
-  log({ type: 'encoder', data: [`My address ${myAddress}`] })
-  const signer = await vaultAPI.chainKeypair
-  const nonce = await vaultAPI.getNonce()
-
-  const blockNow = await chainAPI.getBlockNumber()
-  const until = new Date('Dec 26, 2021 23:55:00')
-  const untilBlock = dateToBlockNumber ({ dateNow: new Date(), blockNow, date: until })
-  const duration = { from: blockNow, until: untilBlock }
-  const form = registrationForm('encoder', duration)
-  await chainAPI.registerEncoder({ form, encoderKey, signer, nonce })
   await chainAPI.listenToEvents(handleEvent)
 
   // EVENTS

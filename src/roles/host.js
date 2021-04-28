@@ -3,26 +3,13 @@ const dateToBlockNumber = require('dateToBlockNumber')
 /******************************************************************************
   ROLE: Hoster
 ******************************************************************************/
-module.exports = role
+module.exports = host
 
-async function role (profile, APIS) {
-  const { name, log } = profile
+async function host (identity, log, APIS) {
   const { serviceAPI, chainAPI, vaultAPI } = APIS
+  const { myAddress, noiseKey: hosterKey } = identity
+  log({ type: 'hoster', data: [`Listening to events for hoster role`] })
 
-  log({ type: 'hoster', data: [`Register as hoster`] })
-  const hosterKey = await vaultAPI.publicKey
-  const myAddress = await vaultAPI.chainKeypair.address
-  log({ type: 'hoster', data: [`My address ${myAddress}`] })
-  const signer = await vaultAPI.chainKeypair
-  const nonce = await vaultAPI.getNonce()
-
-
-  const blockNow = await chainAPI.getBlockNumber()
-  const until = new Date('Dec 26, 2021 23:55:00')
-  const untilBlock = dateToBlockNumber ({ dateNow: new Date(), blockNow, date: until })
-  const duration = { from: blockNow, until: untilBlock }
-  const form = registrationForm('hoster', duration)
-  await chainAPI.registerHoster({ form, hosterKey, signer, nonce })
   await chainAPI.listenToEvents(handleEvent)
 
   // EVENTS
