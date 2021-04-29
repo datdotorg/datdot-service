@@ -1,4 +1,3 @@
-const sodium = require('sodium-universal')
 const varint = require('varint')
 const hypercore = require('hypercore')
 const RAM = require('random-access-memory')

@@ -5,7 +5,7 @@ module.exports = [
   { "name": "bob", "roles": ["peer", "worker"] },
   { "name": "charlie", "roles": ["peer", "worker"] },
   { "name": "dave", "roles": ["peer", "worker"] },
-  { "name": "eve", "roles": ["author"] },
+  { "name": "eve", "roles": ["peer", "author", "worker"] },
   { "name": "janice", "roles": ["peer", "worker"] },
   { "name": "ferdie", "roles": ["peer", "worker"] },
   { "name": "one", "roles": ["peer", "worker"] },

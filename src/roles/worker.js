@@ -19,7 +19,7 @@ async function role (profile, APIS) {
   const myAddress = await vaultAPI.chainKeypair.address
   const nonce = await vaultAPI.getNonce()
   const signer = await vaultAPI.chainKeypair
-  const noiseKey = await vaultAPI.publicKey
+  const noiseKey = await vaultAPI.noisePublicKey
   const identity = { myAddress, signer, noiseKey }
   
   const duration = await get_duration(chainAPI)
