@@ -82,7 +82,8 @@ const queries = {
   getFeedByID,
   getFeedByKey,
   getUserByID,
-  getUserIDByKey,
+  getUserIDByNoiseKey,
+  getUserIDBySigningKey,
   getPlanByID,
   getAmendmentByID,
   getContractByID,
@@ -110,9 +111,13 @@ function getFeedByKey (key) {
   const keyBuf = Buffer.from(key, 'hex')
   return DB.lookups.feedByKey[keyBuf.toString('hex')]
 }
-function getUserIDByKey(key) {
+function getUserIDByNoiseKey(key) {
   const keyBuf = Buffer.from(key, 'hex')
-  return DB.lookups.userIDByKey[keyBuf.toString('hex')]
+  return DB.lookups.userIDByNoiseKey[keyBuf.toString('hex')]
+}
+function getUserIDBySigningKey(key) {
+  const keyBuf = Buffer.from(key, 'hex')
+  return DB.lookups.userIDBySigningKey[keyBuf.toString('hex')]
 }
 /******************************************************************************
   ROUTING (sign & send)
@@ -199,10 +204,13 @@ async function _newUser (args, name, address, log) {
   DB.lookups.userByAddress[address] = user.id
   log({ type: 'chain', data: [`New user: ${name}, ${JSON.stringify(user)}`] })
 
-  user.signingPublicKey = signingPublicKey
+  user.signingKey = signingPublicKey
+  const signingKeyBuf = Buffer.from(signingPublicKey, 'hex')
+  DB.lookups.userIDBySigningKey[signingKeyBuf.toString('hex')] = user.id
+
   user.noiseKey = noiseKey
-  const keyBuf = Buffer.from(noiseKey, 'hex')
-  DB.lookups.userIDByKey[keyBuf.toString('hex')] = user.id
+  const noiseBuf = Buffer.from(noiseKey, 'hex')
+  DB.lookups.userIDByNoiseKey[noiseBuf.toString('hex')] = user.id
 }
 
 /*----------------------

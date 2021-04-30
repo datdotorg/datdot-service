@@ -1,4 +1,5 @@
 const varint = require('varint')
+const crypto = require('datdot-crypto')
 const hypercore = require('hypercore')
 const RAM = require('random-access-memory')
 const { toPromises } = require('hypercore-promisifier')
@@ -11,7 +12,6 @@ const get_signature = require('get-signature')
 const get_nodes = require('get-nodes')
 const get_index = require('get-index')
 const download_range = require('download-range')
-const verify_signature = require('verify-signature')
 const { performance } = require('perf_hooks')
 const EncoderDecoder = require('EncoderDecoder')
 const sub = require('subleveldown')
@@ -414,8 +414,9 @@ async function send_storage_proofs_to_attestor ({ account, storageChallenge, hos
     })
 
     // send signed event as an extension message
-    ext = core.registerExtension(`challenge${id}`, { encoding: 'utf-8 '})
-    ext.broadcast(get_signed_event(id))
+    ext = core.registerExtension(`challenge${id}`, { encoding: 'binary '})
+    const dataBuf = sign_event(id)
+    ext.broadcast(dataBuf)
 
     const once_topic = topic + 'once'
     var beam_once = new Hyperbeam(once_topic)
@@ -437,8 +438,8 @@ async function send_storage_proofs_to_attestor ({ account, storageChallenge, hos
       log2attestor4Challenge({ type: 'hoster', data: [`Storage proof: appending chunk ${i} for index ${index}`] })
       all.push(send(message, i))
     }
-    function get_signed_event (storageChallengeID) {
-      const data = Buffer.from(storageChallengeID.toString(), 'hex')
+    function sign_event (id) {
+      const data = Buffer.from(`${id}`, 'utf-8')
       return account.sign(data)
     }
     function send (message, i) {
@@ -716,7 +717,7 @@ async function verify_and_forward_encodings (opts) {
 async function attest_storage_challenge (data) {
   return new Promise(async (resolve, reject) => {
     log({ type: 'attestor', data: [`Starting attest_storage_challenge}`] })
-    const { storageChallenge, attestorKey, hosterKey, feedKey } = data
+    const { storageChallenge, attestorKey, hosterSigningKey, hosterKey, feedKey } = data
     const {id, chunks } = storageChallenge
     const log2hosterChallenge = log.sub(`<-HosterChallenge ${hosterKey.toString('hex').substring(0,5)}`)
 
@@ -764,9 +765,9 @@ async function attest_storage_challenge (data) {
     async function get_data (core) {
       // get signed event as an extension message
       ext = core.registerExtension(`challenge${id}`, { 
-        encoding: 'utf-8',
+        encoding: 'binary',
         async onmessage (signed_event) {
-          if (!is_valid_event(signed_event)) reject(signed_event)
+          if (!is_valid_event(signed_event, `${id}`, hosterSigningKey)) reject(signed_event)
           // get chunks from hoster
           for (var i = 0, len = chunks.length; i < len; i++) {
             const chunk = core.get(i)
@@ -823,10 +824,10 @@ async function attest_storage_challenge (data) {
       })
     }
 
-    function is_valid_event (sig) {
+    function is_valid_event (signature, message, hosterSigningKey) {
       console.log('verifying signature')
-      // verify if right signature & right signed event
-      return true
+      const messageBuf = Buffer.from(message, 'binary')
+      return crypto.verify_signature(signature, messageBuf, hosterSigningKey)
     }
 
     async function is_valid_proof (message, feedKey, storageChallenge) {

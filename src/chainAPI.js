@@ -35,10 +35,12 @@ async function datdotChain (profile, provider) {
     getPerformanceChallengeByID,
     getFeedKey,
     getUserAddress,
-    getUserIDByKey,
+    getUserIDByNoiseKey,
+    getUserIDBySigningKey,
     getHosterKey,
     getEncoderKey,
-    getAttestorKey
+    getAttestorKey,
+    getSigningKey,
   }
 
   return chainAPI
@@ -94,16 +96,25 @@ async function datdotChain (profile, provider) {
     const feed = (await API.query.datVerify.getFeedByID(feedID))
     return feed
   }
-  async function getUserIDByKey (key) {
+  async function getUserIDByNoiseKey (key) {
     // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
     // return user.address.toString()
-    return await API.query.datVerify.getUserIDByKey(key)
+    return await API.query.datVerify.getUserIDByNoiseKey(key)
+  }
+  async function getUserIDBySigningKey (key) {
+    // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
+    // return user.address.toString()
+    return await API.query.datVerify.getUserIDBySigningKey(key)
   }
   async function getUserAddress (id) {
     // const user = (await API.query.datVerify.getUserByID(id)).unwrap()
     // return user.address.toString()
     const user = await API.query.datVerify.getUserByID(id)
     return user.address
+  }
+  async function getSigningKey (id) {
+    const user = (await API.query.datVerify.getUserByID(id))
+    return Buffer.from(user.signingKey, 'hex')
   }
   async function getHosterKey (id) {
     const user = (await API.query.datVerify.getUserByID(id))

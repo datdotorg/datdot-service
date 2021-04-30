@@ -551,10 +551,12 @@ const userByAddress = {} // address
 const feedByKey = {
   // { key: id }
 }
-const userIDByKey = {}
+const userIDByNoiseKey = {}
+const userIDBySigningKey = {}
 const lookups = { // for immutable components
   userByAddress,
-  userIDByKey,
+  userIDBySigningKey,
+  userIDByNoiseKey,
   feedByKey,
 }
 /******************************************************************************

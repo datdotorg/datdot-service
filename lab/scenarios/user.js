@@ -6,18 +6,18 @@ const getVaultAPI = require('../../src/vault.js')
 // const getChatAPI = require('./chatAPI')
 
 /******************************************************************************
-  ROLES
+  ACTIONS
 ******************************************************************************/
-const ROLES = {
-  peer: require('../../src/roles/peer.js'),
-  sponsor: require('../../src/roles/sponsor.js'),
-  author: require('../../src/roles/author.js'),
-  worker: require('../../src/roles/worker.js'),
+const ACTIONS = {
+  account: require('../../src/account.js'),
+  author_hypercore: require('../../src/author-hypercore.js'),
+  request_service: require('../../src/roles/request-service.js'),
+  provide_service: require('../../src/roles/provide-service.js'),
 }
 /******************************************************************************
   USER
 ******************************************************************************/
-async function user ({name, roles}, config, logport) {
+async function user ({name, actions}, config, logport) {
   const log = await logkeeper(name, logport)
   const profile = { name, log }
   const serviceAPI = getServiceAPI(profile)
@@ -25,12 +25,12 @@ async function user ({name, roles}, config, logport) {
   const vaultAPI = await getVaultAPI(profile)
   log({ type: 'user', data: [`start ${scenario}`] })
   const APIS = { serviceAPI, chainAPI, vaultAPI }
-  roles = [...new Set(roles)]
-  for (var i = 0, len = roles.length; i < len; i++) {
-    const rolename = roles[i]
-    const profile = { name, log: log.sub(rolename) }
-    const role = ROLES[rolename]
-    await role(profile, APIS)
+  actions = [...new Set(actions)]
+  for (var i = 0, len = actions.length; i < len; i++) {
+    const action_name = actions[i]
+    const profile = { name, log: log.sub(action_name) }
+    const action = ACTIONS[action_name]
+    await action(profile, APIS)
   }
   captureErrors(log)
 }

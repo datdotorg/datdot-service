@@ -14,7 +14,8 @@ module.exports = {
         system: { events: handler => handlers.push(handler) },
         datVerify: {
           getUserByID: getUserByID.bind(name),
-          getUserIDByKey: getUserIDByKey.bind(name),
+          getUserIDByNoiseKey: getUserIDByNoiseKey.bind(name),
+          getUserIDBySigningKey: getUserIDBySigningKey.bind(name),
           getFeedByID: getFeedByID.bind(name),
           getFeedByKey: getFeedByKey.bind(name),
           getPlanByID: getPlanByID.bind(name),
@@ -115,13 +116,22 @@ function getUserByID (id) {
     instance.ws.send(JSON.stringify({ flow, type: 'getUserByID', data: id }))
   })
 }
-function getUserIDByKey (key) {
+function getUserIDByNoiseKey (key) {
   const name = this
   return new Promise(resolve => {
     const msgid = instance.counter++
     const flow = [instance.name, msgid]
     requests[msgid] = resolve
-    instance.ws.send(JSON.stringify({ flow, type: 'getUserIDByKey', data: key }))
+    instance.ws.send(JSON.stringify({ flow, type: 'getUserIDByNoiseKey', data: key }))
+  })
+}
+function getUserIDBySigningKey (key) {
+  const name = this
+  return new Promise(resolve => {
+    const msgid = instance.counter++
+    const flow = [instance.name, msgid]
+    requests[msgid] = resolve
+    instance.ws.send(JSON.stringify({ flow, type: 'getUserIDBySigningKey', data: key }))
   })
 }
 function getPlanByID (id) {

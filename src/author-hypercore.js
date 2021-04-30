@@ -3,7 +3,6 @@ const hyperswarm = require('hyperswarm')
 const RAM = require('random-access-memory')
 const get_signature = require('get-signature')
 const ready = require('hypercore-ready')
-const verify_signature = require('verify-signature')
 const append = require('hypercore-append')
 /******************************************************************************
   ROLE: Author
@@ -15,7 +14,7 @@ module.exports = role
 
 async function role (profile, APIS) {
   const { log } = profile
-  const getChatAPI = require('../../lab/simulations/chatAPI')
+  const getChatAPI = require('../lab/simulations/chatAPI')
   const chatAPI = await getChatAPI(profile, ['ws://localhost', '8000'].join(':'))
 
   log({ type: 'author', data: [`Make a feed and share it`] })

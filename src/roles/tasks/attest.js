@@ -1,6 +1,6 @@
 const registrationForm = require('registrationForm')
 const dateToBlockNumber = require('dateToBlockNumber')
-const tempDB = require('../tempdb')
+const tempDB = require('../../tempdb')
 
 /******************************************************************************
   ROLE: Attestor
@@ -154,11 +154,12 @@ async function attest (identity, log, APIS) {
 
   async function getStorageChallengeData (storageChallenge) {
     const hosterID = storageChallenge.hoster
+    const hosterSigningKey = await chainAPI.getSigningKey(hosterID)
     const hosterKey = await chainAPI.getHosterKey(hosterID)
     const contract = await chainAPI.getContractByID(storageChallenge.contract)
     const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
-    return { hosterKey, feedKey, storageChallenge }
+    return { hosterKey, feedKey, hosterSigningKey, storageChallenge }
   }
 
   async function getData (amendment, contract) {

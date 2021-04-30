@@ -4,9 +4,9 @@ const get_feed_metadata = require('get_feed_metadata')
   ROLE: sponsor
 ******************************************************************************/
 
-module.exports = role
+module.exports = sponsor
 
-async function role (profile, APIS) {
+async function sponsor (profile, APIS) {
   const { name, log } = profile
   const { serviceAPI, chainAPI, vaultAPI } = APIS
   const getChatAPI = require('../../lab/simulations/chatAPI')

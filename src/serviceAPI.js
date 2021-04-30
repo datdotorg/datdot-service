@@ -61,10 +61,10 @@ function datdotService (profile) {
   }
 
   async function verifyStorageChallenge (data) {
-    const { account, attestorKey, hosterKey, feedKey, storageChallenge } = data
+    const { account, attestorKey, hosterKey, hosterSigningKey, feedKey, storageChallenge } = data
     log({ type: 'serviceAPI', data: [`verify storage!`] })
     // TODO prepare the response: hash, proof etc. instead of sending the full chunk
-    return await service.attest_storage_challenge({ storageChallenge, attestorKey, feedKey, hosterKey })
+    return await service.attest_storage_challenge({ storageChallenge, attestorKey, hosterSigningKey, feedKey, hosterKey })
   }
 
   async function checkPerformance (data) {

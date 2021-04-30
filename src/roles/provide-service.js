@@ -1,18 +1,18 @@
 const registrationForm = require('registrationForm')
 const dateToBlockNumber = require('dateToBlockNumber')
-const host = require('./host.js')
-const encode = require('./encode.js')
-const attest = require('./attest.js')
+const host = require('./tasks/host.js')
+const encode = require('./tasks/encode.js')
+const attest = require('./tasks/attest.js')
 /******************************************************************************
-  ROLE: worker
+  ROLE: hoster
 
     1. register for work
 
 ******************************************************************************/
 
-module.exports = role
+module.exports = hoster
 
-async function role (profile, APIS) {
+async function hoster (profile, APIS) {
   const { name, log } = profile
   const { chainAPI, vaultAPI } = APIS
   
