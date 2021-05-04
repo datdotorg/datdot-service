@@ -7,12 +7,8 @@ function datdotService (profile) {
   const service = Service(log)
 
   const serviceAPI = {
-    encode,
-    host,
     attest_hosting_setup,
-    // getStorageChallenge,
     removeFeed,
-    send_storage_proofs,
     verifyStorageChallenge,
     checkPerformance
   }
@@ -21,11 +17,6 @@ function datdotService (profile) {
   /******************************************************************************
     API FUNCTIONS
   ******************************************************************************/
-
-  async function encode ({ amendmentID, account, attestorKey, encoderKey, feedKey: feedKeyBuffer, ranges }) {
-    log({ type: 'serviceAPI', data: [`Encode!`] })
-    return service.encode_hosting_setup({ account, amendmentID, attestorKey, encoderKey, feedKeyBuffer, ranges })
-  }
 
   async function attest_hosting_setup (data/*, currentState, signal*/) {
     const { account, amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges } = data
@@ -42,11 +33,6 @@ function datdotService (profile) {
     return failedKeys.flat()
   }
 
-  async function host (data) {
-    log({ type: 'serviceAPI', data: [`Host! ${data.amendmentID}`] })
-    return await service.receive_data_and_start_hosting(data)
-  }
-
   async function removeFeed ({ feedKey, account }) {
     const hasKey = await account.storages.has(stringKey)
     log({ type: 'serviceAPI', data: [`DropHosting hasKey? ${hasKey}`] })
@@ -55,10 +41,6 @@ function datdotService (profile) {
     // TODO ELSE => cancelHostFor process (disconnect from attestor and removeKey) <= for hosters that didn't start hosting on time
   }
 
-  async function send_storage_proofs (data) {
-    log({ type: 'serviceAPI', data: [`send storage to attestor!`] })
-    return service.send_storage_proofs_to_attestor(data)
-  }
 
   async function verifyStorageChallenge (data) {
     const { account, attestorKey, hosterKey, hosterSigningKey, feedKey, storageChallenge } = data

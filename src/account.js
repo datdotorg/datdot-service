@@ -2,7 +2,6 @@
 // const serviceAPI = require('../..')
 // const vaultAPI = require('datdot-account')
 // const vaultAPI = require('datdot-vault')
-const registrationForm = require('registrationForm')
 const dateToBlockNumber = require('dateToBlockNumber')
 /******************************************************************************
   ROLE: User

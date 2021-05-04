@@ -9,7 +9,7 @@ module.exports = sponsor
 async function sponsor (profile, APIS) {
   const { name, log } = profile
   const { serviceAPI, chainAPI, vaultAPI } = APIS
-  const getChatAPI = require('../../lab/simulations/chatAPI')
+  const getChatAPI = require('../lab/simulations/chatAPI')
   const chatAPI = await getChatAPI(profile, ['ws://localhost', '8000'].join(':'))
 
   log({ type: 'sponsor', data: [`I am a sponsor`] })

@@ -11,8 +11,8 @@ const getVaultAPI = require('../../src/vault.js')
 const ACTIONS = {
   account: require('../../src/account.js'),
   author_hypercore: require('../../src/author-hypercore.js'),
-  request_service: require('../../src/roles/request-service.js'),
-  provide_service: require('../../src/roles/provide-service.js'),
+  request_service: require('../../src/request-service.js'),
+  provide_service: require('../../src/provide-service.js'),
 }
 /******************************************************************************
   USER

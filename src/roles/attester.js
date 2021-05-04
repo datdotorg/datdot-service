@@ -1,14 +1,12 @@
-const registrationForm = require('registrationForm')
-const dateToBlockNumber = require('dateToBlockNumber')
-const tempDB = require('../../tempdb')
+const tempDB = require('../tempdb')
 
 /******************************************************************************
   ROLE: Attestor
 ******************************************************************************/
 
-module.exports = attest
+module.exports = attester
 
-async function attest (identity, log, APIS) {
+async function attester (identity, log, APIS) {
   const { serviceAPI, chainAPI, vaultAPI } = APIS
   const { myAddress, signer, noiseKey: attestorKey } = identity
   log({ type: 'attestor', data: [`Listening to events for attestor role`] })
@@ -19,29 +17,6 @@ async function attest (identity, log, APIS) {
   // EVENTS
   
   async function handleEvent (event) {
-    if (event.method === 'RegisteredForAttesting') {
-      const [userID] = event.data
-      const attestorAddress = await chainAPI.getUserAddress(userID)
-      if (attestorAddress === myAddress) {
-        log({ type: 'attestor', data: [`Event received: ${event.method} ${event.data.toString()}`] })
-      }
-    }
-
-    // function unpublishedPlan_jobIDs (planID) {
-    //   const plan = getPlanById(planID)
-    //   const jobIDs = plan.contracts.map(contractID => {
-    //     const contract = getContractByID(contractID)
-    //     const amendmentIDs = contract.ammendments
-    //     const lastID = amendmentIDs[ammendments.length - 1]
-    //     return lastID
-    //   }).filter(async jobID => {
-    //     const ammendment = getAmmendmentByID(jobID)
-    //     const [attestorID] = ammendment.providers.attestors
-    //     const attestorAddress = await chainAPI.getUserAddress(attestorID)
-    //     if (attestorAddress === myAddress) return true
-    //   })
-    //   return jobIDs
-    // }
     if (event.method === 'UnpublishPlan') {
       const [planID] = event.data
       const jobIDs = unpublishedPlan_jobIDs(planID)
@@ -59,9 +34,7 @@ async function attest (identity, log, APIS) {
         if (job) { /* TODO: ... */ }
       })
     }
-
     if (event.method === 'NewAmendment') {
-      // console.log('NEW EVENT', event.method)
       const [amendmentID] = event.data
       const amendment = await chainAPI.getAmendmentByID(amendmentID)
       const contract = await chainAPI.getContractByID(amendment.contract)
@@ -70,14 +43,12 @@ async function attest (identity, log, APIS) {
       if (attestorAddress !== myAddress) return
       log({ type: 'chainEvent', data: [`Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`] })
       const { feedKey, encoderKeys, hosterKeys, ranges } = await getData(amendment, contract)
-
       const data = { account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges }
       const failedKeys = await serviceAPI.attest_hosting_setup(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
-      log({ type: 'attestor', data: [`Resolved all the responses for amendment: ${amendmentID}: ${failedKeys}`] })
-      
+      log({ type: 'attestor', data: [`Resolved all the responses for amendment: ${amendmentID}: ${failedKeys}`] })  
       const failed = []
       for (var i = 0, len = failedKeys.length; i < len; i++) {
-        const id = await chainAPI.getUserIDByKey(failedKeys[i])
+        const id = await chainAPI.getUserIDByNoiseKey(failedKeys[i])
         failed.push(id)
       }
       const report = { id: amendmentID, failed }
@@ -85,7 +56,6 @@ async function attest (identity, log, APIS) {
       const nonce = await vaultAPI.getNonce()
       await chainAPI.amendmentReport({ report, signer, nonce })
     }
-
     if (event.method === 'NewPerformanceChallenge') {
       const [performanceChallengeID] = event.data
       const performanceChallenge = await chainAPI.getPerformanceChallengeByID(performanceChallengeID)
@@ -135,9 +105,6 @@ async function attest (identity, log, APIS) {
       }
     }
   }
-
-  // HELPERS
-
   function makeResponse ({ proofs, storageChallengeID}) {
     const signature = 'foobar' // we will get the signature from the message
     const response = { storageChallengeID, signature }
@@ -151,7 +118,6 @@ async function attest (identity, log, APIS) {
     // return hash, challengeID, signature of the event
     return response
   }
-
   async function getStorageChallengeData (storageChallenge) {
     const hosterID = storageChallenge.hoster
     const hosterSigningKey = await chainAPI.getSigningKey(hosterID)
