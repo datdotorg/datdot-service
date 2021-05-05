@@ -1,7 +1,3 @@
-// const chainAPI = require('datdot-chain')
-// const serviceAPI = require('../..')
-// const vaultAPI = require('datdot-account')
-// const vaultAPI = require('datdot-vault')
 const dateToBlockNumber = require('dateToBlockNumber')
 /******************************************************************************
   ROLE: User

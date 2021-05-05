@@ -16,7 +16,7 @@ const DEFAULT_TIMEOUT = 7500
 module.exports = hoster
 
 async function hoster (identity, log, APIS) {
-  const { serviceAPI, chainAPI, vaultAPI } = APIS
+  const { chainAPI, vaultAPI } = APIS
   const { myAddress, noiseKey: hosterKey } = identity
   log({ type: 'hoster', data: [`Listening to events for hoster role`] })
 

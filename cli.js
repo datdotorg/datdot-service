@@ -4,7 +4,7 @@ async function run (){
 
   const spawn = require('cross-spawn')
   const path = require('path')
-  const scenario = require('./lab/scenarios/scenario_2')
+  const scenario = require('./lab/scenarios/scenario_1')
   
   process.env.DEBUG = '*,-hypercore-protocol'
   

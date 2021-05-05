@@ -1,7 +1,5 @@
-const debug = require('debug')
 const getChainAPI = require('../../src/chainAPI')
 const logkeeper = require('./logkeeper')
-const getServiceAPI = require('../../src/serviceAPI')
 const getVaultAPI = require('../../src/vault.js')
 // const getChatAPI = require('./chatAPI')
 
@@ -20,11 +18,10 @@ const ACTIONS = {
 async function user ({name, actions}, config, logport) {
   const log = await logkeeper(name, logport)
   const profile = { name, log }
-  const serviceAPI = getServiceAPI(profile)
   const chainAPI = await getChainAPI(profile, config.chain.join(':'))
   const vaultAPI = await getVaultAPI(profile)
   log({ type: 'user', data: [`start ${scenario}`] })
-  const APIS = { serviceAPI, chainAPI, vaultAPI }
+  const APIS = { chainAPI, vaultAPI }
   actions = [...new Set(actions)]
   for (var i = 0, len = actions.length; i < len; i++) {
     const action_name = actions[i]

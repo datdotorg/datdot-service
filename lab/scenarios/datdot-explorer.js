@@ -104,7 +104,6 @@ function show (LOG = window.LOG) {
       if (type === 'hoster') return `<span onclick="toggleStack(this, ${id})" style="color: pink">${type}:${data}</span>`
       if (type === 'attestor') return `<span onclick="toggleStack(this, ${id})" style="color: olive">${type}:${data}</span>`
       if (type === 'encoder') return `<span onclick="toggleStack(this, ${id})" style="color: turquoise">${type}:${data}</span>`
-      if (type === 'serviceAPI') return `<span onclick="toggleStack(this, ${id})" style="color: teal"> ${type}:${data}</span>`
       if (type === 'chat') return `<span onclick="toggleStack(this, ${id})" style="color: silver"> ${type}:${data}</span>`
       if (type === 'p2plex') return `<span onclick="toggleStack(this, ${id})" style="color: SlateBlue"> ${type}:${data}</span>`
       if (type === 'chainAPI') return `<span onclick="toggleStack(this, ${id})" style="color: white"> ${type}:${data}</span>`

@@ -19,7 +19,7 @@ const EncoderDecoder = require('EncoderDecoder')
 module.exports = encoder
 
 async function encoder (identity, log, APIS) {
-  const { serviceAPI, chainAPI, vaultAPI } = APIS
+  const { chainAPI, vaultAPI } = APIS
   const { myAddress, noiseKey: encoderKey } = identity
   log({ type: 'encoder', data: [`Listening to events for encoder role`] })
 
