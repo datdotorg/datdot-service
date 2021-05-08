@@ -3,6 +3,8 @@ const RAM = require('random-access-memory')
 const { toPromises } = require('hypercore-promisifier')
 const Hyperbeam = require('hyperbeam')
 const derive_topic = require('derive-topic')
+const download_range = require('download-range')
+const get_index = require('get-index')
 const getRangesCount = require('getRangesCount')
 const hyperswarm = require('hyperswarm')
 const ready = require('hypercore-ready')
@@ -256,11 +258,14 @@ async function loadFeedData (account, ranges, key, log) {
   try {
     const storage = await getStorage(account, key)
     const { feed } = storage
-    ranges.forEach(async (range) => {
-      for (let index = range[0], len = range[1] + 1; index < len; index++) {
-         await feed.download({ start: index, end: index+1 })
+    let all = []
+    for (var i = 0, len = ranges.length; i < len; i++) {
+      const range = ranges[i]
+      for (var index = range[0]; index < range[1] + 1; index++) {
+        all.push(get_index(feed, index))
       }
-    })
+    }
+    await Promise.all(all)
     // if (watch) watchFeed(account, feed)
     account.loaderCache.delete(stringKey)
     deferred.resolve()

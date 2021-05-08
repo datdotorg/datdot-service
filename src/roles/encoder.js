@@ -130,7 +130,7 @@ async function send ({ msg, core, log, stats, expectedChunkCount }) {
   })
 }
 async function encode (account, index, feed, feedKey) {
-  await download_range(feed, { start: index, end: index+1 })
+  await get_index(feed, index)
   const data = await get_index(feed, index)  
   const encoded = await EncoderDecoder.encode(data)
   const nodes = await get_nodes(feed, index)
