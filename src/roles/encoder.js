@@ -3,7 +3,7 @@ const hypercore = require('hypercore')
 const RAM = require('random-access-memory')
 const { toPromises } = require('hypercore-promisifier')
 const Hyperbeam = require('hyperbeam')
-const derive_topic = require('derive_topic')
+const derive_topic = require('derive-topic')
 const getRangesCount = require('getRangesCount')
 const hyperswarm = require('hyperswarm')
 const ready = require('hypercore-ready')
@@ -136,13 +136,14 @@ async function encode (account, index, feed, feedKey) {
   const nodes = await get_nodes(feed, index)
   const signature = await get_signature(feed, index)
     
-  // Allocate buffer for the data that should be signed
-  const toSign = Buffer.alloc(encoded.length + varint.encodingLength(index))
-  // Write the index to the buffer that will be signed
-  varint.encode(index, toSign, 0)
-  // Copy the encoded data into the buffer that will be signed
-  encoded.copy(toSign, varint.encode.bytes)
-  const proof = account.sign(toSign)
+  // // Allocate buffer for the data that should be signed
+  // const toSign = Buffer.alloc(encoded.length + varint.encodingLength(index))
+  // // Write the index to the buffer that will be signed
+  // varint.encode(index, toSign, 0)
+  // // Copy the encoded data into the buffer that will be signed
+  // encoded.copy(toSign, varint.encode.bytes)
+  
+  const proof = account.sign(encoded)
   return { type: 'encoded', feed: feedKey, index, encoded, proof, nodes, signature }
 
 }

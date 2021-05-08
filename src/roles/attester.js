@@ -1,10 +1,12 @@
 const tempDB = require('../tempdb')
 const crypto = require('datdot-crypto')
+const varint = require('varint')
 const hypercore = require('hypercore')
 const RAM = require('random-access-memory')
 const { toPromises } = require('hypercore-promisifier')
 const Hyperbeam = require('hyperbeam')
-const derive_topic = require('derive_topic')
+const derive_topic = require('derive-topic')
+const is_merkle_verified = require('merkle-verify')
 const getRangesCount = require('getRangesCount')
 const ready = require('hypercore-ready')
 const { performance } = require('perf_hooks')
@@ -26,7 +28,10 @@ async function attester (identity, log, APIS) {
   
   chainAPI.listenToEvents(handleEvent)
 
-  // EVENTS
+/* ----------------------------------------------------------------------
+                            EVENTS
+---------------------------------------------------------------------- */
+
   async function handleEvent (event) {
     if (event.method === 'UnpublishPlan') {
       const [planID] = event.data
@@ -67,6 +72,27 @@ async function attester (identity, log, APIS) {
       const nonce = await vaultAPI.getNonce()
       await chainAPI.amendmentReport({ report, signer, nonce })
     }
+    if (event.method === 'NewStorageChallenge') {
+      const [storageChallengeID] = event.data
+      const storageChallenge = await chainAPI.getStorageChallengeByID(storageChallengeID)
+      const attestorID = storageChallenge.attestor
+      const attestorAddress = await chainAPI.getUserAddress(attestorID)
+      if (attestorAddress === myAddress) {
+        log({ type: 'chainEvent', data: [`Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}`] })
+        const data = await getStorageChallengeData(storageChallenge)
+        data.attestorKey = attestorKey
+        data.log = log
+        const proofs = await attest_storage_challenge(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
+        log({ type: 'attestor', data: [`Got all the proofs`] })
+        if (proofs) {
+          const response = makeResponse({ proofs, storageChallengeID})
+          const nonce = await vaultAPI.getNonce()
+          const opts = { response, signer, nonce }
+          log({ type: 'attestor', data: [`Submitting storage challenge`] })
+          await chainAPI.submitStorageChallenge(opts)
+        }
+      }
+    }
     if (event.method === 'NewPerformanceChallenge') {
       const [performanceChallengeID] = event.data
       const performanceChallenge = await chainAPI.getPerformanceChallengeByID(performanceChallengeID)
@@ -95,28 +121,6 @@ async function attester (identity, log, APIS) {
         }
       })
     }
-    if (event.method === 'NewStorageChallenge') {
-      const [storageChallengeID] = event.data
-      const storageChallenge = await chainAPI.getStorageChallengeByID(storageChallengeID)
-      const attestorID = storageChallenge.attestor
-      const attestorAddress = await chainAPI.getUserAddress(attestorID)
-      if (attestorAddress === myAddress) {
-        log({ type: 'chainEvent', data: [`Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}`] })
-        const data = await getStorageChallengeData(storageChallenge)
-        data.account = vaultAPI
-        data.attestorKey = attestorKey
-        data.log = log
-        const proofs = await attest_storage_challenge(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
-        log({ type: 'attestor', data: [`Got all the proofs`] })
-        if (proofs) {
-          const response = makeResponse({ proofs, storageChallengeID})
-          const nonce = await vaultAPI.getNonce()
-          const opts = { response, signer, nonce }
-          log({ type: 'attestor', data: [`Submitting storage challenge`] })
-          await chainAPI.submitStorageChallenge(opts)
-        }
-      }
-    }
   }
   // HELPERS
   function makeResponse ({ proofs, storageChallengeID}) {
@@ -137,9 +141,21 @@ async function attester (identity, log, APIS) {
     const hosterSigningKey = await chainAPI.getSigningKey(hosterID)
     const hosterKey = await chainAPI.getHosterKey(hosterID)
     const contract = await chainAPI.getContractByID(storageChallenge.contract)
+    const encoderSigningKey = await getEncoderKey(contract.amendments, hosterID)
     const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
-    return { hosterKey, feedKey, hosterSigningKey, storageChallenge }
+    return { hosterKey, feedKey, hosterSigningKey, encoderSigningKey, storageChallenge }
+  }
+
+  async function getEncoderKey (amendments, hosterID) {
+    for (var i = amendments.length; i; i--) { // latest amendment with hosterID is the active one
+      const amendmentID = amendments[i-1]
+      const amendment = await chainAPI.getAmendmentByID(amendmentID)
+      const pos = amendment.providers.hosters.indexOf(hosterID)
+      if (pos === -1) continue
+      const encoderID = amendment.providers.encoders[pos]
+      return chainAPI.getSigningKey(encoderID)
+    }
   }
 
   async function getData (amendment, contract) {
@@ -414,7 +430,7 @@ async function verify_and_forward_encodings (opts) {
 ---------------------------------------------------------------------- */
 async function attest_storage_challenge (data) {
   return new Promise(async (resolve, reject) => {
-    const { storageChallenge, attestorKey, hosterSigningKey, hosterKey, feedKey, log } = data
+    const { storageChallenge, attestorKey, hosterSigningKey, hosterKey, feedKey, encoderSigningKey, log } = data
     const {id, chunks } = storageChallenge
     const log2hosterChallenge = log.sub(`<-HosterChallenge ${hosterKey.toString('hex').substring(0,5)}`)
     log({ type: 'log2hosterChallenge', data: [`Starting attest_storage_challenge}`] })
@@ -468,13 +484,13 @@ async function attest_storage_challenge (data) {
           if (!is_valid_event(signed_event, `${id}`, hosterSigningKey)) reject(signed_event)
           // get chunks from hoster
           for (var i = 0, len = chunks.length; i < len; i++) {
-            const chunk = core.get(i)
-            all.push(verify_chunk(chunk, i))
+            const data_promise = core.get(i)
+            all.push(verify_chunk(data_promise))
           }
           try {
             const results = await Promise.all(all).catch(err => { console.log(err) })
             if (!results) log2hosterChallenge({ type: 'error', data: [`No results`] })
-            console.log({results})
+            // console.log({results})
             clearTimeout(tid)
             // beam.destroy()
             resolve({ type: `DONE`, data: results })
@@ -502,40 +518,56 @@ async function attest_storage_challenge (data) {
     // attestor merkle verifies the data: (feedkey, root signature from the chain (published by attestor after published plan)  )
     // attestor sends to the chain: nodes, signature, hash of the data & signed event
 
-    function verify_chunk (data_promise, i) {
+    function verify_chunk (data_promise) {
       return new Promise(async (resolve, reject) => {
-        const chunk = await data_promise
-        const message = JSON.parse(chunk.toString('utf-8'))
-        const { type, storageChallengeID, data, signed_event } = message
+        const chunk_data = await data_promise
+        const message = parse_chunk_data(chunk_data)
+        const { type, storageChallengeID, data } = message
         log2hosterChallenge({ type: 'attestor', data: [`Storage proof received, ${data.index}`]})
         if (id !== storageChallengeID) return log2hosterChallenge({ type: 'attestor', data: [`Wrong id: ${id}`] })
         if (type === 'proof') {
-          // if (await !is_merkle_verified()) reject(data)
-          if (!is_valid_proof(message, feedKey, storageChallenge)) reject(data.index)
-          log2hosterChallenge({ type: 'attestor', data: [`Storage verified for ${data.index}`]})
+          if (!is_valid_proof(data)) reject(data.index)
           console.log('proof verified')
-          resolve(data)
+          if (!is_merkle_verified(data)) reject(data)
+          log2hosterChallenge({ type: 'attestor', data: [`Storage verified for ${data.index}`]})
+          const report = make_report(message)
+          resolve(report)
         } else {
           log2hosterChallenge({ type: 'attestor', data: [`UNKNOWN_MESSAGE messageType: ${type}`] })
-          reject(index)
+          reject(data.index)
         }
       })
     }
+    async function make_report (message) {
+      const { type, storageChallengeID, data } = message
+      const { index, encoded, proof } = data
+      // hash nodes (root signature is supposed to be on chain already)
+      // signature of the event id
+      const decoded = await EncoderDecoder.decode(Buffer.from(encoded))
+    } 
 
-    function is_valid_event (signature, message, hosterSigningKey) {
-      console.log('verifying signature')
-      const messageBuf = Buffer.from(message, 'binary')
-      return crypto.verify_signature(signature, messageBuf, hosterSigningKey)
+    function parse_chunk_data (chunk_data) {
+      const message = JSON.parse(chunk_data.toString('utf-8'))
+      const { data } = message
+      const { index, encoded, proof } = data
+      encodedBuff = Buffer.from(encoded, 'hex')
+      proofBuff = Buffer.from(proof, 'hex')
+      message.data = { index: index, encoded: encodedBuff, proof: proofBuff }
+      return message
     }
 
-    async function is_valid_proof (message, feedKey, storageChallenge) {
-      const { data } = message
+    function is_valid_event (signature, message, hosterSigningKey) {
+      console.log('verifying signed event')
+      const messageBuff = Buffer.from(message, 'binary')
+      return crypto.verify_signature(signature, messageBuff, hosterSigningKey)
+    }
+
+    async function is_valid_proof (data) {
+      // verify if proof is signed by encoder
       if (!data) console.log('No data')
       const { index, encoded, proof } = data
-      const decoded = await EncoderDecoder.decode(Buffer.from(encoded))
-      // console.log({data})
-      // hash the data
-      return true
+      // TODO: get encoderKey from the chain (find amendment and encoder pos same as hoster pos in hosting setup event)
+      return crypto.verify_signature(proof, encoded, encoderSigningKey) 
     }
 
   })
