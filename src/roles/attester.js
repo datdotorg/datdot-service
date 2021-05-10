@@ -10,8 +10,9 @@ const is_merkle_verified = require('merkle-verify')
 const getRangesCount = require('getRangesCount')
 const ready = require('hypercore-ready')
 const { performance } = require('perf_hooks')
-const EncoderDecoder = require('EncoderDecoder')
+const brotli = require('brotli')
 const compare_encodings = require('compare-encodings')
+const parse_decompressed = require('parse-decompressed')
 const DEFAULT_TIMEOUT = 7500
 
 /******************************************************************************
@@ -540,19 +541,21 @@ async function attest_storage_challenge (data) {
     }
     async function make_report (message) {
       const { type, storageChallengeID, data } = message
-      const { index, encoded, proof } = data
+      const { index, encoded, proof, encoder_pos } = data
       // hash nodes (root signature is supposed to be on chain already)
       // signature of the event id
-      const decoded = await EncoderDecoder.decode(Buffer.from(encoded))
+      const decompressed = await brotli.decompress(encoded)
+      const decoded = parse_decompressed(decompressed, encoder_pos)
     } 
 
     function parse_chunk_data (chunk_data) {
       const message = JSON.parse(chunk_data.toString('utf-8'))
       const { data } = message
-      const { index, encoded, proof } = data
+      const { index, encoded, proof, encoder_pos } = data
       encodedBuff = Buffer.from(encoded, 'hex')
       proofBuff = Buffer.from(proof, 'hex')
-      message.data = { index: index, encoded: encodedBuff, proof: proofBuff }
+      const pos = varint.decode(encoder_pos)
+      message.data = { index: index, encoded: encodedBuff, proof: proofBuff, encoder_pos: pos }
       return message
     }
 
