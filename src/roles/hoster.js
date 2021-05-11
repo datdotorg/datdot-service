@@ -224,7 +224,8 @@ async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, at
   
         async function is_valid_data (data) {
           const { feed, index, encoded, proof, nodes, signature } = data
-          return !!(feed && index && encoded && proof && nodes && signature)
+          return true
+          // return !!(feed && index && encoded && proof && nodes && signature)
         }
       }
     }
@@ -243,39 +244,22 @@ async function removeFeed (account, key, log) {
 }
 
 async function loadFeedData (account, ranges, key, log) {
-  const stringKey = key.toString('hex')
-  const deferred = defer()
-  // If we're already loading this feed, queue up our promise after the current one
-  if (account.loaderCache.has(stringKey)) {
-    // Get the existing promise for the loader
-    const existing = account.loaderCache.get(stringKey)
-    // Create a new promise that will resolve after the previous one and
-    account.loaderCache.set(stringKey, existing.then(() => deferred.promise))
-    // Wait for the existing loader to resolve
-    await existing
-  } else {
-    // If the feed isn't already being loaded, set this as the current loader
-    account.loaderCache.set(stringKey, deferred.promise)
-  }
-  try {
-    const storage = await getStorage(account, key)
-    const { feed } = storage
-    let all = []
-    for (var i = 0, len = ranges.length; i < len; i++) {
-      const range = ranges[i]
-      for (var index = range[0]; index < range[1] + 1; index++) {
-        all.push(get_index(feed, index))
+  return new Promise(async (resolve, reject) => {
+    try {
+      const storage = await getStorage(account, key)
+      const { feed } = storage
+      let all = []
+      let indizes = []
+      for (const range of ranges) {
+        for (let index = range[0], len = range[1] + 1; index < len; index++) {
+          indizes.push(index)
+          all.push(get_index(feed, index))
+        }
       }
-    }
-    await Promise.all(all)
-
-    // if (watch) watchFeed(account, feed)
-    account.loaderCache.delete(stringKey)
-    deferred.resolve()
-  } catch (e) {
-    account.loaderCache.delete(stringKey)
-    deferred.reject(e)
-  }
+      await Promise.all(all)
+      resolve()
+    } catch (e) { reject(e) }
+  })
 }
 
 async function watchFeed (account, feed) {
@@ -292,7 +276,6 @@ async function watchFeed (account, feed) {
 async function storeEncoded ({ account, key, index, proof, encoded, encoder_id, nodes, signature }) {
   const storage = await getStorage(account, key)
   return storage.storeEncoded(index, proof, encoded, encoder_id, nodes, signature)
-  console.log(index, proof, encoded, encoder_id, nodes, signature)
 }
 
 async function getStorageChallenge (account, key, index) {

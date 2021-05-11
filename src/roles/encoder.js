@@ -134,7 +134,7 @@ async function send ({ msg, core, log, stats, expectedChunkCount }) {
 }
 async function encode (account, index, feed, feedKey, encoder_id) {
   const data = await get_index(feed, index)
-  await audit(feed)
+  // await audit(feed)
   const to_compress = serialize_before_compress(data, encoder_id)
   const encoded = await brotli.compress(to_compress)
   const proof = account.sign(encoded)

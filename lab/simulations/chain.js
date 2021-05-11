@@ -867,7 +867,7 @@ async function scheduleChallenges (opts) {
   }
   const { scheduleAction, cancelAction } = await scheduler
   console.log(scheduleAction)
-  scheduleAction({ action: schedulingChallenges, delay: 1, name: 'schedulingChallenges' })
+  scheduleAction({ action: schedulingChallenges, delay: 5, name: 'schedulingChallenges' })
 }
 
 async function scheduleAmendmentFollowUp (id, log) {

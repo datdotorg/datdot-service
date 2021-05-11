@@ -6,9 +6,9 @@ const dateToBlockNumber = require('dateToBlockNumber')
 
 ******************************************************************************/
 
-module.exports = account
+module.exports = register
 
-async function account (profile, APIS) {
+async function register (profile, APIS) {
   const { name, log } = profile
   const { chainAPI, vaultAPI } = APIS
   
