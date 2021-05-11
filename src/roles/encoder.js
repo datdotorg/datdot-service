@@ -11,6 +11,7 @@ const get_signature = require('get-signature')
 const get_nodes = require('get-nodes')
 const serialize_before_compress = require('serialize-before-compress')
 const get_index = require('get-index')
+const audit = require('audit-hypercore')
 const download_range = require('download-range')
 const brotli = require('brotli')
 /******************************************************************************
@@ -33,13 +34,13 @@ async function encoder (identity, log, APIS) {
       const amendment = await chainAPI.getAmendmentByID(amendmentID)
       const contract = await chainAPI.getContractByID(amendment.contract)
       const { encoders, attestors } = amendment.providers
-      const pos = await isForMe(encoders, event)
-      if (pos === undefined) return
+      const encoder_id = await isForMe(encoders, event)
+      if (encoder_id === undefined) return
       log({ type: 'chainEvent', data: [`Event received: ${event.method} ${event.data}`] })
       const feedKey = await chainAPI.getFeedKey(contract.feed)
       const [attestorID] = attestors
       const attestorKey = await chainAPI.getAttestorKey(attestorID)
-      const data = { amendmentID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges: contract.ranges, encoder_pos: pos, log }
+      const data = { amendmentID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges: contract.ranges, encoder_id, log }
       await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${error}`] }))
       // log({ type: 'encoder', data: [`Encoding done`] })
     }
@@ -51,7 +52,7 @@ async function encoder (identity, log, APIS) {
       const peerAddress = await chainAPI.getUserAddress(id)
       if (peerAddress === myAddress) {
         log({ type: 'chainEvent', data: [`Encoder ${id}:  Event received: ${event.method} ${event.data.toString()}`] })
-        return i
+        return id
       }
     }
   }
@@ -62,7 +63,7 @@ async function encoder (identity, log, APIS) {
 ----------------------------------------- */
 
 async function encode_hosting_setup (data) {
-  const { amendmentID, account, attestorKey, encoderKey, feedKey, ranges, encoder_pos, log } = data
+  const { amendmentID, account, attestorKey, encoderKey, feedKey, ranges, encoder_id, log } = data
   const log2Attestor = log.sub(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
   const expectedChunkCount = getRangesCount(ranges)
   let stats = {
@@ -113,13 +114,13 @@ async function encode_hosting_setup (data) {
       var total = 0
       for (const range of ranges) total += (range[1] + 1) - range[0]
       log2Attestor({ type: 'encoder', data: [`Start encoding and sending data to attestor`] })
-      for (const range of ranges) sendDataToAttestor({ account, core, range, feed, feedKey, log: log2Attestor, stats, encoder_pos, expectedChunkCount })
+      for (const range of ranges) sendDataToAttestor({ account, core, range, feed, feedKey, log: log2Attestor, stats, encoder_id, expectedChunkCount })
     }
   })
 }
-async function sendDataToAttestor ({ account, core, range, feed, feedKey, log, stats, encoder_pos, expectedChunkCount }) {
+async function sendDataToAttestor ({ account, core, range, feed, feedKey, log, stats, encoder_id, expectedChunkCount }) {
   for (let index = range[0], len = range[1] + 1; index < len; index++) {
-    const msg = encode(account, index, feed, feedKey, encoder_pos)
+    const msg = encode(account, index, feed, feedKey, encoder_id)
     send({ msg, core, log, stats, expectedChunkCount })
   }
 }
@@ -131,12 +132,13 @@ async function send ({ msg, core, log, stats, expectedChunkCount }) {
     if (stats.ackCount === expectedChunkCount) resolve(`Encoded ${message.index} sent`)
   })
 }
-async function encode (account, index, feed, feedKey, encoder_pos) {
+async function encode (account, index, feed, feedKey, encoder_id) {
   const data = await get_index(feed, index)
-  const to_compress = serialize_before_compress(data, encoder_pos)
+  await audit(feed)
+  const to_compress = serialize_before_compress(data, encoder_id)
   const encoded = await brotli.compress(to_compress)
   const proof = account.sign(encoded)
-  const signature = await get_signature(feed, index)
+  const signature = await get_signature(feed, feed.length-1)
   const nodes = await get_nodes(feed, index)
   return { type: 'encoded', feed: feedKey, index, encoded, proof, nodes, signature }
 }

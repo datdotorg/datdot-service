@@ -1,13 +1,13 @@
 const hypercore = require('hypercore')
 const RAM = require('random-access-memory')
+const ready = require('hypercore-ready')
+const hyperswarm = require('hyperswarm')
 const { toPromises } = require('hypercore-promisifier')
 const Hyperbeam = require('hyperbeam')
 const derive_topic = require('derive-topic')
 const download_range = require('download-range')
 const get_index = require('get-index')
 const getRangesCount = require('getRangesCount')
-const hyperswarm = require('hyperswarm')
-const ready = require('hypercore-ready')
 const sub = require('subleveldown')
 const defer = require('promise-defer')
 const HosterStorage = require('hoster-storage')
@@ -38,10 +38,10 @@ async function hoster (identity, log, APIS) {
       const amendment = await chainAPI.getAmendmentByID(amendmentID)
       const contract = await chainAPI.getContractByID(amendment.contract)
       const { hosters, attestors } = amendment.providers
-      const pos = await isForMe(hosters, event)
-      if (pos === undefined) return
+      const encoder_id = await isForMe(hosters, event)
+      if (encoder_id === undefined) return
       const { feedKey, attestorKey, plan, ranges } = await getHostingData(attestors, contract)
-      const data = { amendmentID, account: vaultAPI, hosterKey, feedKey, attestorKey, encoder_pos: pos, plan, ranges, log }
+      const data = { amendmentID, account: vaultAPI, hosterKey, feedKey, attestorKey, encoder_id, plan, ranges, log }
       data.account = await vaultAPI
       await receive_data_and_start_hosting(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
       log({ type: 'hoster', data: [`Hosting for the amendment ${amendmentID} started`] })
@@ -84,7 +84,7 @@ async function hoster (identity, log, APIS) {
       const peerAddress = await chainAPI.getUserAddress(id)
       if (peerAddress === myAddress) {
         log({ type: 'hoster', data: [`Hoster ${id}:  Event received: ${event.method} ${event.data.toString()}`] })
-        return i
+        return id
       }
     }
   }
@@ -114,13 +114,13 @@ async function hoster (identity, log, APIS) {
 -------------------------------------------- */
 
 async function receive_data_and_start_hosting (data) {
-  const { account, amendmentID, feedKey, hosterKey, attestorKey, encoder_pos, plan, ranges, log } = data
+  const { account, amendmentID, feedKey, hosterKey, attestorKey, encoder_id, plan, ranges, log } = data
   await addKey(account, feedKey, plan)
   await loadFeedData(account, ranges, feedKey, log)    
-  await getEncodedDataFromAttestor({ account, amendmentID, hosterKey, attestorKey, encoder_pos, feedKey, ranges, log })
+  await getEncodedDataFromAttestor({ account, amendmentID, hosterKey, attestorKey, encoder_id, feedKey, ranges, log })
 }
   
-async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, attestorKey, encoder_pos, feedKey, ranges, log }) {
+async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, attestorKey, encoder_id, feedKey, ranges, log }) {
   const log2attestor = log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0,5)}`)
 
   return new Promise(async (resolve, reject) => {
@@ -153,7 +153,7 @@ async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, at
       // // get replicated data
       for (var i = 0; i < expectedChunkCount; i++) {
         log2attestor({ type: 'hoster', data: [`Getting data: counter ${i}`] })
-        all_hosted.push(store_data(account, clone1.get(i), encoder_pos))
+        all_hosted.push(store_data(account, clone1.get(i), encoder_id))
         // beam_temp1.destroy()
       }
 
@@ -170,7 +170,7 @@ async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, at
       }
   
       // store data
-      async function store_data (account, data_promise, encoder_pos) {
+      async function store_data (account, data_promise, encoder_id) {
         const message = await data_promise
         const data = JSON.parse(message.toString('utf-8'))
         log2attestor({ type: 'hoster', data: [`RECV_MSG with index: ${data.index} from attestor ${attestorKey.toString('hex')}`] })
@@ -200,7 +200,7 @@ async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, at
                 index,
                 proof: Buffer.from(proof),
                 encoded: Buffer.from(encoded),
-                encoder_pos,
+                encoder_id,
                 nodes,
                 signature: Buffer.from(signature)
               })
@@ -269,18 +269,6 @@ async function loadFeedData (account, ranges, key, log) {
     }
     await Promise.all(all)
 
-    const foo = []
-    for (var i = 0; i < feed.length; i++) foo.push(checkout(i))
-
-    function checkout (i) {
-      return new Promise((resolve, reject) => {
-        feed._storage.getNode(i, (err, node) => {
-          if (err) reject(err)
-          else resolve({i, node})
-        })  
-      })
-    }
-
     // if (watch) watchFeed(account, feed)
     account.loaderCache.delete(stringKey)
     deferred.resolve()
@@ -301,10 +289,10 @@ async function watchFeed (account, feed) {
   } */
 }
 
-async function storeEncoded ({ account, key, index, proof, encoded, encoder_pos, nodes, signature }) {
+async function storeEncoded ({ account, key, index, proof, encoded, encoder_id, nodes, signature }) {
   const storage = await getStorage(account, key)
-  return storage.storeEncoded(index, proof, encoded, encoder_pos, nodes, signature)
-  console.log(index, proof, encoded, encoder_pos, nodes, signature)
+  return storage.storeEncoded(index, proof, encoded, encoder_id, nodes, signature)
+  console.log(index, proof, encoded, encoder_id, nodes, signature)
 }
 
 async function getStorageChallenge (account, key, index) {

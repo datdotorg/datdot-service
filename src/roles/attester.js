@@ -528,8 +528,8 @@ async function attest_storage_challenge (data) {
         if (id !== storageChallengeID) return log2hosterChallenge({ type: 'attestor', data: [`Wrong id: ${id}`] })
         if (type === 'proof') {
           if (!is_valid_proof(data)) reject(data.index)
-          console.log('proof verified')
-          if (!is_merkle_verified(data)) reject(data)
+          // console.log('proof verified for index', data.index)
+          if (!is_merkle_verified(data, feedKey)) reject(data)
           log2hosterChallenge({ type: 'attestor', data: [`Storage verified for ${data.index}`]})
           const report = make_report(message)
           resolve(report)
@@ -541,26 +541,26 @@ async function attest_storage_challenge (data) {
     }
     async function make_report (message) {
       const { type, storageChallengeID, data } = message
-      const { index, encoded, proof, encoder_pos } = data
+      const { index, encoded, proof, encoder_id } = data
       // hash nodes (root signature is supposed to be on chain already)
       // signature of the event id
       const decompressed = await brotli.decompress(encoded)
-      const decoded = parse_decompressed(decompressed, encoder_pos)
+      const decoded = parse_decompressed(decompressed, encoder_id)
     } 
 
     function parse_chunk_data (chunk_data) {
       const message = JSON.parse(chunk_data.toString('utf-8'))
       const { data } = message
-      const { index, encoded, proof, encoder_pos } = data
+      const { index, encoded, proof, encoder_id } = data
       encodedBuff = Buffer.from(encoded, 'hex')
       proofBuff = Buffer.from(proof, 'hex')
-      const pos = varint.decode(encoder_pos)
-      message.data = { index: index, encoded: encodedBuff, proof: proofBuff, encoder_pos: pos }
+      const pos = varint.decode(encoder_id)
+      message.data = { index: index, encoded: encodedBuff, proof: proofBuff, encoder_id: pos }
       return message
     }
 
     function is_valid_event (signature, message, hosterSigningKey) {
-      console.log('verifying signed event')
+      // console.log('verifying signed event')
       const messageBuff = Buffer.from(message, 'binary')
       return crypto.verify_signature(signature, messageBuff, hosterSigningKey)
     }
