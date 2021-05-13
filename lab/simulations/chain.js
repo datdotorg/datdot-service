@@ -304,10 +304,12 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [ report ] = args
   console.log({report})
-  const { id: amendmentID, failed } = report // [2,6,8]
+  const { id: amendmentID, failed, latest_root_signature } = report // [2,6,8]
   const amendment = getAmendmentByID(amendmentID)
   const { providers: { hosters, attestors, encoders }, contract: contractID } = amendment
   const contract = getContractByID(contractID)
+  const feed = getFeedByID(contract.feed)
+  feed.signature = Buffer.from(latest_root_signature, 'hex')
   const { status: { schedulerID }, plan: planID } = contract
   const plan = getPlanByID(planID)
   const [attestorID] = attestors
@@ -436,7 +438,7 @@ async function publish_feed (feed, sponsor_id, log) {
   const swarmkeyBuf = Buffer.from(swarmkey, 'hex')
   // check if feed already exists
   if (DB.lookups.feedByKey[feedkeyBuf.toString('hex')]) return
-  feed = { feedkey: feedkeyBuf.toString('hex'), swarmkey: swarmkeyBuf.toString('hex')  }
+  feed = { feedkey: feedkeyBuf.toString('hex'), swarmkey: swarmkeyBuf.toString('hex') }
   const feedID = addItem(feed)
   DB.lookups.feedByKey[feedkeyBuf.toString('hex')] = feedID
   feed.publisher = sponsor_id

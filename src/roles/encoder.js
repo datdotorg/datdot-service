@@ -12,6 +12,8 @@ const get_nodes = require('get-nodes')
 const serialize_before_compress = require('serialize-before-compress')
 const get_index = require('get-index')
 const audit = require('audit-hypercore')
+const get_max_index = require('get-max-index')
+const hypercore_replicated = require('hypercore-replicated')
 const download_range = require('download-range')
 const brotli = require('brotli')
 /******************************************************************************
@@ -38,9 +40,11 @@ async function encoder (identity, log, APIS) {
       if (encoder_id === undefined) return
       log({ type: 'chainEvent', data: [`Event received: ${event.method} ${event.data}`] })
       const feedKey = await chainAPI.getFeedKey(contract.feed)
+      const feed = await chainAPI.getFeedByID(contract.feed)
+      var root_signature = (feed.signature && feed.signature.index >= max) ? feed.signature : undefined
       const [attestorID] = attestors
       const attestorKey = await chainAPI.getAttestorKey(attestorID)
-      const data = { amendmentID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges: contract.ranges, encoder_id, log }
+      const data = { amendmentID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges: contract.ranges, encoder_id, root_signature, log }
       await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${error}`] }))
       // log({ type: 'encoder', data: [`Encoding done`] })
     }
@@ -56,6 +60,7 @@ async function encoder (identity, log, APIS) {
       }
     }
   }
+
 }
 
 /* -----------------------------------------
@@ -75,40 +80,45 @@ async function encode_hosting_setup (data) {
     await ready(feed)
     const swarm = hyperswarm()
     swarm.join(feed.discoveryKey,  { announce: false, lookup: true })
-    swarm.on('connection', (socket, info) => {
-      socket.pipe(feed.replicate(info.client)).pipe(socket)  // TODO: sparse replication and download only chunks we need, do not replicate whole feed
+    swarm.on('connection', async (socket, info) => {
+      socket.pipe(feed.replicate(info.client)).pipe(socket)
+      // @NOTE:
+      // sponsor provides only feedkey and swarmkey (no metadata)
+      // when chain makes contracts, it checks if there is a signature for highest index of the contract
+      // if not, it emits signature: true (only when signature is needed)  => OR ATTESTOR DOES THE CHECK when event is received
+      // if (signature)
+        // encoders in this contract get the signature for the highest index and send it to attestor
+        // attestor compares the signatures and nodes and if they match, it sends them to the chain with the report
+  
+      // create temp hypercore
+      const core = toPromises(new hypercore(RAM, { valueEncoding: 'utf-8' }))
+      await core.ready()
+     
+      // connect to attestor
+      const topic = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
+      const beam = new Hyperbeam(topic)
+      
+      // send the key and signature
+      const temp_topic = topic + 'once'
+      const beam_temp = new Hyperbeam(temp_topic)
+      await hypercore_replicated(feed)
+      const max = get_max_index(ranges)
+      if (!data.root_signature || data.root_signature.index < max) var sig = await get_signature(feed, feed.length - 1)
+      const feed_and_signature = { feedKey: core.key.toString('hex'), root_signature: { index: feed.length - 1, signature: sig.toString('hex') } }
+      beam_temp.write(JSON.stringify({ type: 'feedkey_and_signature', data: JSON.stringify(feed_and_signature) }))
+      // beam_temp.write(JSON.stringify({ type: 'feedkey', data: [core.key.toString('hex'), signature.toString('hex')] }))
+      
+      // pipe streams
+      const coreStream = core.replicate(true, { live: true, ack: true })
+      coreStream.pipe(beam).pipe(coreStream)
+      coreStream.on('ack', ack => {
+        log2Attestor({ type: 'encoder', data: [`ACK from attestor: chunk received`] })
+        stats.ackCount++
+      })
+  
+      start(core)
     })
 
-    // @NOTE:
-    // sponsor provides only feedkey and swarmkey (no metadata)
-    // when chain makes contracts, it checks if there is a signature for highest index of the contract
-    // if not, it emits signature: true (only when signature is needed)
-    // if (signature)
-      // encoders in this contract get the signature for the highest index and send it to attestor
-      // attestor compares the signatures and nodes and if they match, it sends them to the chain with the report
-
-    // create temp hypercore
-    const core = toPromises(new hypercore(RAM, { valueEncoding: 'utf-8' }))
-    await core.ready()
-   
-    // connect to attestor
-    const topic = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
-    const beam = new Hyperbeam(topic)
-    
-    // send the key
-    const temp_topic = topic + 'once'
-    const beam_temp = new Hyperbeam(temp_topic)
-    beam_temp.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
-    
-    // pipe streams
-    const coreStream = core.replicate(true, { live: true, ack: true })
-    coreStream.pipe(beam).pipe(coreStream)
-    coreStream.on('ack', ack => {
-      log2Attestor({ type: 'encoder', data: [`ACK from attestor: chunk received`] })
-      stats.ackCount++
-    })
-
-    start(core)
     
     async function start (core) {
       var total = 0
