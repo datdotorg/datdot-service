@@ -15,6 +15,7 @@ const audit = require('audit-hypercore')
 const get_max_index = require('get-max-index')
 const hypercore_replicated = require('hypercore-replicated')
 const download_range = require('download-range')
+const verify_chunk = require('verify-chunk')
 const brotli = require('brotli')
 /******************************************************************************
   ROLE: Encoder
@@ -144,12 +145,17 @@ async function send ({ msg, core, log, stats, expectedChunkCount }) {
 }
 async function encode (account, index, feed, feedKey, encoder_id) {
   const data = await get_index(feed, index)
-  // await audit(feed)
+  const version = feed.length - 1
+  // await audit(feed)  
   const to_compress = serialize_before_compress(data, encoder_id)
   const encoded = await brotli.compress(to_compress)
   const proof = account.sign(encoded)
-  const signature = await get_signature(feed, feed.length-1)
-  const nodes = await get_nodes(feed, index)
+  const signature = await get_signature(feed, version)
+  const [nodes, info] = await get_nodes(feed, index, version).catch(err => console.log(err))
+
+  const is_valid = await verify_chunk(feedKey, data, index, nodes, signature, info)
+  console.log({is_valid})
+
   return { type: 'encoded', feed: feedKey, index, encoded, proof, nodes, signature }
 }
 

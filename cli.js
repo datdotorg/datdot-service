@@ -8,7 +8,7 @@ async function run (){
   
   process.env.DEBUG = '*,-hypercore-protocol'
   
-  const [flag] = process.argv.slice(2)
+  const [flag, target] = process.argv.slice(2)
   
   const all = [process]
   const url = 'ws://localhost'
@@ -20,11 +20,14 @@ async function run (){
     all.push(child)
   } else {
     const args1 = [path.join(__dirname, 'lab/simulations/chain.js'), config, 9001]
+    if (flag === '--inspect' && target === 9001) args1.unshift('--inspect')
+
     const chain = spawn('node', args1, { stdio: 'inherit' })
     all.push(chain)
   }
   
   const args2 = [path.join(__dirname, 'lab/simulations/chatserver.js'), config, 9002]
+  if (flag === '--inspect' && target === 9002) args2.unshift('--inspect')
   const chatserver = spawn('node', args2, { stdio: 'inherit' })
   all.push(chatserver)
   
@@ -35,11 +38,14 @@ async function run (){
     const scenario = JSON.stringify(users[i])
     const port = 9003 + i
     PORTS.push(port)
-    const child = spawn('node', [file, scenario, config, port], { stdio: 'inherit' })
+    const args = [file, scenario, config, port]
+    if (flag === '--inspect' && target === port) args.unshift('--inspect')
+    const child = spawn('node', args, { stdio: 'inherit' })
     all.push(child)
   }
   
   const args3 = [path.join(__dirname, 'lab/scenarios/datdot-explorer.js'), JSON.stringify(PORTS), 9000]
+  if (flag === '--inspect' && target === 9000) args3.unshift('--inspect')
   const logkeeper = spawn('node', args3, { stdio: 'inherit' })
   all.push(logkeeper)
   

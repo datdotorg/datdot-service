@@ -37,8 +37,8 @@ async function role (profile, APIS) {
   await append(feed, 'Kumusta kalibutan!')
   await append(feed, 'Hei Verden!')
   await append(feed, 'Ahoj svet!')
-  await append(feed, 'Hej världen!')
-  await append(feed, 'Helló Világ!')
+  // await append(feed, 'Hej världen!')
+  // await append(feed, 'Helló Világ!')
 
   const feedkey = feed.key
   const topic = feed.discoveryKey
