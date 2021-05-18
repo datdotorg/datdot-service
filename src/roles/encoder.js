@@ -42,10 +42,10 @@ async function encoder (identity, log, APIS) {
       log({ type: 'chainEvent', data: [`Event received: ${event.method} ${event.data}`] })
       const feedKey = await chainAPI.getFeedKey(contract.feed)
       const feed = await chainAPI.getFeedByID(contract.feed)
-      var root_signature = (feed.signature && feed.signature.index >= max) ? feed.signature : undefined
+      var root_signatures = feed.signatures
       const [attestorID] = attestors
       const attestorKey = await chainAPI.getAttestorKey(attestorID)
-      const data = { amendmentID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges: contract.ranges, encoder_id, root_signature, log }
+      const data = { amendmentID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges: contract.ranges, encoder_id, root_signatures, log }
       await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${error}`] }))
       // log({ type: 'encoder', data: [`Encoding done`] })
     }
@@ -104,8 +104,10 @@ async function encode_hosting_setup (data) {
       const beam_temp = new Hyperbeam(temp_topic)
       await hypercore_replicated(feed)
       const max = get_max_index(ranges)
-      if (!data.root_signature || data.root_signature.index < max) var sig = await get_signature(feed, feed.length - 1)
-      const feed_and_signature = { feedKey: core.key.toString('hex'), root_signature: { index: feed.length - 1, signature: sig.toString('hex') } }
+      const version = feed.length -1
+      const match =  data.root_signatures[version] 
+      var sig = match ? match : await get_signature(feed, feed.length - 1)
+      const feed_and_signature = { feedKey: core.key.toString('hex'), root_signature: { version: feed.length - 1, signature: sig.toString('hex') } }
       beam_temp.write(JSON.stringify({ type: 'feedkey_and_signature', data: JSON.stringify(feed_and_signature) }))
       // beam_temp.write(JSON.stringify({ type: 'feedkey', data: [core.key.toString('hex'), signature.toString('hex')] }))
       
@@ -150,13 +152,15 @@ async function encode (account, index, feed, feedKey, encoder_id) {
   const to_compress = serialize_before_compress(data, encoder_id)
   const encoded = await brotli.compress(to_compress)
   const proof = account.sign(encoded)
-  const signature = await get_signature(feed, version)
-  const [nodes, info] = await get_nodes(feed, index, version).catch(err => console.log(err))
 
-  const is_valid = await verify_chunk(feedKey, data, index, nodes, signature, info)
-  console.log({is_valid})
-
-  return { type: 'encoded', feed: feedKey, index, encoded, proof, nodes, signature }
+  const { nodes, signature } = await new Promise((resolve, reject) => {
+    feed.proof(index, (err, res) => {
+      if (err) reject(err)
+      resolve(res)
+    })
+  })
+  await verify_chunk(feedKey, data, index, nodes, signature, 'encoder')
+  return { type: 'encoded', feedKey, index, encoded, proof, nodes, signature }
 }
 
 

@@ -63,8 +63,8 @@ async function attester (identity, log, APIS) {
       log({ type: 'chainEvent', data: [`Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`] })
       const { feedKey, encoderKeys, hosterKeys, ranges } = await getData(amendment, contract)
       const feed = await chainAPI.getFeedByID(contract.feed)
-      var root_signature = feed.signature
-      const data = { account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges, root_signature, log }
+      var root_signatures = feed.signatures
+      const data = { account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges, root_signatures, log }
       const { failedKeys, latest_root_signature } = await attest_hosting_setup(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
       log({ type: 'attestor', data: [`Resolved all the responses for amendment: ${amendmentID}: ${failedKeys}`] })  
       const failed = []
@@ -194,15 +194,15 @@ async function attester (identity, log, APIS) {
 ---------------------------------------------------------------------- */
 
 async function attest_hosting_setup (data) {
-  const { amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges, root_signature, log } = data
+  const { amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges, root_signatures, log } = data
   const messages = {}
   const signatures = []
   const responses = []
-  var latest_root_signature
+  var latest_root_signature = {}
   for (var i = 0, len = encoderKeys.length; i < len; i++) {
     const encoderKey = encoderKeys[i]
     const hosterKey = hosterKeys[i]
-    const opts = { log, amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, root_signature }
+    const opts = { log, amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey, root_signatures }
     opts.compare_encodings_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
     opts.compare_root_signatures_CB = (sig_object, key) => compare_signatures(signatures, sig_object, key)
     log({ type: 'attestor', data: [`Verify encodings!`] })
@@ -211,13 +211,13 @@ async function attest_hosting_setup (data) {
   const failed = await Promise.all(responses) // can be 0 to 6 pubKeys of failed providers
   const failed_flat = failed.flat()
   const failedKeys = failed_flat.filter(function(item, pos) {
-    return failed_flat.indexOf(item) == pos
+    return failed_flat.indexOf(item) === pos
   })
   const report = { failedKeys, latest_root_signature }
   return report
   
   async function verify_and_forward_encodings (opts) {
-    const { log, amendmentID, attestorKey, encoderKey, hosterKey, feedKey, ranges, root_signature, compare_encodings_CB, compare_root_signatures_CB } = opts
+    const { log, amendmentID, attestorKey, encoderKey, hosterKey, feedKey, ranges, root_signatures, compare_encodings_CB, compare_root_signatures_CB } = opts
     const topic_encoder = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
     const topic_hoster = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID })
     const expectedChunkCount = getRangesCount(ranges)
@@ -340,15 +340,20 @@ async function attest_hosting_setup (data) {
           beam_once.once('data', async (data) => {
             const message = JSON.parse(data.toString('utf-8'))
             if (message.type === 'feedkey_and_signature') {
-              // if (!root_signature) we expect root signature
+              // if (!root_signatures[version]) we expect root signature
               const parsed_data = JSON.parse(message.data)
               const feedKey = Buffer.from(parsed_data.feedKey, 'hex')
               const sig_object = parsed_data.root_signature
-              if (!root_signature || root_signature.index < max) {
-                try { latest_root_signature = await compare_root_signatures_CB(sig_object, encoderKey) }
+              const version = sig_object.version
+              if (!root_signatures[version]) {
+                try { latest_root_signature  = { 
+                    version,
+                    sig: await compare_root_signatures_CB(sig_object, encoderKey) 
+                  }
+                }
                 catch (err) { return reject(err) }
               }
-              const clone = toPromises(new hypercore(RAM, feedKey, { valueEncoding: 'utf-8', sparse: true }))
+              const clone = toPromises(new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true }))
               core = clone
               const cloneStream = clone.replicate(false, { live: true })
               cloneStream.pipe(beam).pipe(cloneStream)
@@ -358,7 +363,7 @@ async function attest_hosting_setup (data) {
             }
           })
         } else {
-          core = toPromises(new hypercore(RAM, { valueEncoding: 'utf-8' }))
+          core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
           await core.ready()
           core.on('error', err => {
             Object.values(chunks).forEach(({ reject }) => reject(err))
@@ -414,6 +419,10 @@ async function attest_hosting_setup (data) {
               for (var i = 0; i < expectedChunkCount; i++) {
                 if (status === 'END') return
                 const chunk = core.get(i)
+
+                const foo = JSON.parse(await chunk)
+                if (foo.index === 1) console.log({data: Buffer.from(foo.encoded, 'binary')})
+
                 if (status === 'MUTED') continue
                 const promise = handlerCB('DATA', chunk)
                 chunks.push(promise)

@@ -10,6 +10,7 @@ const get_index = require('get-index')
 const getRangesCount = require('getRangesCount')
 const sub = require('subleveldown')
 const defer = require('promise-defer')
+const verify_chunk = require('verify-chunk')
 const HosterStorage = require('hoster-storage')
 const DEFAULT_TIMEOUT = 7500
 /******************************************************************************
@@ -180,9 +181,9 @@ async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, at
           const { type } = data
           if (type === 'verified') {
             if (!is_valid_data(data)) return
-            const { feed, index, encoded, proof, nodes, signature } = data
+            const { feedKey, index, encoded, proof, nodes, signature } = data
             log2attestor({ type: 'hoster', data: [`Storing verified message with index: ${data.index}`] })
-            const key = Buffer.from(feed)
+            const key = Buffer.from(feedKey)
             const stringKey = key.toString('hex')
             const isExisting = await account.storages.has(stringKey)
             // Fix up the JSON serialization by converting things to buffers
@@ -194,6 +195,7 @@ async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, at
               return reject(error)
             }
             try {
+              await verify_chunk(feedKey, encoded, index, nodes, signature, 'hoster')
               await storeEncoded({
                 account,
                 key,
