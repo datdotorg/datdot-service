@@ -10,8 +10,10 @@ const get_index = require('get-index')
 const getRangesCount = require('getRangesCount')
 const sub = require('subleveldown')
 const defer = require('promise-defer')
-const verify_chunk = require('verify-chunk')
+const merkle_verify = require('merkle-verify')
 const HosterStorage = require('hoster-storage')
+const brotli = require('brotli')
+const parse_decompressed = require('parse-decompressed')
 const DEFAULT_TIMEOUT = 7500
 /******************************************************************************
   ROLE: Hoster
@@ -143,7 +145,7 @@ async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, at
     
     async function replicate (feedkey) {
       const clone1 = toPromises(new hypercore(RAM, feedkey, {
-        valueEncoding: 'utf-8',
+        valueEncoding: 'binary',
         sparse: true
       }))
       
@@ -195,7 +197,11 @@ async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, at
               return reject(error)
             }
             try {
-              await verify_chunk(feedKey, encoded, index, nodes, signature, 'hoster')
+              const decompressed = await brotli.decompress(Buffer.from(encoded))
+              const decoded = parse_decompressed(decompressed, encoder_id)
+              const nodes_copy = [...nodes]
+              await merkle_verify(feedKey, decoded, index, nodes_copy, signature)
+              // console.log('data verified - hoster')
               await storeEncoded({
                 account,
                 key,
@@ -280,11 +286,9 @@ async function storeEncoded ({ account, key, index, proof, encoded, encoder_id, 
   return storage.storeEncoded(index, proof, encoded, encoder_id, nodes, signature)
 }
 
-async function getStorageChallenge (account, key, index) {
+async function getDataFromStorage (account, key, index) {
   const storage = await getStorage(account, key)
-  // const _db = storage.db
-  // console.log({_db})
-  const data = await storage.getStorageChallenge(index)
+  const data = await storage.getProofOfStorage(index)
   return data
 }
 
@@ -294,7 +298,7 @@ async function getStorage (account, key, log) {
     return account.storages.get(stringKey)
   }
 
-  const feed = new hypercore(RAM, key, { valueEncoding: 'utf-8', sparse: true })
+  const feed = new hypercore(RAM, key, { valueEncoding: 'binary', sparse: true })
   await ready(feed)
   const swarm = hyperswarm()
   swarm.join(feed.discoveryKey,  { announce: false, lookup: true })
@@ -361,7 +365,7 @@ async function send_storage_proofs_to_attestor ({ account, storageChallenge, hos
         reject({ type: `attestor_connection_fail`, data: err })
       }
     })
-    const core = toPromises(new hypercore(RAM, { valueEncoding: 'utf-8' }))
+    const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
     await core.ready()
     core.on('error', err => {
       Object.values(chunks).forEach(({ reject }) => reject(err))
@@ -394,7 +398,7 @@ async function send_storage_proofs_to_attestor ({ account, storageChallenge, hos
     for (var i = 0; i < chunks.length; i++) {
       const index = chunks[i]
       const storageChallengeID = id
-      const data = await getStorageChallenge(account, feedKey, index)
+      const data = await getDataFromStorage(account, feedKey, index)
       if (!data) return
       const message = { type: 'proof', storageChallengeID, data }
       log2attestor4Challenge({ type: 'hoster', data: [`Storage proof: appending chunk ${i} for index ${index}`] })

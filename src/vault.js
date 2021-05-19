@@ -13,9 +13,9 @@ const crypto = require('datdot-crypto')
 *******************************/
 const masterseed = crypto.random_bytes(32)
 
-module.exports = account
+module.exports = vault
 
-async function account ({name, log}) {
+async function vault ({name, log}) {
   await ready
   let nonce = 0n
   const chainKeypair = crypto.create_chain_keypair({

@@ -15,7 +15,7 @@ const audit = require('audit-hypercore')
 const get_max_index = require('get-max-index')
 const hypercore_replicated = require('hypercore-replicated')
 const download_range = require('download-range')
-const verify_chunk = require('verify-chunk')
+const merkle_verify = require('merkle-verify')
 const brotli = require('brotli')
 /******************************************************************************
   ROLE: Encoder
@@ -77,7 +77,7 @@ async function encode_hosting_setup (data) {
   }
   return new Promise(async (resolve, reject) => {
     if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
-    const feed = new hypercore(RAM, feedKey, { valueEncoding: 'utf-8', sparse: true })
+    const feed = new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true })
     await ready(feed)
     const swarm = hyperswarm()
     swarm.join(feed.discoveryKey,  { announce: false, lookup: true })
@@ -92,7 +92,7 @@ async function encode_hosting_setup (data) {
         // attestor compares the signatures and nodes and if they match, it sends them to the chain with the report
   
       // create temp hypercore
-      const core = toPromises(new hypercore(RAM, { valueEncoding: 'utf-8' }))
+      const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
       await core.ready()
      
       // connect to attestor
@@ -159,7 +159,7 @@ async function encode (account, index, feed, feedKey, encoder_id) {
       resolve(res)
     })
   })
-  await verify_chunk(feedKey, data, index, nodes, signature, 'encoder')
+  await merkle_verify(feedKey, data, index, nodes, signature)
   return { type: 'encoded', feedKey, index, encoded, proof, nodes, signature }
 }
 

@@ -866,7 +866,7 @@ async function scheduleChallenges (opts) {
     // TODO sort challenge request jobs based on priority (RATIO!) of the sponsors
     _requestStorageChallenge({ contractID, hosterID, meta: { user, name, nonce, status }, log })
     // _requestPerformanceChallenge({ user, signingData: { name, nonce }, status, args: [contractID, hosterID] })
-    scheduleAction({ action: schedulingChallenges, delay: 5, name: 'schedulingChallenges' })
+    scheduleAction({ action: schedulingChallenges, delay: 0, name: 'schedulingChallenges' })
   }
   const { scheduleAction, cancelAction } = await scheduler
   console.log(scheduleAction)

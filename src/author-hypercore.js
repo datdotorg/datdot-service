@@ -19,7 +19,7 @@ async function role (profile, APIS) {
 
   log({ type: 'author', data: [`Make a feed and share it`] })
 
-  const feed = new hypercore(RAM, { valueEncoding: 'utf-8' })
+  const feed = new hypercore(RAM, { valueEncoding: 'binary' })
   await ready(feed)
 
   await append(feed, 'Hello World!')
