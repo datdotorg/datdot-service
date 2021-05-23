@@ -8,6 +8,7 @@ const getRangesCount = require('getRangesCount')
 const hyperswarm = require('hyperswarm')
 const ready = require('hypercore-ready')
 const get_signature = require('get-signature')
+const get_roots = require('get-roots')
 const get_nodes = require('get-nodes')
 const serialize_before_compress = require('serialize-before-compress')
 const get_index = require('get-index')
@@ -153,14 +154,54 @@ async function encode (account, index, feed, feedKey, encoder_id) {
   const encoded = await brotli.compress(to_compress)
   const proof = account.sign(encoded)
 
-  const { nodes, signature } = await new Promise((resolve, reject) => {
-    feed.proof(index, (err, res) => {
-      if (err) reject(err)
-      resolve(res)
-    })
+  // var { nodes, signature } = await new Promise((resolve, reject) => {
+  //   feed.proof(index, (err, res) => {
+  //     if (err) reject(err)
+  //     resolve(res)
+  //   })
+  // })
+  // const roots = await get_roots(feed, version)
+  // await merkle_verify(feedKey, data, index, nodes, signature)
+
+  // TODO make verification work for hoster before storing
+  // TODO make new amendment/contract logic work also for less than 10 chunks
+
+  const signature = await get_signature(feed, version)
+  const nodes = await get_nodes(feed, index, version)
+  const unique_nodes = nodes.filter(function(item, pos) {
+    return nodes.indexOf(item) == pos;
   })
-  await merkle_verify(feedKey, data, index, nodes, signature)
-  return { type: 'encoded', feedKey, index, encoded, proof, nodes, signature }
+  const verify = require('calculate-merkle-nodes')
+  const hash = hash_leaf(data)
+  const hash_index = index * 2
+
+
+  const is_verified = verify(feedKey, hash_index, version, signature, unique_nodes)
+  if (is_verified) {
+    console.log('ERROR', index, is_verified)
+    throw new Error(index, is_verified)
+  } else {
+    console.log('******************************')
+  }
+  return { type: 'encoded', feedKey, index, encoded, proof, nodes: unique_nodes, signature }
+}
+
+const sodium = require('sodium-universal')
+const uint64be = require('uint64be')
+
+function hash_leaf (data) {
+  const LEAF_TYPE = Buffer.from([0])
+  const out = Buffer.allocUnsafe(32)
+  sodium.crypto_generichash_batch(out, [
+    LEAF_TYPE,
+    encodeUInt64(data.length),
+    data
+  ])
+  return out
+}
+
+function encodeUInt64 (n) {
+  return uint64be.encode(n, Buffer.allocUnsafe(8))
 }
 
 

@@ -1,3 +1,54 @@
+{ results: [ 'attestor received storage proofs' ] }
+data verified - attestor
+
+<--- Last few GCs --->
+
+[8204:0x55454e0]  2065763 ms: Mark-sweep 4048.8 (4135.2) -> 4037.3 (4137.4) MB, 1822.0 / 0.0 ms  (average mu = 0.612, current mu = 0.482) task scavenge might not succeed
+[8204:0x55454e0]  2069219 ms: Mark-sweep 4051.7 (4138.2) -> 4040.5 (4140.7) MB, 1786.4 / 0.0 ms  (average mu = 0.556, current mu = 0.483) task scavenge might not succeed
+[8204:0x55454e0]  2072767 ms: Mark-sweep 4054.9 (4141.4) -> 4043.7 (4143.7) MB, 1847.3 / 0.0 ms  (average mu = 0.520, current mu = 0.479) task scavenge might not succeed
+
+
+<--- JS stacktrace --->
+
+FATAL ERROR: MarkCompactCollector: young object promotion failed Allocation failed - JavaScript heap out of memory
+ 1: 0xa62920 node::Abort() [node]
+ 2: 0x995c57 node::FatalError(char const*, char const*) [node]
+ 3: 0xc3b7ce v8::Utils::ReportOOMFailure(v8::internal::Isolate*, char const*, bool) [node]
+ 4: 0xc3bb47 v8::internal::V8::FatalProcessOutOfMemory(v8::internal::Isolate*, char const*, bool) [node]
+ 5: 0xe045b5  [node]
+ 6: 0xe33b43 v8::internal::EvacuateNewSpaceVisitor::Visit(v8::internal::HeapObject, int) [node]
+ 7: 0xe406f6 v8::internal::FullEvacuator::RawEvacuatePage(v8::internal::MemoryChunk*, long*) [node]
+ 8: 0xe2c81f v8::internal::Evacuator::EvacuatePage(v8::internal::MemoryChunk*) [node]
+ 9: 0xe2ca98 v8::internal::PageEvacuationTask::RunInParallel(v8::internal::ItemParallelJob::Task::Runner) [node]
+10: 0xe1e8b9 v8::internal::ItemParallelJob::Run() [node]
+11: 0xe42680 void v8::internal::MarkCompactCollectorBase::CreateAndExecuteEvacuationTasks<v8::internal::FullEvacuator, v8::internal::MarkCompactCollector>(v8::internal::MarkCompactCollector*, v8::internal::ItemParallelJob*, v8::internal::MigrationObserver*, long) [node]
+12: 0xe42ec3 v8::internal::MarkCompactCollector::EvacuatePagesInParallel() [node]
+13: 0xe43285 v8::internal::MarkCompactCollector::Evacuate() [node]
+14: 0xe559f1 v8::internal::MarkCompactCollector::CollectGarbage() [node]
+15: 0xe118b8 v8::internal::Heap::MarkCompact() [node]
+16: 0xe13248 v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags) [node]
+17: 0xe167ec v8::internal::Heap::AllocateRawWithRetryOrFailSlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment) [node]
+18: 0xdda70a v8::internal::Factory::NewFillerObject(int, bool, v8::internal::AllocationType, v8::internal::AllocationOrigin) [node]
+19: 0x1131358 v8::internal::Runtime_AllocateInOldGeneration(int, unsigned long*, v8::internal::Isolate*) [node]
+20: 0x14c7f39  [node]
+unexpected closing of chain connection for anna
+unexpected closing of chain connection for paul
+unexpected closing of chain connection for eve
+unexpected closing of chain connection for emma
+unexpected closing of chain connection for tom
+unexpected closing of chain connection for one
+unexpected closing of chain connection for janice
+unexpected closing of chain connection for alfie
+unexpected closing of chain connection for rachel
+unexpected closing of chain connection for joe
+unexpected closing of chain connection for poppy
+unexpected closing of chain connection for ashley
+unexpected closing of chain connection for alice
+
+
+OLD
+
+
 (node:30200) UnhandledPromiseRejectionWarning: ReferenceError: Cannot access 'myAddress' before initialization
     at handleEvent (/home/ninabreznik/Documents/code/play/datdotorg/datdot/service/src/roles/hoster.js:34:29)
     at processTicksAndRejections (internal/process/task_queues.js:93:5)
@@ -79,3 +130,5 @@ TIMEOUT in the logs (in storage challenges only) => maybe closing stream too fas
 Timeout error for message index 0: 0,FAIL_ACK_TIMEOUT
 
 -----------------------------------------------------------------------
+
+
