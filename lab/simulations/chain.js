@@ -866,7 +866,8 @@ async function scheduleChallenges (opts) {
     // TODO sort challenge request jobs based on priority (RATIO!) of the sponsors
     _requestStorageChallenge({ contractID, hosterID, meta: { user, name, nonce, status }, log })
     // _requestPerformanceChallenge({ user, signingData: { name, nonce }, status, args: [contractID, hosterID] })
-    scheduleAction({ action: schedulingChallenges, delay: 0, name: 'schedulingChallenges' })
+    scheduleAction({ action: schedulingChallenges, delay: 2, name: 'schedulingChallenges' })
+    // TODO when delay 0 it doesn't start right away + there is a handshake error because too many challenges
   }
   const { scheduleAction, cancelAction } = await scheduler
   console.log(scheduleAction)

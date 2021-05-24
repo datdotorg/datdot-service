@@ -168,42 +168,9 @@ async function encode (account, index, feed, feedKey, encoder_id) {
 
   const signature = await get_signature(feed, version)
   const nodes = await get_nodes(feed, index, version)
-  const unique_nodes = nodes.filter(function(item, pos) {
-    return nodes.indexOf(item) == pos;
-  })
-  const verify = require('calculate-merkle-nodes')
-  const hash = hash_leaf(data)
-  const hash_index = index * 2
 
-
-  const is_verified = verify(feedKey, hash_index, version, signature, unique_nodes)
-  if (is_verified) {
-    console.log('ERROR', index, is_verified)
-    throw new Error(index, is_verified)
-  } else {
-    console.log('******************************')
-  }
-  return { type: 'encoded', feedKey, index, encoded, proof, nodes: unique_nodes, signature }
+  return { type: 'encoded', feedKey, index, encoded, encoder_id, proof, version, nodes, signature }
 }
-
-const sodium = require('sodium-universal')
-const uint64be = require('uint64be')
-
-function hash_leaf (data) {
-  const LEAF_TYPE = Buffer.from([0])
-  const out = Buffer.allocUnsafe(32)
-  sodium.crypto_generichash_batch(out, [
-    LEAF_TYPE,
-    encodeUInt64(data.length),
-    data
-  ])
-  return out
-}
-
-function encodeUInt64 (n) {
-  return uint64be.encode(n, Buffer.allocUnsafe(8))
-}
-
 
 // @NOTE:
 // 1. encoded chunk has to be unique ([pos of encoder in the event, data]), so that hoster can not delete and download the encoded chunk from another hoster just in time
