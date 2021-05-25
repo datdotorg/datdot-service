@@ -4,6 +4,7 @@ const blockgenerator = require('../../src/node_modules/scheduleAction')
 const logkeeper = require('../scenarios/logkeeper')
 const WebSocket = require('ws')
 const PriorityQueue = require('../../src/node_modules/priority-queue')
+const merkle_verify = require('../../src/node_modules/merkle-verify')
 const priority_queue= PriorityQueue(compare)
 const connections = {}
 const handlers = []
@@ -380,27 +381,30 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
   const [ response ] = args
   log({ type: 'chain', data: [`Received StorageChallenge ${JSON.stringify(response)}`] })
 
-  const { hashes, storageChallengeID, signature } = response  // signed storageChallengeID, signed by hoster
-
-  // const { proof, storageChallengeID, hosterSignature } = response
-  // const hash0 // challenged chunk
-  // const proof = [hash0, hash1, hash2, hash3, hash4]
-  // const parenthash = nodetype+sizeLeft+sizeRight+hashLeft+hashRight
-
+  const [storageChallengeID, reports] = response
+  const { attestor: attestorID, hoster: hosterID, chunks } = getStorageChallengeByID(storageChallengeID)
+  if (user.id !== attestorID) return log({ type: 'chain', data: [`Only the attestor can submit this storage challenge`] })
+  
+  for (var i = 0, len = reports.length; i < len; i++) {
+    const { signed_event, version, nodes, proof, encoder_id } = reports[i]
+    const { signingKey } = getUserByID(hosterID)
+    const { feed: feedID } = getContractByID(storageChallenge.contract)
+    const { feedKey, signatures } = getFeedByID(feedID)
+    const index = chunks[i]
+    const messageBuff = Buffer.from(`${storageChallengeID}`, 'binary')
+    const is_valid_event = crypto.verify_signature(signed_event, messageBuff, signingKey)
+    if (!is_valid_event) emitEvent('StorageChallengeFailed', [storageChallengeID], log)
+    const not_verified = merkle_verify({feedKey, hash_index: index * 2, version, signature: signatures[version], nodes})
+    if (not_verified) emitEvent('StorageChallengeFailed', [storageChallengeID], log)
+  }
   // @NOTE: sizes for any required proof hash is already on chain
   // @NOTE: `feed/:id/chunk/:v` // size
-
-  const storageChallenge = getStorageChallengeByID(storageChallengeID)
-  const attestorID = storageChallenge.attestor
-  if (user.id !== attestorID) return log({ type: 'chain', data: [`Only the attestor can submit this storage challenge`] })
-  // TODO validate proof
-  const isValid = validateProof(hashes, signature, storageChallenge)
-  var method = isValid ? 'StorageChallengeConfirmed' : 'StorageChallengeFailed'
-  emitEvent(method, [storageChallengeID], log)
+  console.log('StorageChallengeConfirmed')
+  emitEvent('StorageChallengeConfirmed', [storageChallengeID], log)
   // attestor finished job, add them to idleAttestors again
-
   removeJob({ id: attestorID, role: 'attestor', doneJob: storageChallengeID, idleProviders: DB.status.idleAttestors, action: () => tryNextChallenge({ attestorID }, log) }, log)
 }
+
 /*----------------------
   PERFORMANCE CHALLENGE
 ------------------------*/
@@ -647,11 +651,6 @@ function getRandomChunks ({ ranges, chunks }) { // [[0,3], [5,7]]
       counter++
     }
   }
-}
-function validateProof (hashes, signature, storageChallenge) {
-  // const chunks = storageChallenge.chunks
-  // if (`${chunks.length}` === `${hashes.length}`) return true
-  return true
 }
 function select ({ idleProviders, role, newJob, amount, avoid, plan, log }) {
   idleProviders.sort(() => Math.random() - 0.5) // TODO: improve randomness

@@ -5,6 +5,7 @@ const hypercore = require('hypercore')
 const RAM = require('random-access-memory')
 const { toPromises } = require('hypercore-promisifier')
 const Hyperbeam = require('hyperbeam')
+const verify_chunk_hash = require('verify-chunk-hash')
 const derive_topic = require('derive-topic')
 const merkle_verify = require('merkle-verify')
 const proof_codec = require('datdot-codec/proof')
@@ -90,14 +91,14 @@ async function attester (identity, log, APIS) {
         const data = await getStorageChallengeData(storageChallenge)
         data.attestorKey = attestorKey
         data.log = log
-        const proofs = await attest_storage_challenge(data).catch((error) => {
+        const reports = await attest_storage_challenge(data).catch((error) => {
           console.log({error})
           log({ type: 'error', data: [`Error: ${error}`] })
         })
-        // log({ type: 'attestor', data: [`Got all the proofs`] })
-        if (proofs) {
+        // log({ type: 'attestor', data: [`Got all the res`] })
+        if (reports) {
           console.log('Storage challenge successfull')
-          const response = makeResponse({ proofs, storageChallengeID})
+          const response = [storageChallengeID, reports]
           const nonce = await vaultAPI.getNonce()
           const opts = { response, signer, nonce }
           log({ type: 'attestor', data: [`Submitting storage challenge`] })
@@ -135,19 +136,7 @@ async function attester (identity, log, APIS) {
     }
   }
   // HELPERS
-  function makeResponse ({ proofs, storageChallengeID}) {
-    const signature = 'foobar' // we will get the signature from the message
-    const response = { storageChallengeID, signature }
-    for (var i = 0, len = proofs.length; i < len; i++) {
-      response.hashes = []
-      const proof = proofs[i]
-      const hash = proof // TODO later hash the proof
-      response.hashes.push(hash)
-      // does hoster send a hash or does attestor decode and then hash?
-    }
-    // return hash, challengeID, signature of the event
-    return response
-  }
+
   async function getStorageChallengeData (storageChallenge) {
     const hosterID = storageChallenge.hoster
     const hosterSigningKey = await chainAPI.getSigningKey(hosterID)
@@ -566,24 +555,14 @@ async function attest_storage_challenge (data) {
         const { index, encoded, proof, encoder_id, version, nodes, signature } = data
         log2hosterChallenge({ type: 'attestor', data: [`Storage proof received, ${index}`]})
         if (!is_signed_by_encoder(data)) reject(index)
-        const decompressed = await brotli.decompress(Buffer.from(encoded))
-        const decoded = parse_decompressed(decompressed, encoder_id)
-        // TODO verify the hash first (compare to node.hash)
-        // console.log('verifying', {signature, nodes})
-        const is_verified = merkle_verify({feedKey, hash_index: index * 2, version, signature, nodes})
-        if (is_verified) {
-          console.log('ERROR', index, is_verified)
-          reject(is_verified)
-        }
+        await verify_chunk_hash(index, encoded, encoder_id, nodes).catch(err => reject('not valid chunk hash', err))
+        const not_verified = merkle_verify({feedKey, hash_index: index * 2, version, signature, nodes})
+        if (not_verified) reject(is_verified)
         log2hosterChallenge({ type: 'attestor', data: [`Storage verified for ${index}`]})
-        const report = await make_report(signed_event, version, nodes, proof)
+        const report = []
+        report.push( {signed_event, version, nodes, proof, encoder_id} )
         resolve(report)
       })
-    }
-    async function make_report (signed_event, version, nodes, proof) {
-      // hash nodes (root signature is supposed to be on chain already)
-      // signature of the event id
-      return {signed_event, version, nodes, proof}
     }
 
     function is_valid_event (signature, message, hosterSigningKey) {

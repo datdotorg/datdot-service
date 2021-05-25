@@ -3,6 +3,7 @@ const RAM = require('random-access-memory')
 const ready = require('hypercore-ready')
 const crypto = require('hypercore-crypto')
 const hyperswarm = require('hyperswarm')
+const verify_chunk_hash = require('verify-chunk-hash')
 const { toPromises } = require('hypercore-promisifier')
 const Hyperbeam = require('hyperbeam')
 const derive_topic = require('derive-topic')
@@ -170,9 +171,10 @@ async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, at
       if (!results) console.log('Error storing data')
       // console.log({results})
       if (results.length === expectedChunkCount) {
-        log2attestor({ type: 'hoster', data: [`All data (${expectedChunkCount} chunks) successfully hosted`] })
+        log2attestor({ type: 'hoster', data: [`All data (${expectedChunkCount} chunks) verified & successfully hosted`] })
         // beam1.destroy()
-        resolve(`All data chunks successfully hosted`)
+        console.log(`All data (${expectedChunkCount} chunks) verified & successfully hosted -----------`)
+        resolve(`All data chunks verified & successfully hosted`)
       }
   
       // store data
@@ -193,18 +195,9 @@ async function getEncodedDataFromAttestor ({ account, amendmentID, hosterKey, at
             return reject(error)
           }
           try {
-            const decompressed = await brotli.decompress(encoded)
-            const decoded = parse_decompressed(decompressed, encoder_id)
-            // const hash = crypto.leaf(decoded)
-            // console.log({hash})
-            const is_verified = merkle_verify({feedKey, hash_index: index * 2, version, signature, nodes})
-            if (is_verified) {
-              console.log('ERROR', index, is_verified)
-              reject(is_verified)
-            } else {
-              console.log('******************************')
-            }
-            console.log('data verified - hoster')
+            await verify_chunk_hash(index, encoded, encoder_id, nodes).catch(err => reject('not valid chunk hash', err))
+            const not_verified = merkle_verify({feedKey, hash_index: index * 2, version, signature, nodes})
+            if (not_verified) reject(not_verified)
             
             await store_in_hoster_storage({ 
               account,
