@@ -16,7 +16,6 @@ const audit = require('audit-hypercore')
 const get_max_index = require('get-max-index')
 const hypercore_replicated = require('hypercore-replicated')
 const download_range = require('download-range')
-const merkle_verify = require('merkle-verify')
 const brotli = require('brotli')
 /******************************************************************************
   ROLE: Encoder
@@ -132,9 +131,9 @@ async function encode_hosting_setup (data) {
     }
   })
 }
-async function sendDataToAttestor ({ account, core, range, feed, feedKey, log, stats, encoder_id, expectedChunkCount }) {
+async function sendDataToAttestor ({ account, core, range, feed, feedKey, log, stats, amendmentID, encoder_id, expectedChunkCount }) {
   for (let index = range[0], len = range[1] + 1; index < len; index++) {
-    const msg = encode(account, index, feed, feedKey, encoder_id)
+    const msg = download_and_encode(account, index, feed, feedKey, amendmentID, encoder_id)
     send({ msg, core, log, stats, expectedChunkCount })
   }
 }
@@ -146,30 +145,17 @@ async function send ({ msg, core, log, stats, expectedChunkCount }) {
     if (stats.ackCount === expectedChunkCount) resolve(`Encoded ${message.index} sent`)
   })
 }
-async function encode (account, index, feed, feedKey, encoder_id) {
+async function download_and_encode (account, index, feed, feedKey, amendmentID, encoder_id) {
   const data = await get_index(feed, index)
   const version = feed.length - 1
   // await audit(feed)  
   const to_compress = serialize_before_compress(data, encoder_id)
-  const encoded = await brotli.compress(to_compress)
-  const proof = account.sign(encoded)
-
-  // var { nodes, signature } = await new Promise((resolve, reject) => {
-  //   feed.proof(index, (err, res) => {
-  //     if (err) reject(err)
-  //     resolve(res)
-  //   })
-  // })
-  // const roots = await get_roots(feed, version)
-  // await merkle_verify(feedKey, data, index, nodes, signature)
-
-  // TODO make verification work for hoster before storing
-  // TODO make new amendment/contract logic work also for less than 10 chunks
-
+  const encoded_data = await brotli.compress(to_compress)
+  const encoded_data_signature = account.sign(encoded_data)
   const signature = await get_signature(feed, version)
   const nodes = await get_nodes(feed, index, version)
 
-  return { type: 'encoded', feedKey, index, encoded, encoder_id, proof, version, nodes, signature }
+  return { type: 'encoded', feedKey, index, encoded_data, encoder_id, encoded_data_signature, version, nodes, signature }
 }
 
 // @NOTE:

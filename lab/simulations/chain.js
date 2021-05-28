@@ -3,9 +3,9 @@ const makeSets = require('../../src/node_modules/makeSets')
 const blockgenerator = require('../../src/node_modules/scheduleAction')
 const logkeeper = require('../scenarios/logkeeper')
 const WebSocket = require('ws')
+const storage_report_codec = require('../../src/node_modules/datdot-codec/storage-report')
 const PriorityQueue = require('../../src/node_modules/priority-queue')
-const merkle_verify = require('../../src/node_modules/merkle-verify')
-const priority_queue= PriorityQueue(compare)
+const priority_queue = PriorityQueue(compare)
 const connections = {}
 const handlers = []
 const scheduler = init()
@@ -27,7 +27,7 @@ async function init () {
   }
   wss.on('connection', function connection (ws) {
     ws.on('message', async function incoming (message) {
-      const { flow, type, data } = JSON.parse(message)
+      var { flow, type, data } = JSON.parse(message)
       const [from, id] = flow
 
       if (id === 0 && type === 'newUser') { // a new connection
@@ -47,9 +47,8 @@ async function init () {
         }))
         // return
       }
-      // 1. is that message verifiable
-      // ...
-
+      if (type === 'submitStorageChallenge') data = storage_report_codec.decode(data)
+      // console.log({message})
 
       const _log = connections[from].log
       _log({ type: 'chain', data: [`${JSON.stringify(type)} ${JSON.stringify(flow)}`] })
@@ -304,7 +303,6 @@ async function registerRole (user, role, log) {
 async function _amendmentReport (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [ report ] = args
-  console.log({report})
   const { id: amendmentID, failed, latest_root_signature } = report // [2,6,8]
   const { version, sig } = latest_root_signature
   const amendment = getAmendmentByID(amendmentID)
@@ -381,20 +379,30 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
   const [ response ] = args
   log({ type: 'chain', data: [`Received StorageChallenge ${JSON.stringify(response)}`] })
 
-  const [storageChallengeID, reports] = response
-  const { attestor: attestorID, hoster: hosterID, chunks } = getStorageChallengeByID(storageChallengeID)
+  const { storageChallengeID, reports } = response
+  const { contract, attestor: attestorID, hoster: hosterID, chunks } = getStorageChallengeByID(storageChallengeID)
   if (user.id !== attestorID) return log({ type: 'chain', data: [`Only the attestor can submit this storage challenge`] })
   
   for (var i = 0, len = reports.length; i < len; i++) {
-    const { signed_event, version, nodes, proof, encoder_id } = reports[i]
+    var { storage_challenge_signature, version, nodes } = reports[i]
     const { signingKey } = getUserByID(hosterID)
-    const { feed: feedID } = getContractByID(storageChallenge.contract)
-    const { feedKey, signatures } = getFeedByID(feedID)
+    const { feed: feedID } = getContractByID(contract)
+    const { feedkey, signatures } = getFeedByID(feedID)
     const index = chunks[i]
     const messageBuff = Buffer.from(`${storageChallengeID}`, 'binary')
-    const is_valid_event = crypto.verify_signature(signed_event, messageBuff, signingKey)
+    const signingKeyBuf = Buffer.from(signingKey, 'binary')
+    const datdot_crypto = require('../../src/node_modules/datdot-crypto')
+    const is_valid_event = datdot_crypto.verify_signature(storage_challenge_signature, messageBuff, signingKeyBuf)
     if (!is_valid_event) emitEvent('StorageChallengeFailed', [storageChallengeID], log)
-    const not_verified = merkle_verify({feedKey, hash_index: index * 2, version, signature: signatures[version], nodes})
+    const signatureBuf = Buffer.from(signatures[version], 'binary')
+    const keyBuf = Buffer.from(feedkey, 'hex')
+    const not_verified = datdot_crypto.merkle_verify({
+      feedKey: keyBuf, 
+      hash_index: index * 2, 
+      version, 
+      signature: signatureBuf, 
+      nodes
+    })
     if (not_verified) emitEvent('StorageChallengeFailed', [storageChallengeID], log)
   }
   // @NOTE: sizes for any required proof hash is already on chain
