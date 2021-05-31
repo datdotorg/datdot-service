@@ -3,6 +3,7 @@ const makeSets = require('../../src/node_modules/makeSets')
 const blockgenerator = require('../../src/node_modules/scheduleAction')
 const datdot_crypto = require('../../src/node_modules/datdot-crypto')
 const logkeeper = require('../scenarios/logkeeper')
+const varint = require('varint')
 const WebSocket = require('ws')
 const storage_report_codec = require('../../src/node_modules/datdot-codec/storage-report')
 const PriorityQueue = require('../../src/node_modules/priority-queue')
@@ -391,11 +392,12 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
     const { feed: feedID } = getContractByID(contract)
     const { feedkey, signatures } = getFeedByID(feedID)
     const index = chunks[i]
-    const messageBuff = Buffer.from(`${storageChallengeID}`, 'binary')
+    const messageBuf = Buffer.alloc(varint.encodingLength(storageChallengeID))
+    varint.encode(storageChallengeID, messageBuf, 0)
     const signingKeyBuf = Buffer.from(signingKey, 'binary')
     const datdot_crypto = require('../../src/node_modules/datdot-crypto')
-    const is_valid_event = datdot_crypto.verify_signature(storage_challenge_signature, messageBuff, signingKeyBuf)
-    if (!is_valid_event) emitEvent('StorageChallengeFailed', [storageChallengeID], log)
+
+    if (!datdot_crypto.verify_signature(storage_challenge_signature, messageBuf, signingKeyBuf)) return emitEvent('StorageChallengeFailed', [storageChallengeID], log)
     const signatureBuf = Buffer.from(signatures[version], 'binary')
     const keyBuf = Buffer.from(feedkey, 'hex')
     const not_verified = datdot_crypto.merkle_verify({
@@ -405,7 +407,8 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
       signature: signatureBuf, 
       nodes
     })
-    if (not_verified) emitEvent('StorageChallengeFailed', [storageChallengeID], log)
+    if (not_verified) return emitEvent('StorageChallengeFailed', [storageChallengeID], log)
+    console.log('challenge merkle verified')
   }
   // @NOTE: sizes for any required proof hash is already on chain
   // @NOTE: `feed/:id/chunk/:v` // size
