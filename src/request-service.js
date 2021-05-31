@@ -1,5 +1,13 @@
 const dateToBlockNumber = require('dateToBlockNumber')
 const get_feed_metadata = require('get_feed_metadata')
+const ready = require('hypercore-ready')
+const hypercore_replicated = require('hypercore-replicated')
+const get_signature = require('get-signature')
+const get_max_index = require('get-max-index')
+const get_nodes = require('get-nodes')
+const hyperswarm = require('hyperswarm')
+const hypercore = require('hypercore')
+const RAM = require('random-access-memory')
 /******************************************************************************
   ROLE: sponsor
 ******************************************************************************/
@@ -25,9 +33,9 @@ async function sponsor (profile, APIS) {
     const { feedkey, topic } = JSON.parse(keys)
     const components = await makeComponents(feedkey, topic)
     const duration = await getFromUntilBlock()
-    const plan = makePlan( duration, components)
+    const data = await makePlan( duration, components, topic)
     const nonce = await vaultAPI.getNonce()
-    await chainAPI.publishPlan({ plan, signer, nonce })
+    await chainAPI.publishPlan({ data, signer, nonce })
   })
 
   async function handleEvent (event) {
@@ -80,11 +88,10 @@ async function sponsor (profile, APIS) {
 //     if ( type === 'update') sponsorships[data.id] = Object.assign(sponsorships[data.id], data.update)
 //  }
 
-  function makePlan (duration, components) {
-    // const { from, until } = duration
-    return {
+  async function makePlan (duration, components, topic) {
+    const plan = {
       duration,
-      swarmkey: '',
+      swarmkey: topic,
       program  : [
         // { plans: [] }, // duplicate program from referenced plans
         {
@@ -96,7 +103,14 @@ async function sponsor (profile, APIS) {
         // { dataset, regions, performance, times },
         // { dataset, regions, performance, times }
       ],
-      components
+    }
+    const unfiltered = plan.program.map(arr => arr.dataset)
+    const datasets = [...new Set(unfiltered)].flat()
+    const proofs = await getProofs(components, datasets)
+    return {
+      plan,
+      components,
+      proofs
     }
   }
   function makePlanUpdate ({ plan }) {
@@ -122,9 +136,11 @@ async function sponsor (profile, APIS) {
   }
 
   async function makeComponents (feedkey, topic) {
-    const feed1 = { feedkey, swarmkey: topic }
+    const feed1 = { feedkey, swarmkey: topic, signatures: {} }
     const feeds = [feed1]
-    const dataset_items = [{ feed_id: -1, ranges: [[0,3], [5,8], [10,14]] }]
+    const dataset_items = [
+      { feed_id: -1, ranges: [[0,3], [5,8], [10,14]] },
+    ]
     const performance_items = [{ // OPTIONAL
       availability: '', // percentage_decimal
       bandwidth: { /*'speed', 'guarantee'*/ }, // bitspersecond, percentage_decimal
@@ -145,6 +161,52 @@ async function sponsor (profile, APIS) {
     const until = new Date('Nov 26, 2021 23:55:00')
     const untilBlock = dateToBlockNumber ({ dateNow: new Date(), blockNow, date: until })
     return { from: blockNow, until: untilBlock }
+  }
+
+  async function getProofs (components, datasets) {
+    // console.log({components, datasets})
+    const proofs = []
+    const all = []
+    for (var i = 0, len = datasets.length; i < len; i++) {
+      all.push(new Promise(async (resolve, reject) => {
+        const { feedkey, sig, feed_ref } = await getKeyAndVersion(datasets[i], components)
+        if (sig) return
+        const core = new hypercore(RAM, Buffer.from(feedkey, 'hex'), { valueEncoding: 'binary', sparse: true })
+        await ready(core)
+        const swarm = hyperswarm()
+        swarm.join(core.discoveryKey,  { announce: false, lookup: true })
+        swarm.on('connection', async (socket, info) => {
+          socket.pipe(core.replicate(info.client)).pipe(socket)
+          await hypercore_replicated(core)
+          // TODO another check if this signature is already on chain 
+          const v = core.length - 1
+          const signature = await get_signature(core, v)
+          const nodes = await get_nodes(core, v, v)
+          proofs.push({ feed_ref, signature, nodes })
+          resolve()
+        })
+      }))
+    }
+    await Promise.all(all).catch(err=> console.log(err))
+    return proofs
+  }
+  
+  async function getKeyAndVersion (dataset_ref, components) {
+    const { feeds, dataset_items } = components
+    const dataset_item = dataset_ref > 0 ? await getItemByID(dataset_ref) : dataset_items[(Math.abs(dataset_ref) - 1)]
+    const { feed_id: feed_ref, ranges } = dataset_item
+    const feed = feed_ref > 0 ? await getItemByID(feed_ref) : feeds[(Math.abs(feed_ref) - 1)]
+    const { feedkey, version } = feed
+    // check what is the highest verison
+    const keys = Object.keys(feed.signatures)
+    const signatures = keys.map(key => Number(key))
+    if (signatures.length) {
+      const max = get_max_index(ranges)
+      var index = signatures.find(v => v >= max)
+      return { feedkey, sig: { index, signature: feed.signatures[index] }, feed_ref }
+    } else {
+      return { feedkey, feed_ref }
+    }
   }
 
 }

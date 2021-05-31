@@ -1,4 +1,3 @@
-const varint = require('varint')
 const hypercore = require('hypercore')
 const RAM = require('random-access-memory')
 const { toPromises } = require('hypercore-promisifier')
@@ -7,15 +6,12 @@ const derive_topic = require('derive-topic')
 const getRangesCount = require('getRangesCount')
 const hyperswarm = require('hyperswarm')
 const ready = require('hypercore-ready')
-const get_signature = require('get-signature')
-const get_roots = require('get-roots')
 const get_nodes = require('get-nodes')
+const proof_codec = require('datdot-codec/proof')
+const get_max_index = require('get-max-index')
 const serialize_before_compress = require('serialize-before-compress')
 const get_index = require('get-index')
-const audit = require('audit-hypercore')
-const get_max_index = require('get-max-index')
 const hypercore_replicated = require('hypercore-replicated')
-const download_range = require('download-range')
 const brotli = require('brotli')
 /******************************************************************************
   ROLE: Encoder
@@ -40,12 +36,10 @@ async function encoder (identity, log, APIS) {
       const encoder_id = await isForMe(encoders, event)
       if (encoder_id === undefined) return
       log({ type: 'chainEvent', data: [`Event received: ${event.method} ${event.data}`] })
-      const feedKey = await chainAPI.getFeedKey(contract.feed)
-      const feed = await chainAPI.getFeedByID(contract.feed)
-      var root_signatures = feed.signatures
+      const { feedkey: feedKey, signatures } = await chainAPI.getFeedByID(contract.feed)
       const [attestorID] = attestors
       const attestorKey = await chainAPI.getAttestorKey(attestorID)
-      const data = { amendmentID, account: vaultAPI, attestorKey, encoderKey, feedKey, ranges: contract.ranges, encoder_id, root_signatures, log }
+      const data = { amendmentID, account: vaultAPI, attestorKey, encoderKey, ranges: contract.ranges, signatures, feedKey, log }
       await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${error}`] }))
       // log({ type: 'encoder', data: [`Encoding done`] })
     }
@@ -69,7 +63,7 @@ async function encoder (identity, log, APIS) {
 ----------------------------------------- */
 
 async function encode_hosting_setup (data) {
-  const { amendmentID, account, attestorKey, encoderKey, feedKey, ranges, encoder_id, log } = data
+  const { amendmentID, account, attestorKey, encoderKey, ranges, signatures, feedKey, log } = data
   const log2Attestor = log.sub(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
   const expectedChunkCount = getRangesCount(ranges)
   let stats = {
@@ -103,12 +97,7 @@ async function encode_hosting_setup (data) {
       const temp_topic = topic + 'once'
       const beam_temp = new Hyperbeam(temp_topic)
       await hypercore_replicated(feed)
-      const max = get_max_index(ranges)
-      const version = feed.length -1
-      const match =  data.root_signatures[version] 
-      var sig = match ? match : await get_signature(feed, feed.length - 1)
-      const feed_and_signature = { feedKey: core.key.toString('hex'), root_signature: { version: feed.length - 1, signature: sig.toString('hex') } }
-      beam_temp.write(JSON.stringify({ type: 'feedkey_and_signature', data: JSON.stringify(feed_and_signature) }))
+      beam_temp.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
       // beam_temp.write(JSON.stringify({ type: 'feedkey', data: [core.key.toString('hex'), signature.toString('hex')] }))
       
       // pipe streams
@@ -122,41 +111,44 @@ async function encode_hosting_setup (data) {
       start(core)
     })
 
-    
     async function start (core) {
       var total = 0
       for (const range of ranges) total += (range[1] + 1) - range[0]
       log2Attestor({ type: 'encoder', data: [`Start encoding and sending data to attestor`] })
-      for (const range of ranges) sendDataToAttestor({ account, core, range, feed, feedKey, log: log2Attestor, stats, encoder_id, expectedChunkCount })
+      for (const range of ranges) sendDataToAttestor({ account, core, range, feed, stats, signatures, amendmentID, expectedChunkCount, log: log2Attestor })
     }
   })
-}
-async function sendDataToAttestor ({ account, core, range, feed, feedKey, log, stats, amendmentID, encoder_id, expectedChunkCount }) {
-  for (let index = range[0], len = range[1] + 1; index < len; index++) {
-    const msg = download_and_encode(account, index, feed, feedKey, amendmentID, encoder_id)
-    send({ msg, core, log, stats, expectedChunkCount })
+
+  // HELPERS
+  async function sendDataToAttestor ({ account, core, range, feed, stats, signatures, amendmentID, expectedChunkCount, log }) {
+    for (let index = range[0], len = range[1] + 1; index < len; index++) {
+      const msg = await download_and_encode(account, index, feed, signatures, amendmentID)
+      send({ msg, core, log, stats, expectedChunkCount })
+    }
+  }
+  async function send ({ msg, core, log, stats, expectedChunkCount }) {
+    return new Promise(async (resolve, reject) => {
+      const message = await msg
+      await core.append(proof_codec.encode(message))
+      log({ type: 'encoder', data: [`MSG appended ${message.index}`]})
+      if (stats.ackCount === expectedChunkCount) resolve(`Encoded ${message.index} sent`)
+    })
+  }
+  async function download_and_encode (account, index, feed, signatures, amendmentID) {
+    const data = await get_index(feed, index)
+    const to_compress = serialize_before_compress(data, amendmentID)
+    const encoded_data = await brotli.compress(to_compress)
+    const encoded_data_signature = account.sign(encoded_data)
+  
+    const keys = Object.keys(signatures)
+    const indexes = keys.map(key => Number(key))
+    const max = get_max_index(ranges)
+    const version = indexes.find(v => v >= max)
+    const nodes = await get_nodes(feed, index, version) 
+    return { type: 'proof', index, encoded_data, encoded_data_signature, nodes }
   }
 }
-async function send ({ msg, core, log, stats, expectedChunkCount }) {
-  return new Promise(async (resolve, reject) => {
-    const message = await msg
-    await core.append(JSON.stringify(message))
-    log({ type: 'encoder', data: [`MSG appended ${message.index}`]})
-    if (stats.ackCount === expectedChunkCount) resolve(`Encoded ${message.index} sent`)
-  })
-}
-async function download_and_encode (account, index, feed, feedKey, amendmentID, encoder_id) {
-  const data = await get_index(feed, index)
-  const version = feed.length - 1
-  // await audit(feed)  
-  const to_compress = serialize_before_compress(data, encoder_id)
-  const encoded_data = await brotli.compress(to_compress)
-  const encoded_data_signature = account.sign(encoded_data)
-  const signature = await get_signature(feed, version)
-  const nodes = await get_nodes(feed, index, version)
 
-  return { type: 'encoded', feedKey, index, encoded_data, encoder_id, encoded_data_signature, version, nodes, signature }
-}
 
 // @NOTE:
 // 1. encoded chunk has to be unique ([pos of encoder in the event, data]), so that hoster can not delete and download the encoded chunk from another hoster just in time

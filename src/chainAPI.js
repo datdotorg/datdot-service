@@ -33,6 +33,7 @@ async function datdotChain (profile, provider) {
     getContractByID,
     getStorageChallengeByID,
     getPerformanceChallengeByID,
+    getItemByID,
     getFeedKey,
     getUserAddress,
     getUserIDByNoiseKey,
@@ -80,8 +81,8 @@ async function datdotChain (profile, provider) {
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
   async function publishPlan (opts) {
-    const { plan, signer, nonce } = opts
-    const tx = await API.tx.datVerify.publishPlan(plan)
+    const { data, signer, nonce } = opts
+    const tx = await API.tx.datVerify.publishPlan(data)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
@@ -91,9 +92,14 @@ async function datdotChain (profile, provider) {
     const feed = (await API.query.datVerify.getFeedByID(feedID))
     return Buffer.from(feed.feedkey, 'hex')
   }
+  async function getItemByID (id) {
+    // const feed = (await API.query.datVerify.getItemByID(id)).unwrap()
+    return await API.query.datVerify.getItemByID(id)
+  }
   async function getFeedByID (feedID) {
     // const feed = (await API.query.datVerify.getFeedByID(feedID)).unwrap()
     const feed = (await API.query.datVerify.getFeedByID(feedID))
+    feed.feedkey = Buffer.from(feed.feedkey, 'hex')
     return feed
   }
   async function getUserIDByNoiseKey (key) {

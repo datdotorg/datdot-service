@@ -1,6 +1,7 @@
 const DB = require('../../src/DB')
 const makeSets = require('../../src/node_modules/makeSets')
 const blockgenerator = require('../../src/node_modules/scheduleAction')
+const datdot_crypto = require('../../src/node_modules/datdot-crypto')
 const logkeeper = require('../scenarios/logkeeper')
 const WebSocket = require('ws')
 const storage_report_codec = require('../../src/node_modules/datdot-codec/storage-report')
@@ -9,7 +10,7 @@ const priority_queue = PriorityQueue(compare)
 const connections = {}
 const handlers = []
 const scheduler = init()
-var header = 0
+var header = { number: 0 }
 
 function compare (item) {
   return item
@@ -79,6 +80,7 @@ function messageVerifiable (message) {
   QUERIES
 ******************************************************************************/
 const queries = {
+  getItemByID,
   getFeedByID,
   getFeedByKey,
   getUserByID,
@@ -98,6 +100,7 @@ const queries = {
 // function getAmendmentByID (id) { return DB.amendments[id] }
 // function getStorageChallengeByID (id) { return DB.storageChallenges[id] }
 // function getPerformanceChallengeByID (id) { return DB.performanceChallenges[id] }
+function getItemByID (id) { return getItem(id) }
 function getDatasetByID (id) { return getItem(id) }
 function getFeedByID (id) { return getItem(id) }
 function getUserByID (id) { return getItem(id) }
@@ -248,9 +251,11 @@ async function _registerForWork (user, { name, nonce }, status, args) {
 async function _publishPlan (user, { name, nonce }, status, args) {
   const log = connections[name].log
   log({ type: 'chain', data: [`Publishing a plan`] })
-  let [plan] = args
-  const { duration, swarmkey, program, components }  = plan
+  let [data] = args
+  const { plan, components, proofs = {}  } = data
+  const { program } = plan
   const feed_ids = await Promise.all(components.feeds.map(async feed => await publish_feed(feed, user.id, log)))
+  store_root_signatures(proofs, feed_ids)
   const component_ids = await publish_plan_components(log, components, feed_ids)
 
   const updated_program = []
@@ -259,7 +264,7 @@ async function _publishPlan (user, { name, nonce }, status, args) {
     if (item.plans) updated_program.push(...getPrograms(item.plan))
     else updated_program.push(handleNew(item, component_ids))
   }
-  plan = { duration, swarmkey, program: updated_program }
+  plan.program = updated_program
   if (!planValid({ plan })) return log({ type: 'chain', data: [`Plan from and/or until are invalid`] })
   plan.sponsor = user.id
 
@@ -303,13 +308,10 @@ async function registerRole (user, role, log) {
 async function _amendmentReport (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [ report ] = args
-  const { id: amendmentID, failed, latest_root_signature } = report // [2,6,8]
-  const { version, sig } = latest_root_signature
+  const { id: amendmentID, failed } = report // [2,6,8]
   const amendment = getAmendmentByID(amendmentID)
   const { providers: { hosters, attestors, encoders }, contract: contractID } = amendment
   const contract = getContractByID(contractID)
-  const feed = getFeedByID(contract.feed)
-  feed.signatures[version] = Buffer.from(sig, 'hex')
   const { status: { schedulerID }, plan: planID } = contract
   const plan = getPlanByID(planID)
   const [attestorID] = attestors
@@ -459,6 +461,23 @@ async function publish_feed (feed, sponsor_id, log) {
   return feedID
 }
 
+function store_root_signatures (proofs, feed_ids) {
+  proofs.map(({ feed_ref, signature, nodes }, i) => {
+    const indexes = nodes.map(node => node.index)
+    const index = Math.max.apply(Math, indexes)/2 // find highest index/2
+    const feed_id = feed_ref < 0 ? feed_ids[(Math.abs(feed_ref) - 1)] : feed_ref
+    const feed = getFeedByID(feed_id)
+    const feedKey = Buffer.from(feed.feedkey, 'hex')
+    signature = Buffer.from(signature, 'binary')
+    nodes.forEach(node => {
+      node.hash = Buffer.from(node.hash, 'hex')
+    })
+    const not_verified = datdot_crypto.merkle_verify({feedKey, hash_index: index * 2, version: index, signature, nodes})
+    if (not_verified) return console.log('proof could not be verified')
+    feed.signatures[index] = signature
+  })
+}
+
 async function publish_plan_components (log, components, feed_ids) {
   const { dataset_items, performance_items, timetable_items, region_items } = components
   const dataset_ids = await Promise.all(dataset_items.map(async item => {
@@ -543,6 +562,7 @@ async function make_contracts (plan, log) {
 }
 // find providers for each contract (+ new providers if selected ones fail)
 async function init_amendment (contractID, reuse, log) {
+  console.log('initializing amendment')
   const contract = getContractByID(contractID)
   if (!contract) return log({ type: 'chain', data: [`No contract with this ID: ${contractID}`] })
   log({ type: 'chain', data: [`Init amendment & find additional providers for contract: ${contractID}`] })
@@ -552,7 +572,6 @@ async function init_amendment (contractID, reuse, log) {
   const id = addItem(amendment)
   amendment.providers = reuse
   contract.amendments.push(id)
-  console.log({id})
   return id
 }
 

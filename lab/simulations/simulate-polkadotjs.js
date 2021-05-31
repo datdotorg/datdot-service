@@ -13,6 +13,7 @@ module.exports = {
       query: {
         system: { events: handler => handlers.push(handler) },
         datVerify: {
+          getItemByID: getItemByID.bind(name),
           getUserByID: getUserByID.bind(name),
           getUserIDByNoiseKey: getUserIDByNoiseKey.bind(name),
           getUserIDBySigningKey: getUserIDBySigningKey.bind(name),
@@ -89,6 +90,15 @@ async function submitPerformanceChallenge (...args) { return { signAndSend: sign
 /******************************************************************************
   QUERIES
 ******************************************************************************/
+function getItemByID (id) {
+  const name = this
+  return new Promise(resolve => {
+    const msgid = instance.counter++
+    const flow = [instance.name, msgid]
+    requests[msgid] = resolve
+    instance.ws.send(JSON.stringify({ flow, type: 'getItemByID', data: id }))
+  })
+}
 function getFeedByID (id) {
   const name = this
   return new Promise(resolve => {
