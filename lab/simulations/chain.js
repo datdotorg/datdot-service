@@ -408,7 +408,6 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
       nodes
     })
     if (not_verified) return emitEvent('StorageChallengeFailed', [storageChallengeID], log)
-    console.log('challenge merkle verified')
   }
   // @NOTE: sizes for any required proof hash is already on chain
   // @NOTE: `feed/:id/chunk/:v` // size

@@ -178,6 +178,7 @@ async function sponsor (profile, APIS) {
         swarm.on('connection', async (socket, info) => {
           socket.pipe(core.replicate(info.client)).pipe(socket)
           await hypercore_replicated(core)
+          log({ type: 'publisher', data: [`Hypercore replicated ${core}`] })
           // TODO another check if this signature is already on chain 
           const v = core.length - 1
           const signature = await get_signature(core, v)

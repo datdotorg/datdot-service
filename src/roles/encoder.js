@@ -33,13 +33,13 @@ async function encoder (identity, log, APIS) {
       const amendment = await chainAPI.getAmendmentByID(amendmentID)
       const contract = await chainAPI.getContractByID(amendment.contract)
       const { encoders, attestors } = amendment.providers
-      const encoder_id = await isForMe(encoders, event)
-      if (encoder_id === undefined) return
+      const encoder_pos = await isForMe(encoders, event)
+      if (encoder_pos === undefined) return
       log({ type: 'chainEvent', data: [`Event received: ${event.method} ${event.data}`] })
       const { feedkey: feedKey, signatures } = await chainAPI.getFeedByID(contract.feed)
       const [attestorID] = attestors
       const attestorKey = await chainAPI.getAttestorKey(attestorID)
-      const data = { amendmentID, account: vaultAPI, attestorKey, encoderKey, ranges: contract.ranges, signatures, feedKey, log }
+      const data = { amendmentID, account: vaultAPI, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, signatures, feedKey, log }
       await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${error}`] }))
       // log({ type: 'encoder', data: [`Encoding done`] })
     }
@@ -51,7 +51,7 @@ async function encoder (identity, log, APIS) {
       const peerAddress = await chainAPI.getUserAddress(id)
       if (peerAddress === myAddress) {
         log({ type: 'chainEvent', data: [`Encoder ${id}:  Event received: ${event.method} ${event.data.toString()}`] })
-        return id
+        return i
       }
     }
   }
@@ -63,7 +63,7 @@ async function encoder (identity, log, APIS) {
 ----------------------------------------- */
 
 async function encode_hosting_setup (data) {
-  const { amendmentID, account, attestorKey, encoderKey, ranges, signatures, feedKey, log } = data
+  const { amendmentID, account, attestorKey, encoderKey, ranges, encoder_pos, signatures, feedKey, log } = data
   const log2Attestor = log.sub(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
   const expectedChunkCount = getRangesCount(ranges)
   let stats = {
@@ -115,14 +115,14 @@ async function encode_hosting_setup (data) {
       var total = 0
       for (const range of ranges) total += (range[1] + 1) - range[0]
       log2Attestor({ type: 'encoder', data: [`Start encoding and sending data to attestor`] })
-      for (const range of ranges) sendDataToAttestor({ account, core, range, feed, stats, signatures, amendmentID, expectedChunkCount, log: log2Attestor })
+      for (const range of ranges) sendDataToAttestor({ account, core, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor })
     }
   })
 
   // HELPERS
-  async function sendDataToAttestor ({ account, core, range, feed, stats, signatures, amendmentID, expectedChunkCount, log }) {
+  async function sendDataToAttestor ({ account, core, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log }) {
     for (let index = range[0], len = range[1] + 1; index < len; index++) {
-      const msg = await download_and_encode(account, index, feed, signatures, amendmentID)
+      const msg = await download_and_encode(account, index, feed, signatures, amendmentID, encoder_pos)
       send({ msg, core, log, stats, expectedChunkCount })
     }
   }
@@ -134,17 +134,18 @@ async function encode_hosting_setup (data) {
       if (stats.ackCount === expectedChunkCount) resolve(`Encoded ${message.index} sent`)
     })
   }
-  async function download_and_encode (account, index, feed, signatures, amendmentID) {
+  async function download_and_encode (account, index, feed, signatures, amendmentID, encoder_pos) {
     const data = await get_index(feed, index)
-    const to_compress = serialize_before_compress(data, amendmentID)
+    const unique_el = `${amendmentID}/${encoder_pos}`
+    const to_compress = serialize_before_compress(data, unique_el)
     const encoded_data = await brotli.compress(to_compress)
     const encoded_data_signature = account.sign(encoded_data)
-  
+    
     const keys = Object.keys(signatures)
     const indexes = keys.map(key => Number(key))
     const max = get_max_index(ranges)
     const version = indexes.find(v => v >= max)
-    const nodes = await get_nodes(feed, index, version) 
+    const nodes = await get_nodes(feed, index, version)
     return { type: 'proof', index, encoded_data, encoded_data_signature, nodes }
   }
 }
