@@ -140,6 +140,8 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
   const log2attestor = log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0, 5)}`)
   log2attestor({ type: 'hoster', data: [`getEncodedDataFromAttestor`] })
 
+  const unique_el = `${amendmentID}/${encoder_pos}`
+
   return new Promise(async (resolve, reject) => {
     const expectedChunkCount = getRangesCount(ranges)
     const all_hosted = []
@@ -159,19 +161,19 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
     })
 
     async function replicate(feedkey) {
-      const clone1 = toPromises(new hypercore(RAM, feedkey, {
+      const clone = toPromises(new hypercore(RAM, feedkey, {
         valueEncoding: 'binary',
         sparse: true
       }))
 
       // pipe streams
-      const clone1Stream = clone1.replicate(false, { live: true })
-      clone1Stream.pipe(beam1).pipe(clone1Stream)
+      const cloneStream = clone.replicate(false, { live: true })
+      cloneStream.pipe(beam1).pipe(cloneStream)
 
       // // get replicated data
       for (var i = 0; i < expectedChunkCount; i++) {
         log2attestor({ type: 'hoster', data: [`Getting data: counter ${i}`] })
-        all_hosted.push(store_data(clone1.get(i)))
+        all_hosted.push(store_data(clone.get(i)))
         // beam_temp1.destroy()
       }
 
@@ -180,10 +182,15 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
         log2attestor({ type: 'error', data: [`Error getting results ${err}`] })
       })
       if (!results) return console.log('Error storing data')
-      // console.log({results})
       if (results.length === expectedChunkCount) {
         log2attestor({ type: 'hoster', data: [`All data (${expectedChunkCount} chunks) verified & successfully hosted`] })
-        // beam1.destroy()
+        
+        // send signed unique_el as an extension message
+        ext = clone.registerExtension(unique_el, { encoding: 'binary ' })
+        const data = Buffer.from(unique_el, 'binary')
+        const dataBuf = account.sign(data)
+        ext.broadcast(dataBuf)
+
         console.log(`All data (${expectedChunkCount} chunks) verified & successfully hosted -----------`)
         resolve(`All data chunks verified & successfully hosted`)
       }
@@ -207,18 +214,17 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
             return reject(error)
           }
           try {
-            // if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
-            // log2attestor({ type: 'hoster', data: [`Encoder data signature verified`] })
-            const unique_el = `${amendmentID}/${encoder_pos}`
-            // await datdot_crypto.verify_chunk_hash(index, encoded_data, unique_el, nodes).catch(err => reject('not valid chunk hash', err))
-            // log2attestor({ type: 'hoster', data: [`Chunk hash verified`] })
-            // const keys = Object.keys(signatures)
-            // const indexes = keys.map(key => Number(key))
-            // const max = get_max_index(ranges)
-            // const version = indexes.find(v => v >= max)
-            // const not_verified = datdot_crypto.merkle_verify({ feedKey, hash_index: index * 2, version, signature: Buffer.from(signatures[version], 'binary'), nodes })
-            // if (not_verified) reject(not_verified)
-            // log2attestor({ type: 'hoster', data: [`Chunk merkle verified`] })
+            if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
+            log2attestor({ type: 'hoster', data: [`Encoder data signature verified`] })
+            await datdot_crypto.verify_chunk_hash(index, encoded_data, unique_el, nodes).catch(err => reject('not valid chunk hash', err))
+            log2attestor({ type: 'hoster', data: [`Chunk hash verified`] })
+            const keys = Object.keys(signatures)
+            const indexes = keys.map(key => Number(key))
+            const max = get_max_index(ranges)
+            const version = indexes.find(v => v >= max)
+            const not_verified = datdot_crypto.merkle_verify({ feedKey, hash_index: index * 2, version, signature: Buffer.from(signatures[version], 'binary'), nodes })
+            if (not_verified) reject(not_verified)
+            log2attestor({ type: 'hoster', data: [`Chunk merkle verified`] })
             await store_in_hoster_storage({
               account,
               feedKey,
@@ -424,9 +430,11 @@ async function send_storage_proofs_to_attestor({ account, storageChallenge, host
         console.log('storage challenge failed (hoster)')
         log2attestor4Challenge({ type: 'error', data: [`No results`] })
       }
-      // send signed event as an extension message
+      // send signed storageChallengeID as an extension message
       ext = core.registerExtension(`challenge${id}`, { encoding: 'binary ' })
-      const dataBuf = sign_event(id)
+      const messageBuf = Buffer.alloc(varint.encodingLength(id))
+      varint.encode(id, messageBuf, 0)
+      const dataBuf = account.sign(messageBuf)
       ext.broadcast(dataBuf)
 
       log2attestor4Challenge({ type: 'hoster', data: [`${all.length} responses received from the attestor`] })
@@ -443,11 +451,6 @@ async function send_storage_proofs_to_attestor({ account, storageChallenge, host
       reject({ type: `hoster_proof_fail`, data: err })
     }
     
-    function sign_event(id) {
-      const data = Buffer.alloc(varint.encodingLength(id))
-      varint.encode(id, data, 0)
-      return account.sign(data)
-    }
     function send(message, i) {
       return new Promise(async (resolve, reject) => {
         await core.append(JSON.stringify(message))

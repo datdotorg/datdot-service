@@ -58,17 +58,13 @@ async function attester (identity, log, APIS) {
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress !== myAddress) return
       log({ type: 'chainEvent', data: [`Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`] })
-      const { feedKey, encoderKeys, hosterKeys, ranges } = await getData(amendment, contract)
-      const data = { account: vaultAPI, hosterKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges, log }
-      
-      const { failedKeys } = await attest_hosting_setup(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
+      const { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges } = await getData(amendment, contract)
+      const data = { account: vaultAPI, hosterKeys, hosterSigningKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges, log }
+      const { failedKeys, sigs } = await attest_hosting_setup(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
       log({ type: 'attestor', data: [`Resolved all the responses for amendment: ${amendmentID}: ${failedKeys}`] })  
-      const failed = []
-      for (var i = 0, len = failedKeys.length; i < len; i++) {  // TODO error: can't read property length of undefined (failedKeys)
-        const id = await chainAPI.getUserIDByNoiseKey(failedKeys[i])
-        failedKeys.push(id)
-      }
-      const report = { id: amendmentID, failed }
+      failedKeys.forEach(async (key) => await chainAPI.getUserIDByNoiseKey(Buffer.from(key, 'hex')))
+      sigs.forEach(async (sig) => sig.hoster = await chainAPI.getUserIDBySigningKey(Buffer.from(sig.hoster, 'hex')))
+      const report = { id: amendmentID, failed: failedKeys, sigs }
       const nonce = await vaultAPI.getNonce()
       await chainAPI.amendmentReport({ report, signer, nonce })
     }
@@ -151,20 +147,23 @@ async function attester (identity, log, APIS) {
 
   async function getData (amendment, contract) {
     const { encoders, hosters } = amendment.providers
-    const encoderKeys = []
-    encoders.forEach(async (id) => {
-      const key = await chainAPI.getEncoderKey(id)
-      encoderKeys.push(key)
-    })
-    const hosterKeys = []
+    const enc_promises = encoders.map(async (id) => chainAPI.getEncoderKey(id))
+    const encoderKeys = await Promise.all(enc_promises)
+    const hoster_promises = []
+    const signingkey_promises = []
     hosters.forEach(async (id) => {
-      const key = await chainAPI.getHosterKey(id)
-      hosterKeys.push(key)
+      signingkey_promises.push(chainAPI.getSigningKey(id))
+      hoster_promises.push(chainAPI.getHosterKey(id))
     })
     const feedID = contract.feed
-    const feedKey = await chainAPI.getFeedKey(feedID)
+    const feedKey_promise = chainAPI.getFeedKey(feedID)
+
+    const hosterKeys = await Promise.all(hoster_promises)
+    const hosterSigningKeys = await Promise.all(signingkey_promises)
+    const feedKey = await feedKey_promise
+
     const ranges = contract.ranges
-    return { feedKey, encoderKeys, hosterKeys, ranges }
+    return { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges }
   }
 
   function getRandomInt (min, max) {
@@ -179,29 +178,39 @@ async function attester (identity, log, APIS) {
 ---------------------------------------------------------------------- */
 
 async function attest_hosting_setup (data) {
-  const { amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges, log } = data
+  const { amendmentID, feedKey, hosterKeys, hosterSigningKeys, attestorKey, encoderKeys, ranges, log } = data
   const messages = {}
   const responses = []
   for (var i = 0, len = encoderKeys.length; i < len; i++) {
     const encoderKey = encoderKeys[i]
     const hosterKey = hosterKeys[i]
-    const opts = { log, amendmentID, attestorKey, encoderKey, hosterKey, ranges, feedKey }
+    const hosterSigningKey = hosterSigningKeys[i]
+    const unique_el = `${amendmentID}/${i}`
+    const opts = { log, amendmentID, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, ranges, feedKey }
     opts.compare_encodings_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
     log({ type: 'attestor', data: [`Verify encodings!`] })
     responses.push(verify_and_forward_encodings(opts))
   }
-  const failed = await Promise.all(responses) // can be 0 to 6 pubKeys of failed providers
-  const failed_flat = failed.flat()
-  const failedKeys =  [...new Set(failed_flat)]
-  const report = { failedKeys }
+
+  const resolved_responses = await Promise.all(responses) // can be 0 to 6 pubKeys of failed providers
+  const failed = []
+  const sigs = []
+  resolved_responses.forEach(res => {
+    const { failedKeys, unique_el_signature, hoster } = res
+    failed.push(failedKeys)
+    sigs.push({ unique_el_signature, hoster })
+  })
+  const failed_set =  [...new Set(failed.flat())]  
+  const report = { failedKeys: failed_set, sigs }
   return report
   
   async function verify_and_forward_encodings (opts) {
-    const { log, amendmentID, attestorKey, encoderKey, hosterKey, feedKey, ranges, compare_encodings_CB } = opts
+    const { log, amendmentID, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, feedKey, ranges, compare_encodings_CB } = opts
     const topic_encoder = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
     const topic_hoster = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID })
     const expectedChunkCount = getRangesCount(ranges)
     const failedKeys = []
+    var unique_el_signature
     let STATUS
     let hoster_failed
     let encoder_failed
@@ -230,7 +239,8 @@ async function attest_hosting_setup (data) {
       else if (err.type === 'encoder_timeout') failedKeys.push(encoderKey)
       else console.log(err)
     }
-    return failedKeys
+    if (!unique_el_signature) failedKeys.push(hosterKey)
+    return { failedKeys, unique_el_signature, hoster: hosterKey }
   
     async function handler (type, chunk) {      
       try {
@@ -241,7 +251,7 @@ async function attest_hosting_setup (data) {
         }
         if (type === 'DONE') {
           STATUS = 'END'
-          if (!pending) hoster_channel('QUIT')
+          if (!pending) await hoster_channel('QUIT')
           return
         }
         if (type === 'DATA') {
@@ -251,13 +261,13 @@ async function attest_hosting_setup (data) {
           log({type: 'attestor', data: [`after comparing CB, ${STATUS}`]})
           if (STATUS === 'FAILED') {
             pending--
-            if (!pending) hoster_channel('QUIT')
+            if (!pending) await hoster_channel('QUIT')
             return
           }
           await hoster_channel('SEND', chunk)
           pending--
           if (STATUS === 'END' || STATUS === 'FAILED') {
-            if (!pending) hoster_channel('QUIT')
+            if (!pending) await hoster_channel('QUIT')
             return
           }
         }
@@ -266,7 +276,7 @@ async function attest_hosting_setup (data) {
         log({type: 'attestor', data: [`ERROR, ${err}`]})
         pending--
         if (STATUS === 'END') {
-          if (!pending) hoster_channel('QUIT')
+          if (!pending) await hoster_channel('QUIT')
           return
         }
         else if (err.type === 'invalid_encoding' && !encoder_failed) {
@@ -293,6 +303,7 @@ async function attest_hosting_setup (data) {
   
     async function connect_to (role, isSender, topic, expectedChunkCount) {
       const chunks = {}
+      var ext_received = {}
       var beam_error
       return new Promise(async (resolve, reject) => {
         const tid = setTimeout(() => {
@@ -345,16 +356,32 @@ async function attest_hosting_setup (data) {
             const index = ack.start
             const store = chunks[index]
             const resolve = store.resolve
-            // delete chunks[index]
             chunks[index] = ack
             resolve()
+          })
+          // get hoster signature of the unique_el
+          ext = core.registerExtension(unique_el, { 
+            encoding: 'binary',
+            async onmessage (sig) {
+              unique_el_signature = sig
+              const data = Buffer.from(unique_el, 'binary')
+              if (!datdot_crypto.verify_signature(sig, data, hosterSigningKey)) unique_el_signature = undefined
+              if (ext_received.resolve) ext_received.resolve()
+            },
+            onerror (err) {
+              console.log('err')
+              reject(err)
+            }
           })
           resolve(channel)
         }
   
         async function channel (type, data) {
           if (type === 'QUIT') {
-            return new Promise((resolve, reject) => {
+            return new Promise(async (resolve, reject) => {
+              if (!unique_el_signature) await new Promise((resolve, reject) => {
+                ext_received.resolve = resolve
+              })
               clearTimeout(tid)
               // beam.destroy()
               resolve()

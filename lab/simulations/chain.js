@@ -309,9 +309,11 @@ async function registerRole (user, role, log) {
 async function _amendmentReport (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [ report ] = args
-  const { id: amendmentID, failed } = report // [2,6,8]
+  const { id: amendmentID, failed, sigs } = report // [2,6,8]
   const amendment = getAmendmentByID(amendmentID)
   const { providers: { hosters, attestors, encoders }, contract: contractID } = amendment
+  if (!sigs_verified(sigs, hosters, amendmentID)) return log({ type: 'chain', data: [`Error: unique_el_signature could not be verified`] })
+  log({ type: 'chain', data: [`amendmentReport hoster signatures verified`] })
   const contract = getContractByID(contractID)
   const { status: { schedulerID }, plan: planID } = contract
   const plan = getPlanByID(planID)
@@ -824,6 +826,18 @@ function makeAvoid (plan) {
   const avoid = {}
   avoid[plan.sponsor] = true // avoid[3] = true
   return avoid
+}
+function sigs_verified (sigs, hosters, amendmentID) {
+  for (var i = 0, len = sigs.length; i < len; i++) {
+    const { unique_el_signature, hoster: id } = sigs[i]
+    if (hosters.includes(id)) {
+      const { signingKey }  = getUserByID(id)
+      const pos = hosters.indexOf(hoster)
+      const data = Buffer.from(`${amendmentID}/${pos}`, 'binary')
+      if (!datdot_crypto.verify_signature(unique_el_signature, data, signingKey)) return log({ type: 'chain', data: [`Error: unique_el_signature could not be verified`] })
+    }
+  }
+  return true
 }
 function cancelContracts (plan) {
   const contracts = plan.contracts
