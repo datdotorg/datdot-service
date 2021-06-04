@@ -86,6 +86,7 @@ async function attester (identity, log, APIS) {
         })
         if (reports) {
           const response = { storageChallengeID, reports }
+          log({ type: 'attestor', data: [`Finished the report for storage challenge ${storageChallengeID}: ${reports}`] })
           const nonce = await vaultAPI.getNonce()
           const opts = { response, signer, nonce }
           log({ type: 'attestor', data: [`Submitting storage challenge`] })
@@ -256,9 +257,7 @@ async function attest_hosting_setup (data) {
         }
         if (type === 'DATA') {
           pending++
-          log({type: 'attestor', data: [`before comparing CB, ${STATUS}`]})
           await compare_encodings_CB(chunk, encoderKey)
-          log({type: 'attestor', data: [`after comparing CB, ${STATUS}`]})
           if (STATUS === 'FAILED') {
             pending--
             if (!pending) await hoster_channel('QUIT')
@@ -513,19 +512,19 @@ async function attest_storage_challenge (data) {
         all.push(verify_chunk(data_promise))
       }
       try {
-        const results = await Promise.all(all).catch(err => { console.log(err) })
-        if (!results) log2hosterChallenge({ type: 'error', data: [`No results`] })
-        // get signed event as an extension message
-        clearTimeout(tid)
         ext = core.registerExtension(`challenge${id}`, { 
           encoding: 'binary',
           async onmessage (storage_challenge_signature) {
+            clearTimeout(tid)
+            log2hosterChallenge({ type: 'attestor', data: [`Got the the unique_el_signature`] })
             const messageBuf = Buffer.alloc(varint.encodingLength(id))
             varint.encode(id, messageBuf, 0)
             if (!datdot_crypto.verify_signature(storage_challenge_signature, messageBuf, hosterSigningKey)) {
               console.log('not a valid event')
               reject(storage_challenge_signature)
             }
+            const results = await Promise.all(all).catch(err => { console.log(err) })
+            if (!results) log2hosterChallenge({ type: 'error', data: [`No results`] })
             results.forEach(result => result.storage_challenge_signature = storage_challenge_signature)
             // beam.destroy()
             resolve(results)
