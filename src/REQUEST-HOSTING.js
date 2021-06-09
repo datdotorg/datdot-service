@@ -12,9 +12,9 @@ const RAM = require('random-access-memory')
   ROLE: sponsor
 ******************************************************************************/
 
-module.exports = sponsor
+module.exports = request_hosting
 
-async function sponsor (profile, APIS) {
+async function request_hosting (profile, APIS) {
   const { name, log } = profile
   const { chainAPI, vaultAPI } = APIS
   const getChatAPI = require('../lab/simulations/chatAPI')
@@ -164,12 +164,11 @@ async function sponsor (profile, APIS) {
   }
 
   async function getProofs (components, datasets) {
-    // console.log({components, datasets})
     const proofs = []
     const all = []
     for (var i = 0, len = datasets.length; i < len; i++) {
       all.push(new Promise(async (resolve, reject) => {
-        const { feedkey, sig, feed_ref } = await getKeyAndVersion(datasets[i], components)
+        const { signatures, feedkey, sig, feed_ref } = await getKeyAndSignature(datasets[i], components)
         if (sig) return
         const core = new hypercore(RAM, Buffer.from(feedkey, 'hex'), { valueEncoding: 'binary', sparse: true })
         await ready(core)
@@ -179,8 +178,9 @@ async function sponsor (profile, APIS) {
           socket.pipe(core.replicate(info.client)).pipe(socket)
           await hypercore_replicated(core)
           log({ type: 'publisher', data: [`Hypercore replicated ${core}`] })
-          // TODO another check if this signature is already on chain 
           const v = core.length - 1
+          // another check if this signature is already on chain 
+          if (signatures[v]) return
           const signature = await get_signature(core, v)
           const nodes = await get_nodes(core, v, v)
           proofs.push({ feed_ref, signature, nodes })
@@ -192,7 +192,7 @@ async function sponsor (profile, APIS) {
     return proofs
   }
   
-  async function getKeyAndVersion (dataset_ref, components) {
+  async function getKeyAndSignature (dataset_ref, components) {
     const { feeds, dataset_items } = components
     const dataset_item = dataset_ref > 0 ? await getItemByID(dataset_ref) : dataset_items[(Math.abs(dataset_ref) - 1)]
     const { feed_id: feed_ref, ranges } = dataset_item
@@ -204,9 +204,9 @@ async function sponsor (profile, APIS) {
     if (signatures.length) {
       const max = get_max_index(ranges)
       var index = signatures.find(v => v >= max)
-      return { feedkey, sig: { index, signature: feed.signatures[index] }, feed_ref }
+      return { signatures, feedkey, sig: { index, signature: feed.signatures[index] }, feed_ref }
     } else {
-      return { feedkey, feed_ref }
+      return { signatures, feedkey, feed_ref }
     }
   }
 

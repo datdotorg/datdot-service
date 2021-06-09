@@ -10,9 +10,9 @@ const attest = require('./roles/attester.js')
 
 ******************************************************************************/
 
-module.exports = provide_service
+module.exports = offer_hosting
 
-async function provide_service (profile, APIS) {
+async function offer_hosting (profile, APIS) {
   const { name, log } = profile
   const { chainAPI, vaultAPI } = APIS
   

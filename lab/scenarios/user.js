@@ -9,8 +9,8 @@ const getVaultAPI = require('../../src/vault.js')
 const ACTIONS = {
   register: require('../../src/register.js'),
   author_hypercore: require('../../src/author-hypercore.js'),
-  request_service: require('../../src/request-service.js'),
-  provide_service: require('../../src/provide-service.js'),
+  request_hosting: require('../../src/REQUEST-HOSTING.js'),
+  offer_hosting: require('../../src/OFFER-HOSTING.js'),
 }
 /******************************************************************************
   USER

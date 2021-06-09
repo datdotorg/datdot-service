@@ -422,11 +422,10 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
 /*----------------------
   PERFORMANCE CHALLENGE
 ------------------------*/
-async function _requestPerformanceChallenge ({ user, signingData, status, args }) {
-  const { name, nonce } = signingData
-  const log = connections[name].log
-  const [ contractID, hosterID ] = args
-  const plan = getPlanByID(getContractByID(contractID).plan)
+async function _requestPerformanceChallenge ({ contractID, hosterID, meta, log }) {
+  const { user, name, nonce, status } = meta
+  const contract = getContractByID(contractID)
+  const plan = getPlanByID(contract.plan)
   makePerformanceChallenge({ contractID, hosterID, plan }, log)
 }
 
@@ -437,7 +436,11 @@ async function _submitPerformanceChallenge (user, { name, nonce }, status, args)
   log({ type: 'chain', data: [`Performance Challenge proof by attestor: ${userID} for challenge: ${performanceChallengeID}`] })
   const performanceChallenge = getPerformanceChallengeByID(performanceChallengeID)
   if (!performanceChallenge.attestors.includes(userID)) return log({ type: 'chain', data: [`Only selected attestors can submit this performance challenge`] })
+  
+  const { stats, signed_event } = report
+  // if (!is_valid_signature(signed_event)) return
   var method = report ? 'PerformanceChallengeFailed' : 'PerformanceChallengeConfirmed'
+  if (report) console.log('------ Performance challenge confirmed')
   emitEvent(method, [performanceChallengeID], log)
   // attestor finished job, add them to idleAttestors again
   removeJob({ id: userID, role: 'attestor', doneJob: performanceChallengeID, idleProviders: DB.status.idleAttestors, action: () => tryNextChallenge({ attestorID: userID }, log) }, log)
@@ -807,7 +810,7 @@ function tryNextChallenge ({ attestorID }, log) {
       const attestors = select({ idleProviders: DB.status.idleAttestors, role: 'attestor', newJob, amount: 5, avoid, plan, log })
       if (attestors.length) {
         DB.queues.attestorsJobQueue.shift()
-        performanceChallenge.attestors = attestors
+        performanceChallenge.attestors = attestors.map(attestor => attestor.id)
         giveJobToRoles({
           type,
           selectedProviders: attestors,
@@ -906,14 +909,16 @@ async function scheduleChallenges (opts) {
     const planID = plan.id
     const from = plan.duration.from
     // TODO sort challenge request jobs based on priority (RATIO!) of the sponsors
-    _requestStorageChallenge({ contractID, hosterID, meta: { user, name, nonce, status }, log })
-    // _requestPerformanceChallenge({ user, signingData: { name, nonce }, status, args: [contractID, hosterID] })
-    scheduleAction({ action: schedulingChallenges, delay: 2, name: 'schedulingChallenges' })
-    // TODO when delay 0 it doesn't start right away + there is a handshake error because too many challenges
+    
+    // TODO: GROUP challenges so that one attestor checks multiple hosters at once (for same feedkey) (storage and perf)
+    // _requestStorageChallenge({ contractID, hosterID, meta: { user, name, nonce, status }, log })
+    _requestPerformanceChallenge({  contractID, hosterID, meta: { user, name, nonce, status }, log }) 
+    scheduleAction({ action: schedulingChallenges, delay: 3, name: 'schedulingChallenges' })
   }
   const { scheduleAction, cancelAction } = await scheduler
   console.log(scheduleAction)
-  scheduleAction({ action: schedulingChallenges, delay: 5, name: 'schedulingChallenges' })
+  scheduleAction({ action: schedulingChallenges, delay: 3, name: 'schedulingChallenges' })
+  // TODO when delay 0 it doesn't start right away + there is a handshake error because too many challenges
 }
 
 async function scheduleAmendmentFollowUp (id, log) {
@@ -1011,22 +1016,17 @@ async function makePerformanceChallenge ({ contractID, hosterID, plan }, log) {
   // DB.performanceChallenges.push(performanceChallenge) // @NOTE: set id
   const id = addItem(performanceChallenge)
   DB.active.performanceChallenges[id] = true
-  // select attestors
+  // find attestors
   const avoid = makeAvoid(plan)
   avoid[hosterID] = true
 
   const newJob = performanceChallenge.id
   const type = 'NewPerformanceChallenge'
-  const attestors = select({ idleProviders: DB.status.idleAttestors, role: 'attestor', newJob, amount: 5, avoid, plan, log })
+  const idleProviders = DB.status.idleAttestors
+  const attestors = select({ idleProviders, role: 'attestor', newJob, amount: 5, avoid, plan, log })
   if (!attestors.length) return DB.queues.attestorsJobQueue.push({ fnName: 'NewPerformanceChallenge', opts: { performanceChallenge } })
-  performanceChallenge.attestors = attestors
-  giveJobToRoles({
-    type,
-    selectedProviders: attestors,
-    idleProviders: DB.status.idleAttestors,
-    role: 'attestor',
-    newJob
-  }, log)
+  performanceChallenge.attestors = attestors.map(attestor => attestor.id)
+  giveJobToRoles({ type, selectedProviders: attestors, idleProviders, role: 'attestor', newJob }, log)
   // emit event
   log({ type: 'chain', data: [type, newJob] })
   emitEvent(type, [newJob], log)

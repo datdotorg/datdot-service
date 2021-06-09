@@ -5,15 +5,26 @@ const hypercore = require('hypercore')
 const RAM = require('random-access-memory')
 const { toPromises } = require('hypercore-promisifier')
 const Hyperbeam = require('hyperbeam')
+const hyperswarm = require('hyperswarm')
 const derive_topic = require('derive-topic')
 const proof_codec = require('datdot-codec/proof')
 const getRangesCount = require('getRangesCount')
 const ready = require('hypercore-ready')
+const hypercore_close = require('hypercore-close')
 const { performance } = require('perf_hooks')
 const compare_encodings = require('compare-encodings')
 const get_max_index = require('get-max-index')
+const get_index = require('get-index')
+const hypercore_replicated = require('hypercore-replicated')
+const download_range = require('download-range')
+const { data } = require('hypercore-crypto')
+const { connect } = require('http2')
+const { resolve } = require('path')
 const DEFAULT_TIMEOUT = 7500
 
+// global variables
+const connections = {} // keep track of open connections and feed in performance challenge
+const feeds = {}
 /******************************************************************************
   ROLE: Attestor
 ******************************************************************************/
@@ -102,20 +113,17 @@ async function attester (identity, log, APIS) {
         const attestorAddress = await chainAPI.getUserAddress(attestorID)
         if (attestorAddress === myAddress) {
           log({ type: 'chainEvent', data: [`Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}`] })
-          const contractID = performanceChallenge.contract
-          const contract = await chainAPI.getContractByID(contractID)
+          console.log('----New Performance challenge')
+          const contract = await chainAPI.getContractByID(performanceChallenge.contract)
           const feedID = contract.feed
           const feedKey = await chainAPI.getFeedKey(feedID)
           const ranges = contract.ranges
+          // chain doesn't emit WHICH chunks attester should check
           const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1))
-          // TODO: meet with other attestors in the swarm to decide on random number of attestors
-          //  sign random number
-          //  add time of execution for each attestor
-          //  select a reporter
-          // const meeting = await meetAttestors(feedKey)
-          const report = await Promise.all(randomChunks.map(async (chunk) => {
-            return await attest_performance(feedKey, chunk, log)
-          }))
+          
+          const report = await check_performance(feedKey, randomChunks, log)
+          
+          // TODO: send just a summary to the chain, not the whole array
           const nonce = await vaultAPI.getNonce()
           log({ type: 'attestor', data: [`Submitting performance challenge`] })
           await chainAPI.submitPerformanceChallenge({ performanceChallengeID, report, signer, nonce })
@@ -139,8 +147,7 @@ async function attester (identity, log, APIS) {
   }
 
   async function getEncoderID (amendments, hosterID) {
-    const amendment_id = amendments[amendments.length-1]
-    const active_amendment = await chainAPI.getAmendmentByID(amendment_id)
+    const active_amendment = await chainAPI.getAmendmentByID(amendments[amendments.length-1])
     const pos =  active_amendment.providers.hosters.indexOf(hosterID)
     const encoderID = active_amendment.providers.encoders[pos]
     return [encoderID, pos]
@@ -359,7 +366,7 @@ async function attest_hosting_setup (data) {
             resolve()
           })
           // get hoster signature of the unique_el
-          ext = core.registerExtension(unique_el, { 
+          var ext = core.registerExtension(unique_el, { 
             encoding: 'binary',
             async onmessage (sig) {
               unique_el_signature = sig
@@ -512,7 +519,7 @@ async function attest_storage_challenge (data) {
         all.push(verify_chunk(data_promise))
       }
       try {
-        ext = core.registerExtension(`challenge${id}`, { 
+        var ext = core.registerExtension(`challenge${id}`, { 
           encoding: 'binary',
           async onmessage (storage_challenge_signature) {
             clearTimeout(tid)
@@ -581,28 +588,126 @@ async function attest_storage_challenge (data) {
                         CHECK PERFORMANCE
 ---------------------------------------------------------------------- */
 
-async function attest_performance (key, index, log) { // key = feedkey, index = chunk index
+async function check_performance (feedKey, randomChunks, log) {
   return new Promise(async (resolve, reject) => {
-    const feed = new hypercore(RAM, key, { persist: false })
+    const report = []
+    const tid = setTimeout(() => {
+      console.log('performance challenge - timeout')
+      reject('performance challenge failed')
+    }, DEFAULT_TIMEOUT)
+  
+    const [swarm, feed] = await connect_and_replicate(feedKey, log)
+    const signed_event = await register_and_get_extension()
+  
+    await Promise.all(randomChunks.map(async (chunk) => {
+      clearTimeout(tid)
+      const res = await get_data_and_stats(feed, chunk, log).catch(err => console.log(err))
+      res.signed_event = signed_event
+      console.log({stats: res.stats, data: res.data.toString('utf-8'), signed_event: res.signed_event})
+      report.push(res)
+    }))
+    swarm.leave(feed.discoveryKey, async() => {
+      // await hypercore_close(feed)
+      connections[feed.discoveryKey.toString('hex')] = undefined
+    })
+    resolve(report)
+  })
+}
+
+async function connect_and_replicate (feedKey, log) {
+  return new Promise(async (resolve, reject) => {
+    log({ type: 'attestor', data: [`Start to connect and to replicate`] })
+  
+    var feed = feeds[feedKey.toString('hex')]
+    if (!feed) {
+      feed = new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true })
+      await ready(feed)
+      feeds[feedKey.toString('hex')] = feed
+    } 
+    const topic = feed.discoveryKey
+    
+    var swarm = connections[topic.toString('hex')]
+    if (!swarm) {
+      swarm = hyperswarm()
+      connections[topic.toString('hex')] = swarm
+      swarm.join(topic, { announce: false, lookup: true })
+    }
+    swarm.on('connection', async (peerSocket, info) => {
+      // if (found) return // maybe if found, just disconnect from swarm and keep only peerSocket
+
+      // TODO: use pump and store it on `connection` object
+      peerSocket.pipe(feed.replicate(info.client)).pipe(peerSocket)   
+      // console.log('got connection (attestor in original swarm', {peerSocket, info})
+      // peers[peerSocket.publicKey.toString('hex')] = {
+      //   checkID: setTimeout(() => {
+      //     ext
+      //     // TODO: disconnect from peer
+      //   }, 2000),
+      //   socket: peerSocket
+      // }
+    })
+    // await hypercore_replicated(feed)
+    resolve([swarm, feed])
+  })
+}
+
+async function register_and_get_extension () {
+  return 'foo'
+  // var found
+  // const peers = {}
+  // var ext = feed.registerExtension('datdot-hoster', { 
+  //   encoding: 'binary',
+  //   async onmessage (signed_event, peerSocket) {
+  //     console.log('got an ext message')
+      
+  //     // const data = Buffer.from(perf_id, 'binary')
+  //     // const checkID = peers[peerSocket.publicKey.toString('hex')].checkID
+  //     // clearTimeout(checkID)
+  //     // // TODO: check that publicKey is hosterKey
+  //     // if (!datdot_crypto.verify_signature(sig, data, hosterSigningKey)) {
+  //     //   // TODO: disconnect from peer
+  //     //   return
+  //     // }
+  //     // found = true
+  //     // // TODO: LOOP to disconnect from ALL OTHER peers for this connection
+  //     // Object.entries(peers).forEach(([pubkey, { checkID, socket }]) => {
+  //     //   if (peerSocket === socket) return
+  //     //   clearTimeout(checkID)
+  //     //   // TODO: disconnect from socket
+  //     // })
+  //     attest_performance(feed, swarm, topic, signed_event)
+  //   },
+  //   onerror (err/* peerSocket???*/) {
+  //     // TODO: disconnect from peer
+  //     clearTimeout(checkID)
+  //     console.log('err')
+  //     reject(err)
+  //   }
+  // })
+}  
+
+async function get_data_and_stats (feed, index, log) {
+  return new Promise(async (resolve, reject) => {
     try {
       const start = performance.now()
-      await Promise.race([
-        feed.get(index),
-        delay(DEFAULT_TIMEOUT).then(() => { throw new Error('Timed out') })
-      ])
+      await download_range(feed, [index, index+1])
+      const data = await get_index(feed, index) 
+      if (!is_verified(data)) return
       const end = performance.now()
       const latency = end - start
-      const stats = await getFeedStats(feed)
-      resolve([stats, latency])
+      const stats = await getStats(feed)
+      stats.latency = latency
+      resolve({stats, data})
     } catch (e) {
-      log(`Error: ${key}@${index} ${e.message}`)
+      log(`Error: ${feed.key}@${index} ${e.message}`)
       reject()
-      return [null, null]
-    } finally {
-      await feed.close()
     }
 
-    async function getFeedStats (feed) {
+    function is_verified (data) {
+      return true
+    }
+
+    function getStats () {
       if (!feed) return {}
       const stats = feed.stats
       const openedPeers = feed.peers.filter(p => p.remoteOpened)

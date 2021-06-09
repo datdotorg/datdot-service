@@ -14,7 +14,11 @@ const sub = require('subleveldown')
 const HosterStorage = require('hoster-storage')
 const get_max_index = require('get-max-index')
 const DEFAULT_TIMEOUT = 7500
-/******************************************************************************
+
+// global variables (later local DB)
+const extensions = {} // register ext for every amendment (new hosting)
+
+  /******************************************************************************
   ROLE: Hoster
 ******************************************************************************/
 module.exports = hoster
@@ -67,7 +71,7 @@ async function hoster(identity, log, APIS) {
         log({ type: 'hoster', data: [`Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}`] })
         // const feedKey = await chainAPI.getFeedKey(feedID)
         // const hasKey = await account.storages.has(feedKey.toString('hex'))
-        // if (hasKey) return await removeFeed(account, feedKey)
+        // if (hasKey) return await removeFeed(account, feedKey, amendmentID)
         // TODO cancel hosting = remove feed, get out of swarm...
       }
     }
@@ -89,6 +93,14 @@ async function hoster(identity, log, APIS) {
         await send_storage_proofs_to_attestor(data).catch((error) => log({ type: 'error', data: [`Error: ${JSON.stringify(error)}`] }))
         log({ type: 'hoster', data: [`sendStorageChallengeToAttestor completed`] })
       }
+    }
+    if (event.method === 'NewPerformanceChallenge') {
+      // check if it is for me
+      const [performanceChallengeID] = event.data
+      const performanceChallenge = await chainAPI.getPerformanceChallengeByID(performanceChallengeID)
+      const { amendments } = await chainAPI.getContractByID(performanceChallenge.contract)
+      const active_amendment_ID = amendments[amendments.length-1]
+      extensions[active_amendment_ID] = performanceChallengeID
     }
   }
   // HELPERS
@@ -132,7 +144,7 @@ async function hoster(identity, log, APIS) {
 async function receive_data_and_start_hosting(data) {
   const { account, amendmentID, feedKey, hosterKey, encoderSigningKey, encoder_pos, attestorKey, plan, signatures, ranges, log } = data
   await addKey(account, feedKey, plan)
-  await loadFeedData(account, ranges, feedKey, log)
+  await loadFeedData(account, ranges, feedKey, amendmentID, log)
   await getEncodedDataFromAttestor({ account, amendmentID, hosterKey, attestorKey, encoderSigningKey, encoder_pos, feedKey, signatures, ranges, log })
 }
 
@@ -157,10 +169,10 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
     beam_temp1.once('data', async (data) => {
       const message = JSON.parse(data.toString('utf-8'))
       log2attestor({ type: 'hoster', data: [`Got the feedkey`] })
-      if (message.type === 'feedkey') replicate(Buffer.from(message.feedkey, 'hex'))
+      if (message.type === 'feedkey') replicate(Buffer.from(message.feedkey, 'hex'), amendmentID)
     })
 
-    async function replicate(feedkey) {
+    async function replicate(feedkey, amendmentID) {
       const clone = toPromises(new hypercore(RAM, feedkey, {
         valueEncoding: 'binary',
         sparse: true
@@ -173,7 +185,7 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
       // // get replicated data
       for (var i = 0; i < expectedChunkCount; i++) {
         log2attestor({ type: 'hoster', data: [`Getting data: counter ${i}`] })
-        all_hosted.push(store_data(clone.get(i)))
+        all_hosted.push(store_data(clone.get(i), amendmentID))
         // beam_temp1.destroy()
       }
 
@@ -186,7 +198,7 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
         log2attestor({ type: 'hoster', data: [`All data (${expectedChunkCount} chunks) verified & successfully hosted`] })
         
         // send signed unique_el as an extension message
-        ext = clone.registerExtension(unique_el, { encoding: 'binary ' })
+        var ext = clone.registerExtension(unique_el, { encoding: 'binary ' })
         const data = Buffer.from(unique_el, 'binary')
         const dataBuf = account.sign(data)
         ext.broadcast(dataBuf)
@@ -196,7 +208,8 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
       }
 
       // store data
-      async function store_data(chunk_promise) {
+      async function store_data(chunk_promise, amendmentID) {
+        
         const chunk = await chunk_promise
         const json = chunk.toString('binary')
         const data = proof_codec.decode(json)
@@ -228,6 +241,7 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
             await store_in_hoster_storage({
               account,
               feedKey,
+              amendmentID,
               index,
               encoded_data_signature,
               encoded_data,
@@ -256,17 +270,17 @@ async function removeFeed(account, key, log) {
   log({ type: 'hoster', data: [`Removing the feed`] })
   const stringKey = key.toString('hex')
   if (account.storages.has(stringKey)) {
-    const storage = await getStorage(account, key, log)
+    const storage = await getStorage({account, key, amendmentID, log})
     await storage.destroy()
     account.storages.delete(stringKey)
   }
   await removeKey(key)
 }
 
-async function loadFeedData(account, ranges, key, log) {
+async function loadFeedData(account, ranges, key, amendmentID, log) {
   return new Promise(async (resolve, reject) => {
     try {
-      const storage = await getStorage(account, key, log)
+      const storage = await getStorage({account, key, amendmentID, log})
       const { feed } = storage
       let all = []
       let indizes = []
@@ -293,8 +307,8 @@ async function watchFeed(account, feed) {
   } */
 }
 
-async function store_in_hoster_storage({ account, feedKey, index, encoded_data_signature, encoded_data, unique_el, nodes, log }) {
-  const storage = await getStorage(account, feedKey, log)
+async function store_in_hoster_storage({ account, feedKey, amendmentID, index, encoded_data_signature, encoded_data, unique_el, nodes, log }) {
+  const storage = await getStorage({account, key: feedKey, amendmentID, log})
   return storage.storeEncoded({
     index,
     encoded_data_signature,
@@ -304,30 +318,46 @@ async function store_in_hoster_storage({ account, feedKey, index, encoded_data_s
   })
 }
 
-async function getDataFromStorage(account, key, index) {
-  const storage = await getStorage(account, key)
+async function getDataFromStorage(account, key, index, log) {
+  const storage = await getStorage({account, key, amendmentID, log})
   const data = await storage.getProofOfStorage(index)
   return data
 }
 
-async function getStorage(account, key, log) {
+async function getStorage ({account, key, amendmentID, log}) {
+
   const stringKey = key.toString('hex')
   if (account.storages.has(stringKey)) {
     return account.storages.get(stringKey)
   }
-
+  
   const feed = new hypercore(RAM, key, { valueEncoding: 'binary', sparse: true })
   await ready(feed)
-  const swarm = hyperswarm()
-  swarm.join(feed.discoveryKey, { announce: false, lookup: true })
-  swarm.on('connection', (socket, info) => {
-    socket.pipe(feed.replicate(info.client)).pipe(socket)
-  })
+  join_swarm(feed, amendmentID)
 
   const db = sub(account.db, stringKey, { valueEncoding: 'binary' })
   const storage = new HosterStorage({ db, feed, log })
   account.storages.set(stringKey, storage)
   return storage
+}
+
+async function join_swarm (feed, amendmentID) {
+  const ext = feed.registerExtension('datdot-hoster', { encoding: 'binary ' })
+  const swarm = hyperswarm()
+  swarm.join(feed.discoveryKey, { announce: false, lookup: true })
+  swarm.on('connection', (socket, info) => {
+    socket.pipe(feed.replicate(info.client)).pipe(socket)
+    broadcast_signed_event(socket, amendmentID)
+  })
+}
+
+function broadcast_signed_event (peer, amendmentID) {
+  const challengeID = extensions[amendmentID]
+  if (!challengeID) return
+  const data = Buffer.from(`${challengeID}/${peer.publicKey.toString('hex')}`, 'binary')
+  const signed_event = account.sign(data)
+  console.log({signed_event})
+  ext.broadcast(signed_event)
 }
 
 async function saveKeys(account, keys) {
@@ -410,7 +440,7 @@ async function send_storage_proofs_to_attestor({ account, storageChallenge, host
     const all = []
     for (var i = 0; i < chunks.length; i++) {
       const index = chunks[i]
-      const message = await getDataFromStorage(account, feedKey, index)
+      const message = await getDataFromStorage(account, feedKey, index, log2attestor4Challenge)
       if (!message) return
       message.type = 'proof'
       log2attestor4Challenge({ type: 'hoster', data: [`Storage proof: appending chunk ${i} for index ${index}`] })
@@ -431,7 +461,7 @@ async function send_storage_proofs_to_attestor({ account, storageChallenge, host
         log2attestor4Challenge({ type: 'error', data: [`No results`] })
       }
       // send signed storageChallengeID as an extension message
-      ext = core.registerExtension(`challenge${id}`, { encoding: 'binary ' })
+      var ext = core.registerExtension(`challenge${id}`, { encoding: 'binary ' })
       const messageBuf = Buffer.alloc(varint.encodingLength(id))
       varint.encode(id, messageBuf, 0)
       const dataBuf = account.sign(messageBuf)
