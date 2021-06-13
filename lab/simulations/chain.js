@@ -328,11 +328,12 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
   const meta = [user, name, nonce, status]
   // ALL SUCCESS 
   if (!failed.length) {
-    contract.activeHosters = hosters
+    contract.activeHosters = hosters // TODO could get this infor from active_amendment.providers.hosters
     for (var i = 0, len = hosters.length; i < len; i++) {
       console.log(`Hosting started: contract: ${contractID}, amendment: ${amendmentID}, hoster: ${hosters[i]}`)
-      const opts = { plan, hosterID: hosters[i], contractID, meta, log }
-      scheduleChallenges(opts)
+      const hosterID = hosters[i]
+      const jobs = Object.keys(getUserByID(hosterID).hoster.jobs).map(job => Number(job))
+      if (jobs.length === 1) start_storage_challenges(hosterID, jobs, meta, log)
     }
     encoders.forEach(id => {
       removeJob({ id, role: 'encoder', doneJob: amendmentID, idleProviders: DB.status.idleEncoders, action: () => try_next_amendment(log) }, log)
@@ -340,6 +341,12 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
     attestors.forEach(id => {
       removeJob({ id, role: 'attestor', doneJob: amendmentID, idleProviders: DB.status.idleAttestors, action: () => try_next_amendment(log) }, log)
     })
+
+    const feed = getFeedByID(contract.feed)
+
+    // feed.contracts.push(contractID)
+    // if (feed.contracts.length === 1) schedule_perf_challenges(feed, meta, log)
+
     // => until HOSTING STARTED event, everyone keeps the data around
     emitEvent('HostingStarted', [amendmentID], log)
     return
@@ -353,47 +360,99 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
 /*----------------------
   STORAGE CHALLENGE
 ------------------------*/
-async function _requestStorageChallenge ({ contractID, hosterID, meta, log }) {
-  const { user, name, nonce, status } = meta
-  const contract = getContractByID(contractID)
-  const plan = getPlanByID(contract.plan)
-  if (!plan.sponsor === user.id) return log({ type: 'chain', data: [`Error: this user can not call this function`] })
-  var chunks = []
-  getRandomChunks({ ranges: contract.ranges, chunks })
-  const storageChallenge = { contract: contract.id, hoster: hosterID, chunks }
-  const id = addItem(storageChallenge)
+function make_storage_challenge ({hoster_id, jobs, meta, log}) {
+  const [user, name, nonce, status] = meta
+  // select an attestor
+  // tell them which hoster to chhallenge
+  // tell them which subset of contracts & chunks to challenge
+  if (!jobs.length) return
+  const contracts_ids = jobs.map(id => getAmendmentByID(id).contract)
+  const selected = get_random_ids({ items: contracts_ids, max: 5 })
+  const checks = {}
+  const avoid = {}
+  for (var i = 0, len = selected.length; i < len; i++) {
+    const contractID = selected[i]
+    const { plan, ranges } = getContractByID(contractID)
+    if (!plan.sponsor === user.id) return log({ type: 'chain', data: [`Error: this user can not call this function`] })
+    avoid[plan.sponsor] = true
+    checks[contractID] = { index: getRandomChunk(ranges) }
+  }
+  const storage_challenge = { checks, hoster: hoster_id }
+  const id = addItem(storage_challenge)
   DB.active.storageChallenges[id] = true
-  // find attestor
-  const newJob = storageChallenge.id
+  // find & book the attestor
+  const newJob = id
   const type = 'NewStorageChallenge'
-  const avoid = makeAvoid(plan)
-  avoid[hosterID] = true
+  avoid[hoster_id] = true
   const idleProviders = DB.status.idleAttestors
-  const selectedProviders = select({ idleProviders, role: 'attestor', newJob, amount: 1, avoid, plan, log })
+  const selectedProviders = select({ idleProviders, role: 'attestor', newJob, amount: 1, avoid, plan: {}, log })
   const [attestor] = selectedProviders
   if (!attestor) return DB.queues.attestorsJobQueue.push({ fnName: 'NewStorageChallenge', opts: { storageChallenge } })
-  storageChallenge.attestor = attestor.id
+  storage_challenge.attestor = attestor.id
   giveJobToRoles({ type, selectedProviders, idleProviders, role: 'attestor', newJob }, log)
   // emit event
   log({ type: 'chain', data: [type, newJob] })
   emitEvent(type, [newJob], log)
 }
 
+// async function _requestStorageChallenge (user, { name, nonce }, status, args) {
+//   const log = connections[name].log
+//   const [ response ] = args
+//   log({ type: 'chain', data: [`Received StorageChallenge ${JSON.stringify(response)}`] })
+
+//   const { storageChallengeID, reports } = response
+//   const { contract, attestor: attestorID, hoster: hosterID, chunks } = getStorageChallengeByID(storageChallengeID)
+//   if (user.id !== attestorID) return log({ type: 'chain', data: [`Only the attestor can submit this storage challenge`] })
+  
+//   for (var i = 0, len = reports.length; i < len; i++) {
+//     var { storage_challenge_signature, version, nodes } = reports[i]
+//     const { signingKey } = getUserByID(hosterID)
+//     const { feed: feedID } = getContractByID(contract)
+//     const { feedkey, signatures } = getFeedByID(feedID)
+//     const index = chunks[i]
+//     const messageBuf = Buffer.alloc(varint.encodingLength(storageChallengeID))
+//     varint.encode(storageChallengeID, messageBuf, 0)
+//     const signingKeyBuf = Buffer.from(signingKey, 'binary')
+//     const datdot_crypto = require('../../src/node_modules/datdot-crypto')
+
+//     if (!datdot_crypto.verify_signature(storage_challenge_signature, messageBuf, signingKeyBuf)) return emitEvent('StorageChallengeFailed', [storageChallengeID], log)
+//     const signatureBuf = Buffer.from(signatures[version], 'binary')
+//     const keyBuf = Buffer.from(feedkey, 'hex')
+//     const not_verified = datdot_crypto.merkle_verify({
+//       feedKey: keyBuf, 
+//       hash_index: index * 2, 
+//       version, 
+//       signature: signatureBuf, 
+//       nodes
+//     })
+//     if (not_verified) return emitEvent('StorageChallengeFailed', [storageChallengeID], log)
+//   }
+//   // @NOTE: sizes for any required proof hash is already on chain
+//   // @NOTE: `feed/:id/chunk/:v` // size
+//   console.log('StorageChallengeConfirmed')
+//   emitEvent('StorageChallengeConfirmed', [storageChallengeID], log)
+//   // attestor finished job, add them to idleAttestors again
+//   removeJob({ id: attestorID, role: 'attestor', doneJob: storageChallengeID, idleProviders: DB.status.idleAttestors, action: () => tryNextChallenge({ attestorID }, log) }, log)
+// }
+
 async function _submitStorageChallenge (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [ response ] = args
   log({ type: 'chain', data: [`Received StorageChallenge ${JSON.stringify(response)}`] })
 
-  const { storageChallengeID, reports } = response
-  const { contract, attestor: attestorID, hoster: hosterID, chunks } = getStorageChallengeByID(storageChallengeID)
+  // const { storageChallengeID, reports } = response
+  const { reports, storage_challenge_signature, storageChallengeID } = response
+  const { checks, attestor: attestorID, hoster: hosterID } = getStorageChallengeByID(storageChallengeID)
   if (user.id !== attestorID) return log({ type: 'chain', data: [`Only the attestor can submit this storage challenge`] })
   
   for (var i = 0, len = reports.length; i < len; i++) {
-    var { storage_challenge_signature, version, nodes } = reports[i]
+    const { contractID, version, nodes } = reports[i]
+    const check = checks[contractID]
+    if (!check) return console.log('error, there is no check for this contractID')
     const { signingKey } = getUserByID(hosterID)
-    const { feed: feedID } = getContractByID(contract)
+    const { feed: feedID } = getContractByID(contractID)
     const { feedkey, signatures } = getFeedByID(feedID)
-    const index = chunks[i]
+    const index = check.index
     const messageBuf = Buffer.alloc(varint.encodingLength(storageChallengeID))
     varint.encode(storageChallengeID, messageBuf, 0)
     const signingKeyBuf = Buffer.from(signingKey, 'binary')
@@ -410,6 +469,7 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
       nodes
     })
     if (not_verified) return emitEvent('StorageChallengeFailed', [storageChallengeID], log)
+    console.log('storage confirmed for check', {check})
   }
   // @NOTE: sizes for any required proof hash is already on chain
   // @NOTE: `feed/:id/chunk/:v` // size
@@ -423,7 +483,7 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
   PERFORMANCE CHALLENGE
 ------------------------*/
 async function _requestPerformanceChallenge ({ contractID, hosterID, meta, log }) {
-  const { user, name, nonce, status } = meta
+  const [user, name, nonce, status] = meta
   const contract = getContractByID(contractID)
   const plan = getPlanByID(contract.plan)
   makePerformanceChallenge({ contractID, hosterID, plan }, log)
@@ -460,7 +520,7 @@ async function publish_feed (feed, sponsor_id, log) {
   const swarmkeyBuf = Buffer.from(swarmkey, 'hex')
   // check if feed already exists
   if (DB.lookups.feedByKey[feedkeyBuf.toString('hex')]) return
-  feed = { feedkey: feedkeyBuf.toString('hex'), swarmkey: swarmkeyBuf.toString('hex'), signatures: {} }
+  feed = { feedkey: feedkeyBuf.toString('hex'), swarmkey: swarmkeyBuf.toString('hex'), signatures: {}, contracts: [] }
   const feedID = addItem(feed)
   DB.lookups.feedByKey[feedkeyBuf.toString('hex')] = feedID
   feed.publisher = sponsor_id
@@ -660,31 +720,16 @@ function getProviders (plan, reused, newJob, log) {
     attestors: [...attestors, ...reused.attestors]
   }
 }
-function getRandom (items) {
-  if (!items.length) return
-  const pos = Math.floor(Math.random() * items.length)
-  const item = items[pos]
-  return [item, pos]
-}
-function getRandomPos(ranges) {
-  min = 0
-  var max = 0
-  for (var j = 0, N = ranges.length; j < N; j++) {
-    const range = ranges[j]
-    for (var i = range[0]; i <= range[1]; i++) max++
-  }
+function getRandomIndex(range) {
+  const min = range[0]
+  const max = range[1]+1
   return Math.floor(Math.random() * (max - min)) + min; //The maximum is exclusive and the minimum is inclusive
 }
-function getRandomChunks ({ ranges, chunks }) { // [[0,3], [5,7]]
-  var pos = getRandomPos(ranges)
-  counter = 0
-  for (var j = 0, N = ranges.length; j < N; j++) {
-    const range = ranges[j]
-    for (var i = range[0]; i <= range[1]; i++) {
-      if (counter === pos) return chunks.push(i)
-      counter++
-    }
-  }
+function getRandomChunk (ranges) { // [[0,3], [5,7]]
+  const start = 0
+  const end = ranges.length
+  const range = ranges[Math.floor(Math.random() * (end - start)) + start]
+  return getRandomIndex(range)
 }
 function select ({ idleProviders, role, newJob, amount, avoid, plan, log }) {
   idleProviders.sort(() => Math.random() - 0.5) // TODO: improve randomness
@@ -895,31 +940,89 @@ function cancelContracts (plan) {
     }
   }
 }
-async function scheduleChallenges (opts) {
-  const { plan, hosterID, contractID, meta: [user, name, nonce, status], log } = opts
-  console.log(`-----Starting Challenge Phase for contract: ${contractID}, hoster: ${hosterID}`)
-  log({ type: 'chain', data: [`Starting Challenge Phase for contract: ${contractID}, hoster: ${hosterID}`] })
-  const schedulingChallenges = async () => {
-    // schedule new challenges ONLY while the contract is active (plan.duration.until > new Date())
-    const until = plan.duration.until
-    const blockNow = header.number
-    if (!(until > blockNow)) return
-    // TODO if (!plan.schedules.length) {}
-    // else {} // plan schedules based on plan.schedules
-    const planID = plan.id
-    const from = plan.duration.from
-    // TODO sort challenge request jobs based on priority (RATIO!) of the sponsors
+
+// async function scheduleChallenges (opts) {
+//   const { plan, hosterID, contractID, meta, log } = opts
+//   console.log(`-----Starting Challenge Phase for contract: ${contractID}, hoster: ${hosterID}`)
+//   log({ type: 'chain', data: [`Starting Challenge Phase for contract: ${contractID}, hoster: ${hosterID}`] })
+//   const schedulingChallenges = async () => {
+//     // schedule new challenges ONLY while the contract is active (plan.duration.until > new Date())
+//     const until = plan.duration.until
+//     const blockNow = header.number
+//     if (!(until > blockNow)) return
+//     // TODO if (!plan.schedules.length) {}
+//     // else {} // plan schedules based on plan.schedules
+//     const planID = plan.id
+//     const from = plan.duration.from
+//     // TODO sort challenge request jobs based on priority (RATIO!) of the sponsors
     
-    // TODO: GROUP challenges so that one attestor checks multiple hosters at once (for same feedkey) (storage and perf)
-    // _requestStorageChallenge({ contractID, hosterID, meta: { user, name, nonce, status }, log })
-    _requestPerformanceChallenge({  contractID, hosterID, meta: { user, name, nonce, status }, log }) 
-    scheduleAction({ action: schedulingChallenges, delay: 3, name: 'schedulingChallenges' })
-  }
+//     // TODO: GROUP challenges so that one attestor checks multiple hosters at once (for same feedkey) (storage and perf)
+//     _requestStorageChallenge({ contractID, hosterID, meta, log })
+//     // _requestPerformanceChallenge({  contractID, hosterID, meta, log }) 
+//     scheduleAction({ action: schedulingChallenges, delay: 3, name: 'schedulingChallenges' })
+//   }
+//   const { scheduleAction, cancelAction } = await scheduler
+//   console.log(scheduleAction)
+//   scheduleAction({ action: schedulingChallenges, delay: 3, name: 'schedulingChallenges' })
+//   // TODO when delay 0 it doesn't start right away + there is a handshake error because too many challenges
+// }
+
+async function start_storage_challenges (hoster_id, jobs, meta, log) {
+  const promises = []
   const { scheduleAction, cancelAction } = await scheduler
-  console.log(scheduleAction)
-  scheduleAction({ action: schedulingChallenges, delay: 3, name: 'schedulingChallenges' })
-  // TODO when delay 0 it doesn't start right away + there is a handshake error because too many challenges
+  // for (var i = 0, len = contracts_ids.length; i < len; i++) promises.push(challenge(contracts_ids[i]))
+  // const reports = await Promise.all(promises)
+  challenge(hoster_id)
+  async function challenge (hoster_id) {
+    // start new challenge (check all the feeds hoster hosts)
+    scheduleAction({ action: schedule_challenge, delay: 3, name: 'schedule_challenge' })
+    async function schedule_challenge () {
+      make_storage_challenge({ hoster_id, jobs, meta, log })
+      // then every interval start the challenge again
+      scheduleAction({ action: schedule_challenge, delay: 3, name: 'schedule_challenge' })
+    }
+  }
 }
+
+function get_random_ids ({items, max}) {
+  if (items.length < max) return items
+  const selected = []
+  while (selected.length < max) {
+    const pos = Math.floor(Math.random() * items.length)
+    if (!selected.includes(pos)) selected.push(pos)
+  }
+  return selected.map(pos => items[pos])
+}
+
+async function scheduleChallenges (feed, meta, log) {  
+  const contract_ids = feed.contracts
+  for (var i = 0, len = contract_ids.length; i < len; i++) {
+    const { id: contractID, amendments, plan: planID  } = getContractByID(contract_ids[i])
+    const plan = getPlanByID(planID)
+    const { providers: { hosters: hoster_ids } } = getAmendmentByID(amendments[amendments.length - 1])
+    for (var j = 0; j < hoster_ids.length; j++) {
+      const hosterID = hoster_ids[j]
+      const scheduling_storage_challenge = async () => {
+        // keep running challenges ONLY while the contract is active (plan.duration.until > block number)
+        if (!(plan.duration.until > header.number)) return
+        // TODO if (!plan.schedules.length) {}
+        // else {} // plan schedules based on plan.schedules
+
+        // TODO sort challenge request jobs based on priority (RATIO!) of the sponsors
+        _requestStorageChallenge({ contractID, hosterID, meta, log })
+        scheduleAction({ action: scheduling_storage_challenge, delay: 3, name: 'scheduling_storage_challenge' })
+      }
+      const { scheduleAction, cancelAction } = await scheduler
+      console.log(scheduleAction)
+      scheduleAction({ action: scheduling_storage_challenge, delay: 3, name: 'scheduling_storage_challenge' })
+    }
+  }
+}
+
+// TODO
+// performance challenge 
+  // group all challenges for same feed (all through same swarm) -> feed has many hosters (feed.contracts)
+// storage challenge - group all challenges for same hoster (all through same beam connection) -> hoster hosts many feeds (user.hoster.jobs[amendmentID])
 
 async function scheduleAmendmentFollowUp (id, log) {
   const scheduling = () => {
@@ -972,8 +1075,8 @@ async function retryAmendment (opts) {
     contract.activeHosters = [...contract.activeHosters, ...successfulHosters]
     for (var i = 0, len = successfulHosters.length; i < len; i++) {
       console.log(`Hosting started: contract: ${contractID}, amendment: ${amendment.id}, hoster: ${successfulHosters[i]}`)
-      const data = { plan, hosterID: successfulHosters[i], contractID, meta, log }
-      scheduleChallenges(data)
+      // const data = { plan, hosterID: successfulHosters[i], contractID, meta, log }
+      // scheduleChallenges(data)
     }
     reuse = { hosters: successfulHosters, encoders, attestors }
   } else if (encoders.includes(peerID)) {
@@ -1007,9 +1110,6 @@ async function retryAmendment (opts) {
   try_next_amendment(log)
 }
 
-async function makeStorageChallenge({ contract, hosterID, plan }, log) {
-
-}
 async function makePerformanceChallenge ({ contractID, hosterID, plan }, log) {
   // const id = DB.performanceChallenge.length
   const performanceChallenge = { contract: contractID, hoster: hosterID }
