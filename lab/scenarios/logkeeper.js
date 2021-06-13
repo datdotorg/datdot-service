@@ -31,7 +31,7 @@ async function logkeeper (name, PORT) {
     const connections = []
     const history = [] // TODO: should be a persistent hypercore
     const loggers = {}
-    var counter = 0 // message id counter
+    function get (path) { return loggers[path] }
     instance = loggers[name] = makelog([name])
     function makelog (names) {
       const path = names.join('/')
@@ -70,7 +70,7 @@ async function logkeeper (name, PORT) {
     function after () {
       LOG(`running on http://localhost:${wss.address().port}`)
     }
-    resolve(instance)
+    resolve([instance, get])
     wss.on('connection', function connection (ws) {
       const index = connections.push(ws) - 1
       ws.on('message', function incoming (message) {

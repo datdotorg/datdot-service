@@ -98,7 +98,6 @@ async function attester (identity, log, APIS) {
           console.log({error})
           log({ type: 'error', data: [`Error: ${error}`] })
         })
-        console.log({res})
         if (res) {
           const response = { storageChallengeID, storage_challenge_signature: res.storage_challenge_signature, reports: res.reports } // const reports = { contractID, version, nodes }
           log({ type: 'attestor', data: [`Finished the report for storage challenge ${storageChallengeID}: ${res.reports}`] })

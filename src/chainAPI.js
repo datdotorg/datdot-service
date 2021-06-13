@@ -22,9 +22,7 @@ async function datdotChain (profile, provider) {
     publishFeed,
     publishPlan,
     amendmentReport,
-    requestStorageChallenge,
     submitStorageChallenge,
-    requestPerformanceChallenge,
     submitPerformanceChallenge,
     listenToEvents,
     getFeedByID,
@@ -163,21 +161,9 @@ async function datdotChain (profile, provider) {
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }
-  async function requestStorageChallenge (opts) {
-    const { contractID, hosterID, signer, nonce } = opts
-    const tx = await API.tx.datVerify.requestStorageChallenge(contractID, hosterID)
-    // tx.signAndSend(signer, await makeNonce(nonce))
-    tx.signAndSend(signer, await makeNonce(nonce), status)
-  }
   async function submitStorageChallenge (opts) {
     const { response, signer, nonce } = opts
     const tx = await API.tx.datVerify.submitStorageChallenge(response)
-    // tx.signAndSend(signer, await makeNonce(nonce))
-    tx.signAndSend(signer, await makeNonce(nonce), status)
-  }
-  async function requestPerformanceChallenge (opts) {
-    const { contractID, signer, nonce } = opts
-    const tx = await API.tx.datVerify.requestPerformanceChallenge(contractID)
     // tx.signAndSend(signer, await makeNonce(nonce))
     tx.signAndSend(signer, await makeNonce(nonce), status)
   }

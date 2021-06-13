@@ -33,8 +33,6 @@ module.exports = {
         publishFeed: publishFeed.bind(name),
         publishPlan: publishPlan.bind(name),
         amendmentReport: amendmentReport.bind(name),
-        requestStorageChallenge: requestStorageChallenge.bind(name),
-        requestPerformanceChallenge: requestPerformanceChallenge.bind(name),
         submitStorageChallenge: submitStorageChallenge.bind(name),
         submitPerformanceChallenge: submitPerformanceChallenge.bind(name)
         }
@@ -83,8 +81,6 @@ async function registerForWork (...args) { return { signAndSend: signAndSend.bin
 async function publishFeed (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'publishFeed'}) } }
 async function publishPlan (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'publishPlan'}) } }
 async function amendmentReport (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'amendmentReport'}) } }
-async function requestStorageChallenge (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'requestStorageChallenge'}) } }
-async function requestPerformanceChallenge (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'requestPerformanceChallenge'}) } }
 async function submitStorageChallenge (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'submitStorageChallenge'}) } }
 async function submitPerformanceChallenge (...args) { return { signAndSend: signAndSend.bind({ name: this, args, type: 'submitPerformanceChallenge'}) } }
 /******************************************************************************

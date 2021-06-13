@@ -16,7 +16,7 @@ const ACTIONS = {
   USER
 ******************************************************************************/
 async function user ({name, actions}, config, logport) {
-  const log = await logkeeper(name, logport)
+  const [log] = await logkeeper(name, logport)
   const profile = { name, log }
   const chainAPI = await getChainAPI(profile, config.chain.join(':'))
   const vaultAPI = await getVaultAPI(profile)

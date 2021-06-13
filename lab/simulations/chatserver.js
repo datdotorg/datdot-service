@@ -9,7 +9,7 @@ async function init () {
   const [host, PORT] = config.chat
 
   const name = `chatserver`
-  const log = await logkeeper(name, logport)
+  const [log] = await logkeeper(name, logport)
 
   const wss = new WebSocket.Server({ port: PORT }, after)
 

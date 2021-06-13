@@ -22,7 +22,7 @@ async function init () {
   const config = JSON.parse(json)
   const [host, PORT] = config.chain
   const name = `chain`
-  const log = await logkeeper(name, logport)
+  const [log, getLogger] = await logkeeper(name, logport)
   const wss = new WebSocket.Server({ port: PORT }, after)
   function after () {
     log({ type: 'chain', data: [`running on http://localhost:${wss.address().port}`] })
@@ -66,7 +66,7 @@ async function init () {
       ws.send(JSON.stringify(msg))
     })
   })
-  return blockgenerator(log.sub('blockgenerator'), blockMessage => {
+  return blockgenerator({ actions, getLogger }, log.sub('blockgenerator'), blockMessage => {
     header = blockMessage.data
     Object.entries(connections).forEach(([name, channel]) => {
       channel.ws.send(JSON.stringify(blockMessage))
@@ -135,19 +135,61 @@ async function signAndSend (data, name, status) {
   const user = await _getUser(address, { name, nonce }, status)
   if (!user) return log({ type: 'chain', data: [`UNKNOWN SENDER of: ${data}`] }) // TODO: maybe use status() ??
 
-  else if (type === 'publishPlan') _publishPlan(user, { name, nonce }, status, args)
-  else if (type === 'registerForWork') _registerForWork(user, { name, nonce }, status, args)
-  else if (type === 'amendmentReport') _amendmentReport(user, { name, nonce }, status, args)
-  else if (type === 'requestStorageChallenge') _requestStorageChallenge(user, { name, nonce }, status, args)
-  else if (type === 'requestPerformanceChallenge') _requestPerformanceChallenge(user, { name, nonce }, status, args)
-  else if (type === 'submitStorageChallenge') _submitStorageChallenge(user, { name, nonce }, status, args)
+  else if (type === 'publishPlan') _publish_plan(user, { name, nonce }, status, args)
+  else if (type === 'registerForWork') _register_for_work(user, { name, nonce }, status, args)
+  else if (type === 'amendmentReport') _amendment_report(user, { name, nonce }, status, args)
+  else if (type === 'submitStorageChallenge') _storage_challenge_report(user, { name, nonce }, status, args)
   else if (type === 'submitPerformanceChallenge') _submitPerformanceChallenge(user, { name, nonce }, status, args)
   // else if ...
 }
 /******************************************************************************
+  SCHEDULABLE ACTIONS
+******************************************************************************/
+const actions = { plan_execution, amendment_followup, storage_challenge_followup, execute_storage_challenge }
+
+async function plan_execution (log, data) {
+  const {contract_id} = data
+  const reuse = { encoders: [], attestors: [], hosters: [] }
+  const amendment_id = await init_amendment(contract_id, reuse, log)
+  add_to_pending(amendment_id)
+  try_next_amendment(log)
+}
+
+async function execute_storage_challenge (log, data) {
+  const {user} = data
+  if (!user.hoster.challenges.storage) return
+  make_storage_challenge({ hoster_id: user.id, log })
+  // then every interval start the challenge again
+  const { scheduleAction } = await scheduler
+  scheduleAction({ from: log.path, data: { user}, delay: 3, type: 'execute_storage_challenge' })
+}
+
+async function storage_challenge_followup (log, data) {}
+
+async function amendment_followup (log, data) {
+  console.log('This is a scheduled amendment follow up for amendment ', id)
+  // TODO get all necessary data to call this exstrinsic from the chain
+  // const { providers: { attestors } } = getAmendmentByID(id)
+  // const report = [id, attestors]
+  // const [attestorID] = attestors
+  // const user = getUserByID(attestorID)
+  // amendmentReport(user, { name, nonce }, status, [report])
+
+  // console.log('scheduleAmendmentFollowUp', sid)
+  // const contract = getContractByID(contractID)
+  // // if (contract.activeHosters.length >= 3) return
+  //
+  // removeJobForRolesXXXX({ failedHosters: [], amendment, doneJob: `NewAmendment${id}` }, log)
+  // // TODO update reuse
+  // // const reuse = { attestors: [], encoders, hosters }
+  // const reuse = { attestors: [], encoders: [], hosters: [] }
+  // const newID = init_amendment(contractID, reuse, log)
+  // add_to_pending(newID)
+  // return id
+}
+/******************************************************************************
   API
 ******************************************************************************/
-
 async function _getUser (address, { name, nonce }, status) {
   const log = connections[name].log
   const pos = DB.lookups.userByAddress[address]
@@ -220,7 +262,7 @@ async function _newUser (args, name, address, log) {
 /*----------------------
       REGISTER FOR WORK
 ------------------------*/
-async function _registerForWork (user, { name, nonce }, status, args) {
+async function _register_for_work (user, { name, nonce }, status, args) {
   const log = connections[name].log
   let [form] = args
   const { components } = form
@@ -249,7 +291,7 @@ async function _registerForWork (user, { name, nonce }, status, args) {
 /*----------------------
       (UN)PUBLISH PLAN
 ------------------------*/
-async function _publishPlan (user, { name, nonce }, status, args) {
+async function _publish_plan (user, { name, nonce }, status, args) {
   const log = connections[name].log
   log({ type: 'chain', data: [`Publishing a plan`] })
   let [data] = args
@@ -291,6 +333,7 @@ async function registerRole (user, role, log) {
   if (!user[role]) {
     user[role] = {
       jobs: {},
+      challenges: {},
       capacity: 5, // TODO: calculate capacity for each job based on the form
     }
   }
@@ -306,7 +349,7 @@ async function registerRole (user, role, log) {
 /*----------------------
   AMENDMENT REPORT
 ------------------------*/
-async function _amendmentReport (user, { name, nonce }, status, args) {
+async function _amendment_report (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [ report ] = args
   const { id: amendmentID, failed, sigs } = report // [2,6,8]
@@ -321,19 +364,19 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
   if (user.id !== attestorID) return log({ type: 'chain', data: [`Error: this user can not submit the attestation, ${JSON.stringify(attestors)}, ${user.id}`] })
   if (contract.amendments[contract.amendments.length - 1] !== amendmentID) return log({ type: 'chain', data: [`Error: this amendment has expired`] })
   // cancel amendment schedule
-  const { scheduleAction, cancelAction } = await scheduler
+  const { cancelAction } = await scheduler
   if (!schedulerID) console.log('No scheduler in', JSON.stringify(contract))
   cancelAction(schedulerID)
-
-  const meta = [user, name, nonce, status]
+  
   // ALL SUCCESS 
   if (!failed.length) {
     contract.activeHosters = hosters // TODO could get this infor from active_amendment.providers.hosters
     for (var i = 0, len = hosters.length; i < len; i++) {
-      console.log(`Hosting started: contract: ${contractID}, amendment: ${amendmentID}, hoster: ${hosters[i]}`)
       const hosterID = hosters[i]
-      const jobs = Object.keys(getUserByID(hosterID).hoster.jobs).map(job => Number(job))
-      if (jobs.length === 1) start_storage_challenges(hosterID, jobs, meta, log)
+      const user = getUserByID(hosterID)
+      const jobs = Object.keys(user.hoster.jobs).map(job => Number(job))
+      console.log(`Hosting started: contract: ${contractID}, amendment: ${amendmentID}, hoster: ${hosters[i]}, jobs: ${jobs}`)
+      start_storage_challenges(user, log)
     }
     encoders.forEach(id => {
       removeJob({ id, role: 'encoder', doneJob: amendmentID, idleProviders: DB.status.idleEncoders, action: () => try_next_amendment(log) }, log)
@@ -341,17 +384,19 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
     attestors.forEach(id => {
       removeJob({ id, role: 'attestor', doneJob: amendmentID, idleProviders: DB.status.idleAttestors, action: () => try_next_amendment(log) }, log)
     })
-
+    
     const feed = getFeedByID(contract.feed)
-
+    
     // feed.contracts.push(contractID)
     // if (feed.contracts.length === 1) schedule_perf_challenges(feed, meta, log)
-
+    
     // => until HOSTING STARTED event, everyone keeps the data around
     emitEvent('HostingStarted', [amendmentID], log)
     return
   }
   // NOT ALL SUCCESS => new amendment
+  const attestor = user
+  const meta = [attestor, name, nonce, status]
   const opts = { failed, amendment, contractID, plan, meta, log }
   retryAmendment(opts)
 }
@@ -360,11 +405,12 @@ async function _amendmentReport (user, { name, nonce }, status, args) {
 /*----------------------
   STORAGE CHALLENGE
 ------------------------*/
-function make_storage_challenge ({hoster_id, jobs, meta, log}) {
-  const [user, name, nonce, status] = meta
+function make_storage_challenge ({hoster_id, log}) {
   // select an attestor
-  // tell them which hoster to chhallenge
+  // tell them which hoster to challenge
   // tell them which subset of contracts & chunks to challenge
+  const jobs = Object.keys(getUserByID(hoster_id).hoster.jobs).map(job => Number(job))
+  console.log('Making new storage challenge for', {hoster_id, jobs })
   if (!jobs.length) return
   const contracts_ids = jobs.map(id => getAmendmentByID(id).contract)
   const selected = get_random_ids({ items: contracts_ids, max: 5 })
@@ -373,7 +419,6 @@ function make_storage_challenge ({hoster_id, jobs, meta, log}) {
   for (var i = 0, len = selected.length; i < len; i++) {
     const contractID = selected[i]
     const { plan, ranges } = getContractByID(contractID)
-    if (!plan.sponsor === user.id) return log({ type: 'chain', data: [`Error: this user can not call this function`] })
     avoid[plan.sponsor] = true
     checks[contractID] = { index: getRandomChunk(ranges) }
   }
@@ -395,47 +440,7 @@ function make_storage_challenge ({hoster_id, jobs, meta, log}) {
   emitEvent(type, [newJob], log)
 }
 
-// async function _requestStorageChallenge (user, { name, nonce }, status, args) {
-//   const log = connections[name].log
-//   const [ response ] = args
-//   log({ type: 'chain', data: [`Received StorageChallenge ${JSON.stringify(response)}`] })
-
-//   const { storageChallengeID, reports } = response
-//   const { contract, attestor: attestorID, hoster: hosterID, chunks } = getStorageChallengeByID(storageChallengeID)
-//   if (user.id !== attestorID) return log({ type: 'chain', data: [`Only the attestor can submit this storage challenge`] })
-  
-//   for (var i = 0, len = reports.length; i < len; i++) {
-//     var { storage_challenge_signature, version, nodes } = reports[i]
-//     const { signingKey } = getUserByID(hosterID)
-//     const { feed: feedID } = getContractByID(contract)
-//     const { feedkey, signatures } = getFeedByID(feedID)
-//     const index = chunks[i]
-//     const messageBuf = Buffer.alloc(varint.encodingLength(storageChallengeID))
-//     varint.encode(storageChallengeID, messageBuf, 0)
-//     const signingKeyBuf = Buffer.from(signingKey, 'binary')
-//     const datdot_crypto = require('../../src/node_modules/datdot-crypto')
-
-//     if (!datdot_crypto.verify_signature(storage_challenge_signature, messageBuf, signingKeyBuf)) return emitEvent('StorageChallengeFailed', [storageChallengeID], log)
-//     const signatureBuf = Buffer.from(signatures[version], 'binary')
-//     const keyBuf = Buffer.from(feedkey, 'hex')
-//     const not_verified = datdot_crypto.merkle_verify({
-//       feedKey: keyBuf, 
-//       hash_index: index * 2, 
-//       version, 
-//       signature: signatureBuf, 
-//       nodes
-//     })
-//     if (not_verified) return emitEvent('StorageChallengeFailed', [storageChallengeID], log)
-//   }
-//   // @NOTE: sizes for any required proof hash is already on chain
-//   // @NOTE: `feed/:id/chunk/:v` // size
-//   console.log('StorageChallengeConfirmed')
-//   emitEvent('StorageChallengeConfirmed', [storageChallengeID], log)
-//   // attestor finished job, add them to idleAttestors again
-//   removeJob({ id: attestorID, role: 'attestor', doneJob: storageChallengeID, idleProviders: DB.status.idleAttestors, action: () => tryNextChallenge({ attestorID }, log) }, log)
-// }
-
-async function _submitStorageChallenge (user, { name, nonce }, status, args) {
+async function _storage_challenge_report (user, { name, nonce }, status, args) {
   const log = connections[name].log
   const [ response ] = args
   log({ type: 'chain', data: [`Received StorageChallenge ${JSON.stringify(response)}`] })
@@ -469,7 +474,7 @@ async function _submitStorageChallenge (user, { name, nonce }, status, args) {
       nodes
     })
     if (not_verified) return emitEvent('StorageChallengeFailed', [storageChallengeID], log)
-    console.log('storage confirmed for check', {check})
+    console.log('storage confirmed for:', {contractID, hosterID, check})
   }
   // @NOTE: sizes for any required proof hash is already on chain
   // @NOTE: `feed/:id/chunk/:v` // size
@@ -586,18 +591,14 @@ async function take_next_from_priority (next, log) {
   const contract_ids = await make_contracts(plan, log)
   plan.contracts.push(...contract_ids)
   for (var i = 0, len = contract_ids.length; i < len; i++) {
-    const id = contract_ids[i]
+    const contract_id = contract_ids[i]
     const blockNow = header.number
     const delay = plan.duration.from - blockNow
     const { scheduleAction } = await scheduler
     scheduleAction({ 
-      action: async () => {
-        const reuse = { encoders: [], attestors: [], hosters: [] }
-        const amendment_id = await init_amendment(id, reuse, log)
-        add_to_pending(amendment_id)
-        try_next_amendment(log)
-      }, 
-      delay, name: 'schedulingAmendment' 
+      from: log.path,
+      data: { contract_id }, 
+      delay, type: 'plan_execution' 
     })
   }
 }
@@ -941,46 +942,20 @@ function cancelContracts (plan) {
   }
 }
 
-// async function scheduleChallenges (opts) {
-//   const { plan, hosterID, contractID, meta, log } = opts
-//   console.log(`-----Starting Challenge Phase for contract: ${contractID}, hoster: ${hosterID}`)
-//   log({ type: 'chain', data: [`Starting Challenge Phase for contract: ${contractID}, hoster: ${hosterID}`] })
-//   const schedulingChallenges = async () => {
-//     // schedule new challenges ONLY while the contract is active (plan.duration.until > new Date())
-//     const until = plan.duration.until
-//     const blockNow = header.number
-//     if (!(until > blockNow)) return
-//     // TODO if (!plan.schedules.length) {}
-//     // else {} // plan schedules based on plan.schedules
-//     const planID = plan.id
-//     const from = plan.duration.from
-//     // TODO sort challenge request jobs based on priority (RATIO!) of the sponsors
-    
-//     // TODO: GROUP challenges so that one attestor checks multiple hosters at once (for same feedkey) (storage and perf)
-//     _requestStorageChallenge({ contractID, hosterID, meta, log })
-//     // _requestPerformanceChallenge({  contractID, hosterID, meta, log }) 
-//     scheduleAction({ action: schedulingChallenges, delay: 3, name: 'schedulingChallenges' })
-//   }
-//   const { scheduleAction, cancelAction } = await scheduler
-//   console.log(scheduleAction)
-//   scheduleAction({ action: schedulingChallenges, delay: 3, name: 'schedulingChallenges' })
-//   // TODO when delay 0 it doesn't start right away + there is a handshake error because too many challenges
-// }
+async function start_storage_challenges (user, log) {
+  const { scheduleAction } = await scheduler // @TODO: 
+  // see if user.hoster has active challenges
+  if (user.hoster.challenges.storage) return
+  // if no active challenges, start a challenge
+  make_storage_challenge({ hoster_id: user.id, log })
+  // set a followup (usign scheduler)
+  scheduleAction({ from: log.path, data: {}, delay: 1, type: 'storage_challenge_followup' })
 
-async function start_storage_challenges (hoster_id, jobs, meta, log) {
-  const promises = []
-  const { scheduleAction, cancelAction } = await scheduler
-  // for (var i = 0, len = contracts_ids.length; i < len; i++) promises.push(challenge(contracts_ids[i]))
-  // const reports = await Promise.all(promises)
-  challenge(hoster_id)
-  async function challenge (hoster_id) {
+  challenge(user)
+  async function challenge (user) {
     // start new challenge (check all the feeds hoster hosts)
-    scheduleAction({ action: schedule_challenge, delay: 3, name: 'schedule_challenge' })
-    async function schedule_challenge () {
-      make_storage_challenge({ hoster_id, jobs, meta, log })
-      // then every interval start the challenge again
-      scheduleAction({ action: schedule_challenge, delay: 3, name: 'schedule_challenge' })
-    }
+    user.hoster.challenges.storage = true
+    scheduleAction({ from: log.path, data: { user }, delay: 1, type: 'execute_storage_challenge' })
   }
 }
 
@@ -994,60 +969,14 @@ function get_random_ids ({items, max}) {
   return selected.map(pos => items[pos])
 }
 
-async function scheduleChallenges (feed, meta, log) {  
-  const contract_ids = feed.contracts
-  for (var i = 0, len = contract_ids.length; i < len; i++) {
-    const { id: contractID, amendments, plan: planID  } = getContractByID(contract_ids[i])
-    const plan = getPlanByID(planID)
-    const { providers: { hosters: hoster_ids } } = getAmendmentByID(amendments[amendments.length - 1])
-    for (var j = 0; j < hoster_ids.length; j++) {
-      const hosterID = hoster_ids[j]
-      const scheduling_storage_challenge = async () => {
-        // keep running challenges ONLY while the contract is active (plan.duration.until > block number)
-        if (!(plan.duration.until > header.number)) return
-        // TODO if (!plan.schedules.length) {}
-        // else {} // plan schedules based on plan.schedules
-
-        // TODO sort challenge request jobs based on priority (RATIO!) of the sponsors
-        _requestStorageChallenge({ contractID, hosterID, meta, log })
-        scheduleAction({ action: scheduling_storage_challenge, delay: 3, name: 'scheduling_storage_challenge' })
-      }
-      const { scheduleAction, cancelAction } = await scheduler
-      console.log(scheduleAction)
-      scheduleAction({ action: scheduling_storage_challenge, delay: 3, name: 'scheduling_storage_challenge' })
-    }
-  }
-}
-
 // TODO
 // performance challenge 
   // group all challenges for same feed (all through same swarm) -> feed has many hosters (feed.contracts)
 // storage challenge - group all challenges for same hoster (all through same beam connection) -> hoster hosts many feeds (user.hoster.jobs[amendmentID])
 
 async function scheduleAmendmentFollowUp (id, log) {
-  const scheduling = () => {
-    console.log('This is a scheduled amendment follow up for amendment ', id)
-    // TODO get all necessary data to call this exstrinsic from the chain
-    // const { providers: { attestors } } = getAmendmentByID(id)
-    // const report = [id, attestors]
-    // const [attestorID] = attestors
-    // const user = getUserByID(attestorID)
-    // amendmentReport(user, { name, nonce }, status, [report])
-
-    // console.log('scheduleAmendmentFollowUp', sid)
-    // const contract = getContractByID(contractID)
-    // // if (contract.activeHosters.length >= 3) return
-    //
-    // removeJobForRolesXXXX({ failedHosters: [], amendment, doneJob: `NewAmendment${id}` }, log)
-    // // TODO update reuse
-    // // const reuse = { attestors: [], encoders, hosters }
-    // const reuse = { attestors: [], encoders: [], hosters: [] }
-    // const newID = init_amendment(contractID, reuse, log)
-    // add_to_pending(newID)
-    // return id
-  }
-  const { scheduleAction, cancelAction } = await scheduler
-  var sid = scheduleAction({ action: scheduling, delay: 10, name: 'scheduleAmendmentFollowUp' })
+  const { scheduleAction } = await scheduler
+  var sid = scheduleAction({ from: log.path, data: {}, delay: 10, type: 'amendment_followup' })
   return sid
 }
 
