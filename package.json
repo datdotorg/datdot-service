@@ -1,11 +1,11 @@
 {
-  "name": "service",
+  "name": "datdot-service",
   "version": "0.0.1",
-  "description": "service interact with the substrate chain",
-  "main": "index.js",
+  "description": "datdot-service interacts with a datdot-node",
+  "main": "./src/datdot-service.js",
   "scripts": {
-    "start": "node ./example",
-    "cli": "node cli.js"
+    "start": "# node ./demo/index.js",
+    "simulation": "node ./demo/simulation.js"
   },
   "author": "@ninabreznik",
   "license": "MIT",

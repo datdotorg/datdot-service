@@ -1,18 +1,21 @@
-const hypercore = require('hypercore')
-const RAM = require('random-access-memory')
-const ready = require('hypercore-ready')
-const varint = require('varint')
-const datdot_crypto = require('datdot-crypto')
-const hyperswarm = require('hyperswarm')
 const { toPromises } = require('hypercore-promisifier')
-const Hyperbeam = require('hyperbeam')
+const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
+const hyperswarm = require('hyperswarm')
+const hypercore = require('hypercore')
+const Hyperbeam = require('hyperbeam')
+const varint = require('varint')
+const sub = require('subleveldown')
+
+const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
+
+const ready = require('hypercore-ready')
 const get_index = require('get-index')
 const getRangesCount = require('getRangesCount')
-const sub = require('subleveldown')
 const HosterStorage = require('hoster-storage')
 const get_max_index = require('get-max-index')
+
 const DEFAULT_TIMEOUT = 7500
 
 // global variables (later local DB)

@@ -1,18 +1,20 @@
-const hypercore = require('hypercore')
-const RAM = require('random-access-memory')
 const { toPromises } = require('hypercore-promisifier')
-const Hyperbeam = require('hyperbeam')
+const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
-const getRangesCount = require('getRangesCount')
 const hyperswarm = require('hyperswarm')
-const ready = require('hypercore-ready')
-const get_nodes = require('get-nodes')
+const hypercore = require('hypercore')
+const Hyperbeam = require('hyperbeam')
+
 const proof_codec = require('datdot-codec/proof')
+
+const brotli = require('brotli')
+const ready = require('hypercore-ready')
+const hypercore_replicated = require('hypercore-replicated')
+const getRangesCount = require('getRangesCount')
+const get_nodes = require('get-nodes')
 const get_max_index = require('get-max-index')
 const serialize_before_compress = require('serialize-before-compress')
 const get_index = require('get-index')
-const hypercore_replicated = require('hypercore-replicated')
-const brotli = require('brotli')
 /******************************************************************************
   ROLE: Encoder
 ******************************************************************************/

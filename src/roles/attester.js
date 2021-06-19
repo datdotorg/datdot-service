@@ -1,25 +1,27 @@
-const tempDB = require('../tempdb')
-const datdot_crypto = require('datdot-crypto')
-const varint = require('varint')
-const hypercore = require('hypercore')
-const RAM = require('random-access-memory')
 const { toPromises } = require('hypercore-promisifier')
-const Hyperbeam = require('hyperbeam')
-const hyperswarm = require('hyperswarm')
+const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
+const hyperswarm = require('hyperswarm')
+const hypercore = require('hypercore')
+const Hyperbeam = require('hyperbeam')
+const varint = require('varint')
+const { data } = require('hypercore-crypto')
+
+const { performance } = require('perf_hooks')
+
+const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
-const getRangesCount = require('getRangesCount')
+
 const ready = require('hypercore-ready')
 const hypercore_close = require('hypercore-close')
-const { performance } = require('perf_hooks')
+const hypercore_replicated = require('hypercore-replicated')
+const tempDB = require('_tempdb')
+const getRangesCount = require('getRangesCount')
 const compare_encodings = require('compare-encodings')
 const get_max_index = require('get-max-index')
 const get_index = require('get-index')
-const hypercore_replicated = require('hypercore-replicated')
 const download_range = require('download-range')
-const { data } = require('hypercore-crypto')
-const { connect } = require('http2')
-const { resolve } = require('path')
+
 const DEFAULT_TIMEOUT = 7500
 
 // global variables
@@ -95,15 +97,17 @@ async function attester (identity, log, APIS) {
         // console.log({data_event_started: data})
         
         const res = await attest_storage_challenge(data).catch((error) => {
-          console.log({error})
-          log({ type: 'error', data: [`Error: ${error}`] })
+          const error_msg = { type: 'error', data: [`Error: ${error}`] }
+          console.log(error_msg)
+          log(error_msg)
         })
         if (res) {
           const response = { storageChallengeID, storage_challenge_signature: res.storage_challenge_signature, reports: res.reports } // const reports = { contractID, version, nodes }
-          log({ type: 'attestor', data: [`Finished the report for storage challenge ${storageChallengeID}: ${res.reports}`] })
           const nonce = await vaultAPI.getNonce()
           const opts = { response, signer, nonce }
-          log({ type: 'attestor', data: [`Submitting storage challenge`] })
+          const info_msg = { type: 'attestor', data: [`storage challenge report`, { storageChallengeID,  contractIDs: [res.reports.map(x => x.ctonractID)] }] }
+          log(info_msg)
+          console.log(JSON.stringify(info_msg.data))
           await chainAPI.submitStorageChallenge(opts)
         }
       }
@@ -547,7 +551,9 @@ async function attest_storage_challenge (data) {
           encoding: 'binary',
           async onmessage (storage_challenge_signature) {
             clearTimeout(tid)
-            log2hosterChallenge({ type: 'attestor', data: [`Got datdot-storage-challenge signature`] })
+            const info_msg = { type: 'attestor', data: [`Got datdot-storage-challenge signature`] }
+            log2hosterChallenge(info_msg)
+            // console.log(info_msg)
             const messageBuf = Buffer.alloc(varint.encodingLength(storageChallengeID))
             varint.encode(storageChallengeID, messageBuf, 0)
             if (!datdot_crypto.verify_signature(storage_challenge_signature, messageBuf, hosterSigningKey)) {
@@ -603,7 +609,7 @@ async function attest_storage_challenge (data) {
         const version = indexes.find(v => v >= max)
         const not_verified = datdot_crypto.merkle_verify({feedKey, hash_index: index * 2, version, signature: Buffer.from(signatures[version], 'binary'), nodes})
         if (not_verified) reject(is_verified)
-        console.log(`Attestor: Storage verified for ${index}`)
+        // console.log(`Attestor: Storage verified for ${index}`)
         log2hosterChallenge({ type: 'attestor', data: [`Storage verified for ${index}`]})
         resolve({ contractID, version, nodes })
       })
