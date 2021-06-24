@@ -4,17 +4,18 @@ const derive_topic = require('derive-topic')
 const hyperswarm = require('hyperswarm')
 const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
+const brotli = require('brotli')
 const varint = require('varint')
 const sub = require('subleveldown')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
 
-const ready = require('hypercore-ready')
+const ready = require('_datdot-service-helpers/hypercore-ready')
 const get_index = require('get-index')
 const getRangesCount = require('getRangesCount')
-const HosterStorage = require('hoster-storage')
-const get_max_index = require('get-max-index')
+const HosterStorage = require('./hoster-storage.js')
+const get_max_index = require('_datdot-service-helpers/get-max-index')
 
 const DEFAULT_TIMEOUT = 7500
 
@@ -247,7 +248,8 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
           try {
             if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
             log2attestor({ type: 'hoster', data: [`Encoder data signature verified`] })
-            await datdot_crypto.verify_chunk_hash(index, encoded_data, unique_el, nodes).catch(err => reject('not valid chunk hash', err))
+            const decompressed = await brotli.decompress(encoded_data)
+            await datdot_crypto.verify_chunk_hash(index, decompressed, unique_el, nodes).catch(err => reject('not valid chunk hash', err))
             log2attestor({ type: 'hoster', data: [`Chunk hash verified`] })
             const keys = Object.keys(signatures)
             const indexes = keys.map(key => Number(key))

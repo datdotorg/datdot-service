@@ -1,3 +1,4 @@
+process.env.DEBUG = '*,-hypercore-protocol'
 const spawn = require('cross-spawn')
 const path = require('path')
 
@@ -6,11 +7,28 @@ run()
 async function run (){
   await new Promise(resolve => setTimeout(resolve, 250))
     
-  const [scenarioName, flag, target] = process.argv.slice(2)
-  process.env.DEBUG = '*,-hypercore-protocol'
+  const [scenarioName, flag] = process.argv.slice(2)
+  process.env.REPORT = `*
+   +**,-
+   +*:*:**@bar#xxx;
+
+   alice:chain
+  
+   asdf@fooo#x
+   asdf@fooo
+   asdf#x
+   @fooo#x
+   asdf
+   @fooo
+   #x
+  `
   
   if (!scenarioName) return console.log(`
     USAGE:    npm run simulation <scenario-filename>
+
+              (To customise logs,
+               edit "demo/simulation.js"
+               and change "process.env.REPORT")
 
     SCENARIOS:
       ./demo/scenarios/1.js
@@ -28,7 +46,7 @@ async function run (){
 
   const all = [process]
   const url = 'ws://localhost'
-  const config = JSON.stringify({ chain: [url, 8888], chat: [url, 8080] })
+  const config = JSON.stringify({ chain: [url, 3399], chat: [url, 6697] })
   
   if (flag === '--production') {
     throw new Error('"--production" is currently unsuported')

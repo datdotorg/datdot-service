@@ -1,6 +1,6 @@
 const intercept = require('intercept-hypercore-storage')
 const brotli = require('brotli')
-const parse_decompressed = require('parse-decompressed')
+const parse_decompressed = require('_datdot-service-helpers/parse-decompressed')
 
 const ENCODED_DATA_PREFIX = 0
 const DECODED_PREFIX = 1
