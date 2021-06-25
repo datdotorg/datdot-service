@@ -414,8 +414,8 @@ async function attest_hosting_setup (data) {
               log({ type: 'attestor', data: [`Awaited a message`] })
               const messageObj = JSON.parse(message)
               const parsed_message = proof_codec.encode(messageObj)
-              log({ type: 'attestor', data: { text: `send index - appending new message for hoster in hosting setup`, id } })
               const id = await core.append(parsed_message)
+              log({ type: 'attestor', data: { text: `send index - appending new message for hoster in hosting setup`, id } })
               chunks[id] = { resolve, reject }
               log({ type: 'info', data: { text: 'SENT INDEX', id } })
             })
