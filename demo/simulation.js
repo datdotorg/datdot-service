@@ -23,7 +23,7 @@ async function run (){
    #x
   `
   
-  if (!scenarioName) return console.log(`
+  if (!scenarioName) return console['log'](`
     USAGE:    npm run simulation <scenario-filename>
 
               (To customise logs,
@@ -81,13 +81,13 @@ async function run (){
   
   
   process.on('SIGINT', () => {
-    console.log("\n Terminating all processes")
+    console['log']("\n Terminating all processes")
     const [main, ...processes] = all
     for (var i = 0, len = processes.length; i < len; i++) {
       const child = processes[i]
       child.kill()
     }
-    console.log('done')
+    console['log']('done')
     main.exit(0)
   })
 }

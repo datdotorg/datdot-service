@@ -122,28 +122,28 @@ async storeEncoded ({ index, encoded_data_signature, encoded_data, unique_el, no
 
   async _putEncodedData (index, data) {
     return this.db.put(makeKey(ENCODED_DATA_PREFIX, index), data, Buffer.from([0, 255]), err => {
-      if (err) console.log('_putEncodedData', {err})
+      if (err) this.log({ type: 'fail', data: { text: '_putEncodedData', err } })
     })
   }
   async _putDecoded (index, data) {
     return this.db.put(makeKey(DECODED_PREFIX, index), data, Buffer.from([0, 255]), err => {
-      if (err) console.log('_putDecoded', {err})
+      if (err) this.log({ type:'fail', data: { text: '_putDecoded', err } })
     })
   }
   async _putEncodedDataSignature (index, proof) {
     return this.db.put(makeKey(ENCODED_DATA_SIGNATURE_PREFIX, index), proof, Buffer.from([0, 255]), err => {
-      if (err) console.log('_putEncodedDataSignature', {err})
+      if (err) this.log({ type: 'fail', data: { text: '_putEncodedDataSignature', err } })
     })
   }
   async _putNodes (index, nodes) {
     nodes = Buffer.from(JSON.stringify(nodes), 'utf-8')
     return this.db.put(makeKey(NODES_PREFIX, index), nodes, Buffer.from([0, 255]), err => {
-      if (err) console.log('_putNodes', {err})
+      if (err) this.log({ type: 'fail', data: { text: '_putNodes', err} })
     })
   }
   async _putUniqueEl (index, data) {
     return this.db.put(makeKey(UNIQUE_EL_PREFIX, index), data, Buffer.from([0, 255]), err => {
-      if (err) console.log('_putUniqueEl', {err})
+      if (err) this.log({ type: 'fail', data: { text: '_putUniqueEl', err} })
     })
   }
 

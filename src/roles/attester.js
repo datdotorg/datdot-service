@@ -91,24 +91,21 @@ async function attester (identity, log, APIS) {
       const { attestor: attestorID, checks } = storageChallenge
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress === myAddress) {
-        log({ type: 'chainEvent', data: [`Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}`] })
+        log({ type: 'chainEvent', data: `Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}` })
         
         const data = await get_storage_challenge_data(storageChallenge)
         data.log = log
-        // console.log({data_event_started: data})
         
         const res = await attest_storage_challenge(data).catch((error) => {
-          const error_msg = { type: 'error', data: [`Error: ${error}`] }
-          console.log(error_msg)
+          const error_msg = { type: 'fail', data: error }
           log(error_msg)
         })
         if (res) {
-          const response = { storageChallengeID, storage_challenge_signature: res.storage_challenge_signature, reports: res.reports } // const reports = { contractID, version, nodes }
+          const response = { storageChallengeID, storage_challenge_signature: res.storage_challenge_signature, reports: res.reports }
           const nonce = await vaultAPI.getNonce()
           const opts = { response, signer, nonce }
-          const info_msg = { type: 'attestor', data: [`storage challenge report`, { storageChallengeID,  contractIDs: [res.reports.map(x => x.ctonractID)] }] }
+          const info_msg = { type: 'attestor', data: { text: `storage challenge report`, storageChallengeID,  contractIDs: [res.reports.map(x => x.contractID)] } }
           log(info_msg)
-          console.log(JSON.stringify(info_msg.data))
           await chainAPI.submitStorageChallenge(opts)
         }
       }
@@ -120,8 +117,7 @@ async function attester (identity, log, APIS) {
       attestors.forEach(async (attestorID) => {
         const attestorAddress = await chainAPI.getUserAddress(attestorID)
         if (attestorAddress === myAddress) {
-          log({ type: 'chainEvent', data: [`Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}`] })
-          console.log('----New Performance challenge')
+          log({ type: 'chainEvent', data: { text: 'new-performance-challenge', info: `Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}` } })
           const contract = await chainAPI.getContractByID(performanceChallenge.contract)
           const feedID = contract.feed
           const feedKey = await chainAPI.getFeedKey(feedID)
@@ -134,7 +130,7 @@ async function attester (identity, log, APIS) {
           
           // TODO: send just a summary to the chain, not the whole array
           const nonce = await vaultAPI.getNonce()
-          log({ type: 'attestor', data: [`Submitting performance challenge`] })
+          log({ type: 'attestor', data: `Submitting performance challenge` })
           await chainAPI.submitPerformanceChallenge({ performanceChallengeID, report, signer, nonce })
         }
       })
@@ -261,11 +257,11 @@ async function attest_hosting_setup (data) {
           await encoder_channel('HEAR', handler)
         } catch (err) {
           if (err.type === 'encoder_connection_fail') failedKeys.push(encoderKey)
-          else console.log(err)
+          else log({ type: 'fail', data: err })
         }
       }
       else if (err.type === 'encoder_timeout') failedKeys.push(encoderKey)
-      else console.log(err)
+      else log({ type: 'fail', data: err })
     }
     if (!unique_el_signature) failedKeys.push(hosterKey)
     return { failedKeys, unique_el_signature, hoster: hosterKey }
@@ -323,7 +319,7 @@ async function attest_hosting_setup (data) {
           failedKeys.push(hosterKey)
           return 'MUTE'
         }
-        else console.log(err)
+        else  log({ type: 'fail', data: err })
       }
     }
   
@@ -378,7 +374,6 @@ async function attest_hosting_setup (data) {
           coreStream.pipe(beam).pipe(coreStream)
           beam_once.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
           coreStream.on('ack', function (ack) {
-            // console.log('ACK INDEX', ack.start)
             const index = ack.start
             const store = chunks[index]
             const resolve = store.resolve
@@ -389,14 +384,12 @@ async function attest_hosting_setup (data) {
           var ext = core.registerExtension(unique_el, { 
             encoding: 'binary',
             async onmessage (sig, peer) {
-              // console.log({peer})
               unique_el_signature = sig
               const data = Buffer.from(unique_el, 'binary')
               if (!datdot_crypto.verify_signature(sig, data, hosterSigningKey)) unique_el_signature = undefined
               if (ext_received.resolve) ext_received.resolve()
             },
             onerror (err) {
-              console.log('err')
               reject(err)
             }
           })
@@ -421,11 +414,10 @@ async function attest_hosting_setup (data) {
               log({ type: 'attestor', data: [`Awaited a message`] })
               const messageObj = JSON.parse(message)
               const parsed_message = proof_codec.encode(messageObj)
-              log({ type: 'attestor', data: [`Appending new message for hoster in hosting setup`] })
+              log({ type: 'attestor', data: { text: `send index - appending new message for hoster in hosting setup`, id } })
               const id = await core.append(parsed_message)
               chunks[id] = { resolve, reject }
-              // console.log('SENT INDEX', id)
-              // resolve()
+              log({ type: 'info', data: { text: 'SENT INDEX', id } })
             })
           }
           else if (type === 'HEAR') {
@@ -449,7 +441,7 @@ async function attest_hosting_setup (data) {
                 const promise = handlerCB('DATA', chunk)
                 chunks.push(promise)
                 promise.catch(err => {
-                  console.log('ERROR promise handlerCB', err)
+                  log({ type: 'fail', data: { text: 'promise handlerCB', err } })
                   status = 'FAIL'
                   clearTimeout(tid)
                   // beam.destroy()
@@ -465,7 +457,7 @@ async function attest_hosting_setup (data) {
                   }
                 })
               }
-              console.log('Sending report', expectedChunkCount, chunks.length)
+              log({ type: 'info', data: { text: 'Sending report', expectedChunkCount, len: chunks.length } })
               handlerCB('DONE')
               status = 'END'
               await Promise.all(chunks)
@@ -501,7 +493,7 @@ async function attest_storage_challenge (data) {
     const topic = [hosterKey, attestorKey, storageChallengeID].join('')
     const tid = setTimeout(() => {
       // beam.destroy()
-      console.log('timeout')
+      log('timeout')
       reject({ type: `attestor_timeout` })
     }, DEFAULT_TIMEOUT)
 
@@ -511,7 +503,7 @@ async function attest_storage_challenge (data) {
       // beam.destroy()
       if (beam_once) {
         // beam_once.destroy()
-        console.log('beam error', {err})
+        log({ type: 'fail', data: { text: 'beam error', err } })
         reject({ type: `attestor_connection_fail`, data: err })
       }
     })
@@ -521,7 +513,7 @@ async function attest_storage_challenge (data) {
       clearTimeout(tid)
       // beam_once.destroy()
       // beam.destroy()
-      console.log('beam once error', {err})
+      log({ type: 'fail', data: { text: 'beam once error', err } })
       reject({ type: `${role}_connection_fail`, data: err })
     })
     const all = []
@@ -554,26 +546,24 @@ async function attest_storage_challenge (data) {
             clearTimeout(tid)
             const info_msg = { type: 'attestor', data: [`Got datdot-storage-challenge signature`] }
             log2hosterChallenge(info_msg)
-            // console.log(info_msg)
             const messageBuf = Buffer.alloc(varint.encodingLength(storageChallengeID))
             varint.encode(storageChallengeID, messageBuf, 0)
             if (!datdot_crypto.verify_signature(storage_challenge_signature, messageBuf, hosterSigningKey)) {
-              console.log('not a valid event')
+              log({ type: 'fail', data: 'not a valid event' })
               reject(storage_challenge_signature)
             }
-            const reports = await Promise.all(all).catch(err => { console.log(err) })
+            const reports = await Promise.all(all).catch(err => { log({ type: 'fail', data: err }) })
             if (!reports) log2hosterChallenge({ type: 'error', data: [`No reports`] })
             const res = {reports, storage_challenge_signature}
             // beam.destroy()
             resolve(res)
           },
           onerror (err) {
-            console.log('err')
             reject(err)
           }
         })
       } catch (err) {
-        console.log('results error', {err})
+        log({ type: 'fail', data: { text: 'results error', err } })
         log2hosterChallenge({ type: 'error', data: [`Error: ${err}`] })
         clearTimeout(tid)
         // beam.destroy()
@@ -611,7 +601,6 @@ async function attest_storage_challenge (data) {
         const version = indexes.find(v => v >= max)
         const not_verified = datdot_crypto.merkle_verify({feedKey, hash_index: index * 2, version, signature: Buffer.from(signatures[version], 'binary'), nodes})
         if (not_verified) reject(is_verified)
-        // console.log(`Attestor: Storage verified for ${index}`)
         log2hosterChallenge({ type: 'attestor', data: `Storage verified for ${index}` })
         resolve({ contractID, version, nodes })
       })
@@ -628,7 +617,7 @@ async function check_performance (feedKey, randomChunks, log) {
   return new Promise(async (resolve, reject) => {
     const report = []
     const tid = setTimeout(() => {
-      console.log('performance challenge - timeout')
+      log('performance challenge - timeout')
       reject('performance challenge failed')
     }, DEFAULT_TIMEOUT)
   
@@ -638,13 +627,13 @@ async function check_performance (feedKey, randomChunks, log) {
       await ready(feed)
       feeds[feedKey.toString('hex')] = feed
     } 
-    await on_ext_message(feed, () => done)
+    await on_ext_message(feed, log, () => done)
     const swarm = await connect_and_replicate(feed, log)
   
     await Promise.all(randomChunks.map(async (chunk) => {
       clearTimeout(tid)
-      const res = await get_data_and_stats(feed, chunk, log).catch(err => console.log(err))
-      console.log({stats: res.stats, data: res.data.toString('utf-8'), signed_event: res.signed_event})
+      const res = await get_data_and_stats(feed, chunk, log).catch(err => log({ type: 'fail', data: err }))
+      log({ type: 'info', data: {stats: res.stats, data: res.data.toString('utf-8'), signed_event: res.signed_event } })
       report.push(res)
     }))
 
@@ -676,8 +665,8 @@ async function connect_and_replicate (feed, log) {
       // if (found) return // maybe if found, just disconnect from swarm and keep only peerSocket
 
       // TODO: use pump and store it on `connection` object
-      peerSocket.pipe(feed.replicate(info.client)).pipe(peerSocket)   
-      // console.log('got connection (attestor in original swarm', {peerSocket, info})
+      peerSocket.pipe(feed.replicate(info.client)).pipe(peerSocket)
+      log({ type: 'info', data: { text: 'got connection (attestor in original swarm', peerSocket, info } })
       // peers[peerSocket.publicKey.toString('hex')] = {
       //   checkID: setTimeout(() => {
       //     ext
@@ -691,23 +680,23 @@ async function connect_and_replicate (feed, log) {
   })
 }
 
-async function on_ext_message (feed, done) {
+async function on_ext_message (feed, log, done) {
   // return 'foo'
   const string_key = feed.key.toString('hex')
   // if (extensions[string_key]) return
   extensions[string_key] = feed.registerExtension('datdot-hoster', { 
     encoding: 'binary',
     async onmessage (perf_sig) {
-      console.log('got an ext message')
+      log('got an ext message')
       done(null, perf_sig)
     },
     onerror (err/* peerSocket???*/) {
       // TODO: disconnect from peer
-      console.log('err')
+      log({ type: 'fail', data: 'err extension emssage' })
       done(err)
     }
   })
-}  
+}
 
 async function get_data_and_stats (feed, index, log) {
   return new Promise(async (resolve, reject) => {

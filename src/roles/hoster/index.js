@@ -94,7 +94,7 @@ async function hoster(identity, log, APIS) {
       const hosterID = storageChallenge.hoster
       const hosterAddress = await chainAPI.getUserAddress(hosterID)
       if (hosterAddress === myAddress) {
-        console.log('NewStorageChallenge')
+        log('NewStorageChallenge')
         log({ type: 'hoster', data: [`Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}`] })
         
         const data = await get_storage_challenge_data(storageChallenge)
@@ -212,7 +212,7 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
       const results = await Promise.all(all_hosted).catch(err => {
         log2attestor({ type: 'error', data: [`Error getting results ${err}`] })
       })
-      if (!results) return console.log('Error storing data')
+      if (!results) return log2attestor({ type: 'fail', data: 'Error storing data' })
       if (results.length === expectedChunkCount) {
         log2attestor({ type: 'hoster', data: [`All data (${expectedChunkCount} chunks) verified & successfully hosted`] })
         
@@ -222,7 +222,7 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
         const dataBuf = account.sign(data)
         ext.broadcast(dataBuf)
 
-        console.log(`All data (${expectedChunkCount} chunks) verified & successfully hosted -----------`)
+        log2attestor(`All data (${expectedChunkCount} chunks) verified & successfully hosted -----------`)
         resolve(`All data chunks verified & successfully hosted`)
       }
 
@@ -268,7 +268,6 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
               nodes,
               log: log2attestor
             })
-            // console.log('Received', index)
             log2attestor({ type: 'hoster', data: [`Hoster received & stored index: ${index} (${counter}/${expectedChunkCount}`] })
             resolve({ type: 'encoded:stored', ok: true, index: data.index })
           } catch (e) {
@@ -352,7 +351,7 @@ async function getStorage ({account, key, log}) {
   
   const feed = new hypercore(RAM, key, { valueEncoding: 'binary', sparse: true })
   await ready(feed)
-  join_swarm(feed, account)
+  join_swarm(feed, account, log)
 
   const db = sub(account.db, stringKey, { valueEncoding: 'binary' })
   const storage = new HosterStorage({ db, feed, log })
@@ -360,24 +359,23 @@ async function getStorage ({account, key, log}) {
   return storage
 }
 
-async function join_swarm (feed, account) {
+async function join_swarm (feed, account, log) {
   const ext = feed.registerExtension('datdot-hoster', { encoding: 'binary ' })
   const swarm = hyperswarm()
   swarm.join(feed.discoveryKey, { announce: false, lookup: true })
   swarm.on('connection', (socket, info) => {
-    // console.log({socket, info})
     socket.pipe(feed.replicate(info.client)).pipe(socket)
     // const peer = feed.peers[0] // we will get this from hyperswarm
-    // sign_and_send_ext_msg(peer, feed.key, account, ext)
+    // sign_and_send_ext_msg(peer, feed.key, account, ext, log)
   })
 }
 
-function sign_and_send_ext_msg (peer, feedkey, account, ext) {
+function sign_and_send_ext_msg (peer, feedkey, account, ext, log) {
   const stringKey = feedkey.toString('hex')
   const counter = organizer.feeds[stringKey].counter++
   const data = Buffer.from(`${counter}/${stringKey}`, 'binary')
   const perf_sig = account.sign(data)
-  console.log({perf_sig})
+  log({perf_sig})
   ext.send(perf_sig, peer)
 }
 
@@ -426,7 +424,7 @@ async function send_storage_proofs_to_attestor(data) {
 
     const beam = new Hyperbeam(topic)
     beam.on('error', err => {
-      console.log({ err })
+      log({ type: 'fail', data: err })
       clearTimeout(tid)
       // beam.destroy()
       if (beam_once) {
@@ -473,15 +471,14 @@ async function send_storage_proofs_to_attestor(data) {
 
     try {
       const results = await Promise.all(all).catch((error) => {
-        console.log({ error })
-        log2attestor4Challenge({ type: 'error', data: [`error: ${error}`] })
+        log2attestor4Challenge({ type: 'fail', data: error })
         clearTimeout(tid)
         // beam_once.destroy()
         // beam.destroy()
         reject({ type: `hoster_proof_fail`, data: error })
       })
       if (!results) {
-        console.log('storage challenge failed (hoster)')
+        log2attestor4Challenge.log({ type: 'fail', data: 'storage challenge failed (hoster)' })
         log2attestor4Challenge({ type: 'error', data: [`No results`] })
       }
       // send signed storageChallengeID as an extension message
