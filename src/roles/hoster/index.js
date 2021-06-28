@@ -88,7 +88,6 @@ async function hoster(identity, log, APIS) {
       }
     }
     if (event.method === 'NewStorageChallenge') {
-      log({ type: 'hoster', data: [`NewStorageChallenge event for hoster`] })
       const [id] = event.data
       const storageChallenge = await chainAPI.getStorageChallengeByID(id)
       const hosterID = storageChallenge.hoster
