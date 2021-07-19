@@ -16,6 +16,8 @@ const get_index = require('get-index')
 const getRangesCount = require('getRangesCount')
 const HosterStorage = require('./hoster-storage.js')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
+const hypercore_replicated = require('_datdot-service-helpers/hypercore-replicated')
+const { keyPair } = require('hypercore-crypto')
 
 const DEFAULT_TIMEOUT = 7500
 
@@ -24,14 +26,13 @@ const organizer = {
   amendments: {},
   feeds: {},
 }
-
   /******************************************************************************
   ROLE: Hoster
 ******************************************************************************/
 module.exports = hoster
 
 async function hoster(identity, log, APIS) {
-  const { chainAPI, vaultAPI } = APIS
+  const { swarmAPI, chainAPI, vaultAPI } = APIS
   const { myAddress, noiseKey: hosterKey } = identity
   log({ type: 'hoster', data: [`Listening to events for hoster role`] })
 
@@ -56,6 +57,7 @@ async function hoster(identity, log, APIS) {
       const { feedKey, attestorKey, plan, ranges, signatures } = await getHostingData(attestors, amendment)
       const data = {
         amendmentID,
+        swarmAPI,
         account: await vaultAPI,
         hosterKey,
         encoderSigningKey,
@@ -160,9 +162,9 @@ async function hoster(identity, log, APIS) {
 -------------------------------------------- */
 
 async function receive_data_and_start_hosting(data) {
-  const { account, amendmentID, feedKey, hosterKey, encoderSigningKey, encoder_pos, attestorKey, plan, signatures, ranges, log } = data
+  const { account, swarmAPI, amendmentID, feedKey, hosterKey, encoderSigningKey, encoder_pos, attestorKey, plan, signatures, ranges, log } = data
   await addKey(account, feedKey, plan)
-  await loadFeedData(account, ranges, feedKey, log)
+  await loadFeedData(account, swarmAPI, amendmentID, ranges, feedKey, log)
   await getEncodedDataFromAttestor({ account, amendmentID, hosterKey, attestorKey, encoderSigningKey, encoder_pos, feedKey, signatures, ranges, log })
 }
 
@@ -294,11 +296,23 @@ async function removeFeed(account, key, log) {
   await removeKey(key)
 }
 
-async function loadFeedData(account, ranges, key, log) {
+async function loadFeedData(account, swarmAPI, amendmentID, ranges, key, log) {
   return new Promise(async (resolve, reject) => {
     try {
       const storage = await getStorage({account, key, log})
       const { feed } = storage
+      const ext = feed.registerExtension('datdot-hoster', { encoding: 'binary ' })
+      swarmAPI.connect_topic(log, amendmentID, feed.discoveryKey, ({ remotekey }) => {
+        return onconnection
+      })
+      async function onconnection (socket, info) {
+        const peerkey = info.publicKey
+        log({ type: 'hoster', data: { text: `New connection`, peerkey: info.publicKey.toString('hex'), isInitiator: info.client } })
+        socket.pipe(feed.replicate(info.client)).pipe(socket)
+        await hypercore_replicated(feed)
+        // const peer = feed.peers[0] // we will get this from hyperswarm
+        // sign_and_send_ext_msg(peer, feed.key, account, ext, log)
+      }
       let all = []
       let indizes = []
       for (const range of ranges) {
@@ -312,6 +326,7 @@ async function loadFeedData(account, ranges, key, log) {
     } catch (e) { reject(e) }
   })
 }
+
 
 async function watchFeed(account, feed) {
   warn('Watching is not supported since we cannot ask the chain for attestors')
@@ -350,7 +365,6 @@ async function getStorage ({account, key, log}) {
   
   const feed = new hypercore(RAM, key, { valueEncoding: 'binary', sparse: true })
   await ready(feed)
-  join_swarm(feed, account, log)
 
   const db = sub(account.db, stringKey, { valueEncoding: 'binary' })
   const storage = new HosterStorage({ db, feed, log })
@@ -358,23 +372,13 @@ async function getStorage ({account, key, log}) {
   return storage
 }
 
-async function join_swarm (feed, account, log) {
-  const ext = feed.registerExtension('datdot-hoster', { encoding: 'binary ' })
-  const swarm = hyperswarm()
-  swarm.join(feed.discoveryKey, { announce: false, lookup: true })
-  swarm.on('connection', (socket, info) => {
-    socket.pipe(feed.replicate(info.client)).pipe(socket)
-    // const peer = feed.peers[0] // we will get this from hyperswarm
-    // sign_and_send_ext_msg(peer, feed.key, account, ext, log)
-  })
-}
-
 function sign_and_send_ext_msg (peer, feedkey, account, ext, log) {
   const stringKey = feedkey.toString('hex')
+  // hoster signs an incremented counter (@TODO why not blocknumber?)
   const counter = organizer.feeds[stringKey].counter++
   const data = Buffer.from(`${counter}/${stringKey}`, 'binary')
   const perf_sig = account.sign(data)
-  log({perf_sig})
+  log({ type: 'challenge', data: [`Signing extension message: ${perf_sig}`] })
   ext.send(perf_sig, peer)
 }
 

@@ -13,8 +13,10 @@ const hypercore_replicated = require('_datdot-service-helpers/hypercore-replicat
 const getRangesCount = require('getRangesCount')
 const get_nodes = require('_datdot-service-helpers/get-nodes')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
+const destroy_swarm = require('_datdot-service-helpers/destroy-swarm')
 const serialize_before_compress = require('serialize-before-compress')
 const get_index = require('get-index')
+
 /******************************************************************************
   ROLE: Encoder
 ******************************************************************************/
@@ -22,7 +24,7 @@ const get_index = require('get-index')
 module.exports = encoder
 
 async function encoder (identity, log, APIS) {
-  const { chainAPI, vaultAPI } = APIS
+  const { swarmAPI, chainAPI, vaultAPI } = APIS
   const { myAddress, noiseKey: encoderKey } = identity
   log({ type: 'encoder', data: [`Listening to events for encoder role`] })
 
@@ -41,7 +43,7 @@ async function encoder (identity, log, APIS) {
       const { feedkey: feedKey, signatures } = await chainAPI.getFeedByID(contract.feed)
       const [attestorID] = attestors
       const attestorKey = await chainAPI.getAttestorKey(attestorID)
-      const data = { amendmentID, account: vaultAPI, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, signatures, feedKey, log }
+      const data = { amendmentID, swarmAPI, account: vaultAPI, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, signatures, feedKey, log }
       await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${error}`] }))
       // log({ type: 'encoder', data: [`Encoding done`] })
     }
@@ -51,10 +53,7 @@ async function encoder (identity, log, APIS) {
     for (var i = 0, len = encoders.length; i < len; i++) {
       const id = encoders[i]
       const peerAddress = await chainAPI.getUserAddress(id)
-      if (peerAddress === myAddress) {
-        log({ type: 'chainEvent', data: [`Encoder ${id}:  Event received: ${event.method} ${event.data.toString()}`] })
-        return i
-      }
+      if (peerAddress === myAddress) return i
     }
   }
 
@@ -65,7 +64,7 @@ async function encoder (identity, log, APIS) {
 ----------------------------------------- */
 
 async function encode_hosting_setup (data) {
-  const { amendmentID, account, attestorKey, encoderKey, ranges, encoder_pos, signatures, feedKey, log } = data
+  const { amendmentID, swarmAPI, account, attestorKey, encoderKey, ranges, encoder_pos, signatures, feedKey, log } = data
   const log2Attestor = log.sub(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
   const expectedChunkCount = getRangesCount(ranges)
   let stats = {
@@ -73,12 +72,19 @@ async function encode_hosting_setup (data) {
   }
   return new Promise(async (resolve, reject) => {
     if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
+    const stringkey = feedKey.toString('hex')
     const feed = new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true })
     await ready(feed)
-    const swarm = hyperswarm()
-    swarm.join(feed.discoveryKey,  { announce: false, lookup: true })
-    swarm.on('connection', async (socket, info) => {
+
+    swarmAPI.connect_topic(log, amendmentID, feed.discoveryKey, ({ remotekey }) => {
+      return onconnection
+    })
+
+    async function onconnection (socket, info) {
+      const peerkey = info.publicKey
+      log({ type: 'encoder', data: { text: `Got connection`, peerkey: peerkey.toString('hex'), isInitiator: info.client } })
       socket.pipe(feed.replicate(info.client)).pipe(socket)
+      await hypercore_replicated(feed)
       // @NOTE:
       // sponsor provides only feedkey and swarmkey (no metadata)
       // when chain makes contracts, it checks if there is a signature for highest index of the contract
@@ -98,7 +104,6 @@ async function encode_hosting_setup (data) {
       // send the key and signature
       const temp_topic = topic + 'once'
       const beam_temp = new Hyperbeam(temp_topic)
-      await hypercore_replicated(feed)
       beam_temp.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
       // beam_temp.write(JSON.stringify({ type: 'feedkey', data: [core.key.toString('hex'), signature.toString('hex')] }))
       
@@ -109,10 +114,10 @@ async function encode_hosting_setup (data) {
         log2Attestor({ type: 'encoder', data: [`ACK from attestor: chunk received`] })
         stats.ackCount++
       })
-  
+      // destroy_swarm(swarm)
       start(core)
-    })
-
+    }
+    
     async function start (core) {
       var total = 0
       for (const range of ranges) total += (range[1] + 1) - range[0]
@@ -133,7 +138,9 @@ async function encode_hosting_setup (data) {
       const message = await msg
       await core.append(proof_codec.encode(message))
       log({ type: 'encoder', data: [`MSG appended ${message.index}`]})
-      if (stats.ackCount === expectedChunkCount) resolve(`Encoded ${message.index} sent`)
+      if (stats.ackCount === expectedChunkCount) {
+        resolve(`Encoded ${message.index} sent`)
+      }
     })
   }
   async function download_and_encode (account, index, feed, signatures, amendmentID, encoder_pos) {
