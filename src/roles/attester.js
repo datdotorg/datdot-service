@@ -24,7 +24,7 @@ const get_index = require('get-index')
 const download_range = require('download-range')
 const { hexAddPrefix } = require('@polkadot/util')
 
-const DEFAULT_TIMEOUT = 7500
+const DEFAULT_TIMEOUT = 15000
 
 // global variables
 const organizer = {
@@ -136,44 +136,35 @@ async function attester (identity, log, APIS) {
       }
       log({ type: 'challenge', data: { text: 'Got all hosterIds and chunks', chunks } })
       // join swarm and check performance when you connect to any of the hosters
-      const event_id = performanceChallengeID
-      swarmAPI.connect_topic(log, event_id, swarmkey, ({ remotekey }) => {
-        if (remotekey.equals(hosterkey)) return onconnection
-      })
-
-      async function onconnection (plexstream, info) {
-
-        const peerkey = info.publicKey
-        
-        log({ type: 'attestor challenge', data: { text: `New connection`, peerkey: peerkey.toString('hex'), isInitiator: info.client } })
+      const mode = { server: false, client: true }
+      const topic = swarmkey
+      swarmAPI.connect_topic(log, performanceChallengeID, topic, mode, async (remotekey) => {
+        log({ type: 'attestor challenge', data: { text: `New connection` } })
         const ids = all_hosterIDs
         for (var i = 0, len = ids.length; i < len; i++) {
           const hosterID = ids.shift()
           const hosterkey = await chainAPI.getHosterKey(hosterID)
-          console.log({peerkey, hosterkey})
-          if (peerkey.equals(hosterkey)) {
+          console.log({remotekey, hosterkey})
+          if (remotekey.equals(hosterkey)) {
             all_hosterIDs.splice(all_hosterIDs.indexOf(hosterID), 1) // remove that id from all_hosterIDs
-            log({ type: 'info', data: { text: 'Got the right peer', peer: hosterID } })
-            const core = new hypercore(RAM, feedkey, { valueEncoding: 'binary', sparse: true })
-            // pump(socket, plex, socket)
-            // const d1 = core.replicate(info.client)
-            const replicate_stream = core.replicate(info.client)
-
-            // NOTE: change socket for plexstream
-
-
-            socket.pipe(replicate_stream).pipe(socket) // TODO: use pump and store it on `connection` object
-            await hypercore_replicated(core)
-            reports.push(check_performance(core, chunks[hosterID], log))
+            return onconnection
           } else {
             ids.unshift()
           }
         }
+      })
+
+      async function onconnection (socket) {
+        log({ type: 'info', data: { text: 'Got the right peer', peer: hosterID } })
+        const core = new hypercore(RAM, feedkey, { valueEncoding: 'binary', sparse: true })
+        socket.pipe(core.replicate(socket.isInitiator)).pipe(socket)
+        await hypercore_replicated(core)
+        reports.push(check_performance(core, chunks[hosterID], log))
       }
 
       const resolved_reports = await Promise.all(reports).catch(err => log({ type: 'error', data: { text: 'Performance challenge error', err } }))
       log({ type: 'challenge', data: { text: 'Got all reports', reports } })
-      await discovery.destroy()
+      await swarmAPI.disconnect_topic(topic, performanceChallengeID, log)
       // TODO: send just a summary to the chain, not the whole array
       const nonce = await vaultAPI.getNonce()
       log({ type: 'attestor', data: `Submitting performance challenge` })

@@ -76,14 +76,13 @@ async function encode_hosting_setup (data) {
     const feed = new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true })
     await ready(feed)
 
-    swarmAPI.connect_topic(log, amendmentID, feed.discoveryKey, ({ remotekey }) => {
-      return onconnection
-    })
+    const mode = { server: false, client: true }
+    swarmAPI.connect_topic(log, amendmentID, feed.discoveryKey, mode, () => { return onconnection })
 
-    async function onconnection (socket, info) {
-      const peerkey = info.publicKey
-      log({ type: 'encoder', data: { text: `Got connection`, peerkey: peerkey.toString('hex'), isInitiator: info.client } })
-      socket.pipe(feed.replicate(info.client)).pipe(socket)
+    async function onconnection (socket) {
+      const peerkey = socket.remotePublicKey
+      log({ type: 'encoder', data: { text: `Got connection`, peerkey: peerkey.toString('hex'), isInitiator: socket.isInitiator } })
+      socket.pipe(feed.replicate(socket.isInitiator)).pipe(socket)
       await hypercore_replicated(feed)
       // @NOTE:
       // sponsor provides only feedkey and swarmkey (no metadata)

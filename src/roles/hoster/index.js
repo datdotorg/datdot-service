@@ -74,8 +74,12 @@ async function hoster(identity, log, APIS) {
       organizer.amendments[amendmentID] = data
       if (!organizer.feeds[stringkey]) organizer.feeds[stringkey] = { counter: 0 } // TODO check the last counter on chain and set it to that or else zero
 
-      await receive_data_and_start_hosting(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
-      log({ type: 'hoster', data: [`Hosting for the amendment ${amendmentID} started`] })
+      try {
+        await receive_data_and_start_hosting(data)
+        log({ type: 'hoster', data: [`Hosting for the amendment ${amendmentID} started`] })
+      } catch (error) { 
+        log({ type: 'error', data: [`Error: ${error}`] }) 
+      }
     }
     if (event.method === 'DropHosting') {
       const [feedID, hosterID] = event.data
@@ -302,13 +306,12 @@ async function loadFeedData(account, swarmAPI, amendmentID, ranges, key, log) {
       const storage = await getStorage({account, key, log})
       const { feed } = storage
       const ext = feed.registerExtension('datdot-hoster', { encoding: 'binary ' })
-      swarmAPI.connect_topic(log, amendmentID, feed.discoveryKey, ({ remotekey }) => {
-        return onconnection
-      })
-      async function onconnection (socket, info) {
-        const peerkey = info.publicKey
-        log({ type: 'hoster', data: { text: `New connection`, peerkey: info.publicKey.toString('hex'), isInitiator: info.client } })
-        socket.pipe(feed.replicate(info.client)).pipe(socket)
+      const mode = { server: false, client: true }
+      swarmAPI.connect_topic(log, amendmentID, feed.discoveryKey, mode, () => { return onconnection })
+      async function onconnection (socket) {
+        const peerkey = socket.remotePublicKey
+        log({ type: 'hoster', data: { text: `New connection`, peerkey: socket.remotePublicKey, isInitiator: socket.isInitiator } })
+        socket.pipe(feed.replicate(socket.isInitiator)).pipe(socket)
         await hypercore_replicated(feed)
         // const peer = feed.peers[0] // we will get this from hyperswarm
         // sign_and_send_ext_msg(peer, feed.key, account, ext, log)
