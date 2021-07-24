@@ -5,7 +5,8 @@
   "main": "./src/datdot-service.js",
   "scripts": {
     "start": "# node ./demo/index.js",
-    "simulation": "node ./demo/simulation.js"
+    "simulation": "node ./demo/simulation.js",
+    "explorer": "npm start --prefix src/node_modules/datdot-explorer"
   },
   "author": "@ninabreznik",
   "license": "MIT",

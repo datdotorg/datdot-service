@@ -9,14 +9,14 @@ setTimeout(run, 1000)
 
 async function run (){
   await new Promise(resolve => setTimeout(resolve, 250))
-    
+
   const [scenarioName, flag] = process.argv.slice(2)
   process.env.REPORT = `*
    +**,-
    +*:*:**@bar#xxx;
 
    alice:chain
-  
+
    asdf@fooo#x
    asdf@fooo
    asdf#x
@@ -25,7 +25,7 @@ async function run (){
    @fooo
    #x
   `
-  
+
   if (!scenarioName) return console['log'](`
     USAGE:    npm run simulation <scenario-filename>
 
@@ -54,7 +54,7 @@ async function run (){
     { host: 'localhost', port: 10001 }
   ]
   const config = JSON.stringify({ chain: [url, 3399], chat: [url, 6697], bootstrap_nodes })
-  
+
   if (flag === '--production') {
     throw new Error('"--production" is currently unsuported')
     // const command1 = path.join(__dirname, '../datdot-substrate/target/release/datdot-node')
@@ -65,11 +65,11 @@ async function run (){
     const chain = spawn('node', args1, { stdio: 'inherit' })
     all.push(chain)
   }
-  
+
   const args2 = [path.join(__dirname, '../src/node_modules/_chat/server.js'), config, /*logkeeper*/ 9002]
   const chatserver = spawn('node', args2, { stdio: 'inherit' })
   all.push(chatserver)
-  
+
   const users = scenario
   const PORTS = [9001, 9002]
   const file = path.join(__dirname, '../src/node_modules/datdot-simulate-user/user.js')
@@ -81,12 +81,11 @@ async function run (){
     const child = spawn('node', args, { stdio: 'inherit' })
     all.push(child)
   }
-  
-  const args3 = [path.join(__dirname, '../src/node_modules/datdot-explorer/datdot-explorer.js'), JSON.stringify(PORTS), 9000]
+
+  const args3 = [path.join(__dirname, '../src/node_modules/datdot-explorer/demo/registry.js'), JSON.stringify(PORTS)]
   const logkeeper = spawn('node', args3, { stdio: 'inherit' })
   all.push(logkeeper)
-  
-  
+
   process.on('SIGINT', () => {
     console['log']("\n Terminating all processes")
     const [main, ...processes] = all
