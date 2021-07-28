@@ -20,7 +20,7 @@
     "cross-spawn": "^7.0.3",
     "crypto": "^1.0.1",
     "csjs-inject": "^1.0.1",
-    "datdot-terminal": "https://github.com/fionataeyang/datdot-terminal/",
+    "datdot-terminal": "git+https://github.com/fionataeyang/datdot-terminal.git",
     "datdot-termninal": "git+https://github.com/fionataeyang/datdot-terminal.git",
     "datdot-ui-button": "git+https://github.com/fionataeyang/datdot-ui-button.git",
     "datdot-ui-logs": "git+https://github.com/fionataeyang/datdot-ui-logs.git",
