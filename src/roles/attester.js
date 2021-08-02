@@ -77,11 +77,11 @@ async function attester (identity, log, APIS) {
       const data = { account: vaultAPI, hosterKeys, hosterSigningKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges, log }
       const { failedKeys, sigs } = await attest_hosting_setup(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
       log({ type: 'attestor', data: { text: `Resolved all the responses for amendment`, amendmentID, failedKeys } })  
-      failedKeys.forEach(async (key) => await chainAPI.getUserIDByNoiseKey(Buffer.from(key, 'hex'))
+      failedKeys.forEach(async (key) => await chainAPI.getUserIDByNoiseKey(Buffer.from(key, 'hex')))
       const signatures = {}
       for (var i = 0, len = sigs.length; i < len; i++) {
         const { unique_el_signature, hosterKey } = sigs[i]
-        const hoster_id = await chainAPI.getUserIDBySigningKey(Buffer.from(hosterKey, 'hex')))
+        const hoster_id = await chainAPI.getUserIDBySigningKey(Buffer.from(hosterKey, 'hex'))
         signatures[hoster_id] = unique_el_signature
       }
       const report = { id: amendmentID, failed: failedKeys, signatures }
