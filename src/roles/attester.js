@@ -77,9 +77,14 @@ async function attester (identity, log, APIS) {
       const data = { account: vaultAPI, hosterKeys, hosterSigningKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges, log }
       const { failedKeys, sigs } = await attest_hosting_setup(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
       log({ type: 'attestor', data: { text: `Resolved all the responses for amendment`, amendmentID, failedKeys } })  
-      failedKeys.forEach(async (key) => await chainAPI.getUserIDByNoiseKey(Buffer.from(key, 'hex')))
-      sigs.forEach(async (sig) => sig.hoster = await chainAPI.getUserIDBySigningKey(Buffer.from(sig.hoster, 'hex')))
-      const report = { id: amendmentID, failed: failedKeys, sigs }
+      failedKeys.forEach(async (key) => await chainAPI.getUserIDByNoiseKey(Buffer.from(key, 'hex'))
+      const signatures = {}
+      for (var i = 0, len = sigs.length; i < len; i++) {
+        const { unique_el_signature, hosterKey } = sigs[i]
+        const hoster_id = await chainAPI.getUserIDBySigningKey(Buffer.from(hosterKey, 'hex')))
+        signatures[hoster_id] = unique_el_signature
+      }
+      const report = { id: amendmentID, failed: failedKeys, signatures }
       const nonce = await vaultAPI.getNonce()
       await chainAPI.amendmentReport({ report, signer, nonce })
     }
@@ -255,9 +260,9 @@ async function attest_hosting_setup (data) {
   const failed = []
   const sigs = []
   resolved_responses.forEach(res => {
-    const { failedKeys, unique_el_signature, hoster } = res
+    const { failedKeys, unique_el_signature, hosterKey } = res
     failed.push(failedKeys)
-    sigs.push({ unique_el_signature, hoster })
+    sigs.push({ unique_el_signature, hosterKey })
   })
   const failed_set =  [...new Set(failed.flat())]  
   const report = { failedKeys: failed_set, sigs }
@@ -299,7 +304,7 @@ async function attest_hosting_setup (data) {
       else log({ type: 'fail', data: err })
     }
     if (!unique_el_signature) failedKeys.push(hosterKey)
-    return { failedKeys, unique_el_signature, hoster: hosterKey }
+    return { failedKeys, unique_el_signature, hosterKey }
   
     async function handler (type, chunk) {      
       try {
