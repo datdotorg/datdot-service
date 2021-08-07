@@ -28,7 +28,6 @@ const DEFAULT_TIMEOUT = 15000
 
 // global variables
 const organizer = {
-  extensions: {},
 }
 /******************************************************************************
   ROLE: Attestor
@@ -134,8 +133,8 @@ async function attester (identity, log, APIS) {
         for (var j = 0, len2 = hosterIDs.length; j < len2; j++) {
           const id = hosterIDs[j]
           all_hosterIDs.push(id)
-          const randomChunks = ranges.map(range => getRandomInt(range[0], range[1] + 1)) // chain doesn't emit WHICH chunks attester should check
-          chunks[id] = randomChunks
+          const random_range = ranges[getRandomInt(0, ranges.length + 1)]
+          chunks[id] = getRandomInt(random_range[0], random_range[1] + 1) // chain doesn't emit WHICH chunks attester should check
         }
         log({ type: 'challenge', data: { text: 'getting data for contract', contract: contractIDs[i], chunks } })
       }
@@ -164,16 +163,20 @@ async function attester (identity, log, APIS) {
         const core = new hypercore(RAM, feedkey, { valueEncoding: 'binary', sparse: true })
         socket.pipe(core.replicate(socket.isInitiator)).pipe(socket)
         await hypercore_replicated(core)
-        reports.push(check_performance(core, chunks[hosterID], log))
+        const [stats, event_sig ] = check_performance(core, chunks[hosterID], log)
+        const data = Buffer.from(`${performanceChallengeID}`, 'binary')
+        if (!datdot_crypto.verify_signature(event_sig, data, socket.remotePublicKey)) event_sig = stats = undefined
+        reports.push({ stats, hoster: socket.remotePublicKey, event_sig })
       }
 
       const resolved_reports = await Promise.all(reports).catch(err => log({ type: 'error', data: { text: 'Performance challenge error', err } }))
-      log({ type: 'challenge', data: { text: 'Got all reports', reports } })
+      resolved_reports.forEach(async report => report.hoster = await chainAPI.getUserIDByNoiseKey(report.hoster))
+      log({ type: 'challenge', data: { text: 'Got all reports', resolved_reports } })
       await swarmAPI.disconnect_topic(topic, performanceChallengeID, log)
       // TODO: send just a summary to the chain, not the whole array
       const nonce = await vaultAPI.getNonce()
       log({ type: 'attestor', data: `Submitting performance challenge` })
-      await chainAPI.submitPerformanceChallenge({ performanceChallengeID, reports, signer, nonce })
+      await chainAPI.submitPerformanceChallenge({ performanceChallengeID, report: resolved_reports, signer, nonce })
     }
   }
   // HELPERS
@@ -653,7 +656,7 @@ async function attest_storage_challenge (data) {
                         CHECK PERFORMANCE
 ---------------------------------------------------------------------- */
 
-async function check_performance (core, randomChunks, log) {
+async function check_performance (core, index, log) {
   log({ type: 'challenge', data: { text: 'checking performance' } })
   return new Promise(async (resolve, reject) => {
     const report = []
@@ -662,13 +665,12 @@ async function check_performance (core, randomChunks, log) {
       reject('performance challenge failed')
     }, DEFAULT_TIMEOUT)
     
-    await Promise.all(randomChunks.map(async (chunk) => {
-      log({ type: 'challenge', data: { text: 'getting stats', data: chunk } })
-      clearTimeout(tid)
-      const res = await get_data_and_stats(core, chunk, log).catch(err => log({ type: 'fail', data: err }))
-      log({ type: 'info', data: {stats: res.stats, data: res.data.toString('utf-8'), signed_event: res.signed_event } })
-      report.push(res)
-    }))
+
+    log({ type: 'challenge', data: { text: 'getting stats', data: index } })
+    clearTimeout(tid)
+    const stats = await get_data_and_stats(core, index, log).catch(err => log({ type: 'fail', data: err }))
+    log({ type: 'performance', data: {stats: JSON.stringify(stats) } })
+    report.push(stats)
     await on_ext_message(core, log, () => done)
 
     function done (err, event_sig) {
@@ -694,8 +696,7 @@ async function connect_and_replicate (core, log) {
 async function on_ext_message (feed, log, done) {
   // return 'foo'
   const string_key = feed.key.toString('hex')
-  // if (extensions[string_key]) return
-  organizer.extensions[string_key] = feed.registerExtension('datdot-hoster', { 
+  feed.registerExtension('datdot-hoster', { 
     encoding: 'binary',
     async onmessage (perf_sig) {
       log('got an ext message')
@@ -722,7 +723,7 @@ async function get_data_and_stats (feed, index, log) {
       const latency = end - start
       const stats = await getStats(feed)
       stats.latency = latency
-      resolve({stats, data})
+      resolve(stats)
     } catch (e) {
       log(`Error: ${feed.key}@${index} ${e.message}`)
       reject()

@@ -110,6 +110,13 @@ async function hoster(identity, log, APIS) {
         log({ type: 'hoster', data: [`sendStorageChallengeToAttestor completed`] })
       }
     }
+    if (event.method === 'NewPerformanceChallenge') {
+      const [performance_challenge_id] = event.data
+      const performanceChallenge = await chainAPI.getPerformanceChallengeByID(performance_challenge_id)
+      const feed = await chainAPI.getFeedByID(performanceChallenge.feed)
+      const stringkey = feed.feedkey.toString('hex')
+      if (organizer.feed[stringkey]) organizer.performance_challenge_id = performance_challenge_id
+    }
   }
   // HELPERS
   async function isForMe(hosters, event) {
@@ -313,8 +320,15 @@ async function loadFeedData(account, swarmAPI, amendmentID, ranges, key, log) {
         log({ type: 'hoster', data: { text: `New connection`, peerkey: socket.remotePublicKey, isInitiator: socket.isInitiator } })
         socket.pipe(feed.replicate(socket.isInitiator)).pipe(socket)
         await hypercore_replicated(feed)
-        // const peer = feed.peers[0] // we will get this from hyperswarm
-        // sign_and_send_ext_msg(peer, feed.key, account, ext, log)
+
+        const stringKey = feedkey.toString('hex')
+        // hoster keeps track of how many downloads they have by incremented counter
+        const counter = organizer.feeds[stringKey].counter++
+        const data = Buffer.from(`${organizer.performance_challenge_id}`, 'binary')
+        const perf_sig = account.sign(data)
+        log({ type: 'challenge', data: [`Signing extension message: ${perf_sig}`] })
+        ext.broadcast(perf_sig)
+
       }
       let all = []
       let indizes = []
@@ -373,16 +387,6 @@ async function getStorage ({account, key, log}) {
   const storage = new HosterStorage({ db, feed, log })
   account.storages.set(stringKey, storage)
   return storage
-}
-
-function sign_and_send_ext_msg (peer, feedkey, account, ext, log) {
-  const stringKey = feedkey.toString('hex')
-  // hoster signs an incremented counter (@TODO why not blocknumber?)
-  const counter = organizer.feeds[stringKey].counter++
-  const data = Buffer.from(`${counter}/${stringKey}`, 'binary')
-  const perf_sig = account.sign(data)
-  log({ type: 'challenge', data: [`Signing extension message: ${perf_sig}`] })
-  ext.send(perf_sig, peer)
 }
 
 async function saveKeys(account, keys) {
