@@ -163,7 +163,7 @@ async function attester (identity, log, APIS) {
         const core = new hypercore(RAM, feedkey, { valueEncoding: 'binary', sparse: true })
         socket.pipe(core.replicate(socket.isInitiator)).pipe(socket)
         await hypercore_replicated(core)
-        const [stats, event_sig ] = check_performance(core, chunks[hosterID], log)
+        const [stats, event_sig ] = (await check_performance(core, chunks[hosterID], log).catch(err => log({ type: 'fail', data: err }))) || []
         const data = Buffer.from(`${performanceChallengeID}`, 'binary')
         if (!datdot_crypto.verify_signature(event_sig, data, socket.remotePublicKey)) event_sig = stats = undefined
         reports.push({ stats, hoster: socket.remotePublicKey, event_sig })
@@ -176,68 +176,10 @@ async function attester (identity, log, APIS) {
       // TODO: send just a summary to the chain, not the whole array
       const nonce = await vaultAPI.getNonce()
       log({ type: 'attestor', data: `Submitting performance challenge` })
-      await chainAPI.submitPerformanceChallenge({ performanceChallengeID, report: resolved_reports, signer, nonce })
+      await chainAPI.submitPerformanceChallenge({ performanceChallengeID, reports: resolved_reports, signer, nonce })
     }
   }
-  // HELPERS
-
-  async function get_storage_challenge_data (storageChallenge) {
-    const { id, checks, hoster: hosterID, attestor: attestorID } = storageChallenge
-    const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
-    const hosterSigningKey = await chainAPI.getSigningKey(hosterID)
-    const hosterKey = await chainAPI.getHosterKey(hosterID)
-    const attestorKey = await chainAPI.getAttestorKey(attestorID)
-    for (var i = 0, len = contract_ids.length; i < len; i++) {
-      const contract_id = contract_ids[i]
-      const contract = await chainAPI.getItemByID(contract_id)
-      const { feed: feedID, ranges, amendments } = await chainAPI.getContractByID(contract_id)
-      const [encoderID, pos] = await getEncoderID(amendments, hosterID)
-      const { feedkey, signatures } = await chainAPI.getFeedByID(feedID)
-
-      checks[contract_id].feedKey = feedkey
-      checks[contract_id].signatures = signatures
-      checks[contract_id].ranges = ranges
-      checks[contract_id].encoderSigningKey = await chainAPI.getSigningKey(encoderID)
-      checks[contract_id].encoder_pos = pos
-      checks[contract_id].amendmentID = amendments[amendments.length - 1]
-      // checks[contract_id] = { index, feedKey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey }
-    }
-    return { storageChallengeID: id, attestorKey, hosterKey, hosterSigningKey, checks }
-  }
-
-  async function getEncoderID (amendments, hosterID) {
-    const active_amendment = await chainAPI.getAmendmentByID(amendments[amendments.length-1])
-    const pos =  active_amendment.providers.hosters.indexOf(hosterID)
-    const encoderID = active_amendment.providers.encoders[pos]
-    return [encoderID, pos]
-  }
-
-  async function getData (amendment, contract) {
-    const { encoders, hosters } = amendment.providers
-    const enc_promises = encoders.map(async (id) => chainAPI.getEncoderKey(id))
-    const encoderKeys = await Promise.all(enc_promises)
-    const hoster_promises = []
-    const signingkey_promises = []
-    hosters.forEach(async (id) => {
-      signingkey_promises.push(chainAPI.getSigningKey(id))
-      hoster_promises.push(chainAPI.getHosterKey(id))
-    })
-    const feedID = contract.feed
-    const feedKey_promise = chainAPI.getFeedKey(feedID)
-
-    const hosterKeys = await Promise.all(hoster_promises)
-    const hosterSigningKeys = await Promise.all(signingkey_promises)
-    const feedKey = await feedKey_promise
-
-    const ranges = contract.ranges
-    return { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges }
-  }
-
-  function getRandomInt (min, max) {
-    min = Math.ceil(min)
-    max = Math.floor(max)
-    return Math.floor(Math.random() * (max - min)) + min // The maximum is exclusive and the minimum is inclusive
-  }
+ 
 }
 
 /* ----------------------------------------------------------------------
@@ -659,7 +601,7 @@ async function attest_storage_challenge (data) {
 async function check_performance (core, index, log) {
   log({ type: 'challenge', data: { text: 'checking performance' } })
   return new Promise(async (resolve, reject) => {
-    const report = []
+    const reports = []
     const tid = setTimeout(() => {
       log('performance challenge - timeout')
       reject('performance challenge failed')
@@ -669,15 +611,15 @@ async function check_performance (core, index, log) {
     log({ type: 'challenge', data: { text: 'getting stats', data: index } })
     clearTimeout(tid)
     const stats = await get_data_and_stats(core, index, log).catch(err => log({ type: 'fail', data: err }))
-    log({ type: 'performance', data: {stats: JSON.stringify(stats) } })
-    report.push(stats)
+    log({ type: 'performance', data: { stats: JSON.stringify(stats) } })
+    reports.push(stats)
     await on_ext_message(core, log, () => done)
 
     function done (err, event_sig) {
       if (err) reject(err)
-      report.push(event_sig)
-      log({ type: 'info', data: {text:'Resolving check_performance_for', report, event_sig } })
-      resolve(report)
+      reports.push(event_sig)
+      log({ type: 'info', data: {text:'Resolving check_performance_for', reports, event_sig } })
+      resolve(reports)
     }
   })
 }
@@ -741,9 +683,7 @@ async function get_data_and_stats (feed, index, log) {
         key: feed.key,
         discoveryKey: feed.discoveryKey,
         peerCount: feed.peers.length,
-        peers: openedPeers.map(p => {
-          return { ...p.stats, remoteAddress: p.remoteAddress }
-        })
+        peers: openedPeers.map(p => { return { ...p.stats, remoteAddress: p.remoteAddress }})
       }
       return {
         ...networkingStats,
@@ -755,4 +695,64 @@ async function get_data_and_stats (feed, index, log) {
       }
     }
   })
+}
+
+ // HELPERS
+
+ async function get_storage_challenge_data (storageChallenge) {
+  const { id, checks, hoster: hosterID, attestor: attestorID } = storageChallenge
+  const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
+  const hosterSigningKey = await chainAPI.getSigningKey(hosterID)
+  const hosterKey = await chainAPI.getHosterKey(hosterID)
+  const attestorKey = await chainAPI.getAttestorKey(attestorID)
+  for (var i = 0, len = contract_ids.length; i < len; i++) {
+    const contract_id = contract_ids[i]
+    const contract = await chainAPI.getItemByID(contract_id)
+    const { feed: feedID, ranges, amendments } = await chainAPI.getContractByID(contract_id)
+    const [encoderID, pos] = await getEncoderID(amendments, hosterID)
+    const { feedkey, signatures } = await chainAPI.getFeedByID(feedID)
+
+    checks[contract_id].feedKey = feedkey
+    checks[contract_id].signatures = signatures
+    checks[contract_id].ranges = ranges
+    checks[contract_id].encoderSigningKey = await chainAPI.getSigningKey(encoderID)
+    checks[contract_id].encoder_pos = pos
+    checks[contract_id].amendmentID = amendments[amendments.length - 1]
+    // checks[contract_id] = { index, feedKey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey }
+  }
+  return { storageChallengeID: id, attestorKey, hosterKey, hosterSigningKey, checks }
+}
+
+async function getEncoderID (amendments, hosterID) {
+  const active_amendment = await chainAPI.getAmendmentByID(amendments[amendments.length-1])
+  const pos =  active_amendment.providers.hosters.indexOf(hosterID)
+  const encoderID = active_amendment.providers.encoders[pos]
+  return [encoderID, pos]
+}
+
+async function getData (amendment, contract) {
+  const { encoders, hosters } = amendment.providers
+  const enc_promises = encoders.map(async (id) => chainAPI.getEncoderKey(id))
+  const encoderKeys = await Promise.all(enc_promises)
+  const hoster_promises = []
+  const signingkey_promises = []
+  hosters.forEach(async (id) => {
+    signingkey_promises.push(chainAPI.getSigningKey(id))
+    hoster_promises.push(chainAPI.getHosterKey(id))
+  })
+  const feedID = contract.feed
+  const feedKey_promise = chainAPI.getFeedKey(feedID)
+
+  const hosterKeys = await Promise.all(hoster_promises)
+  const hosterSigningKeys = await Promise.all(signingkey_promises)
+  const feedKey = await feedKey_promise
+
+  const ranges = contract.ranges
+  return { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges }
+}
+
+function getRandomInt (min, max) {
+  min = Math.ceil(min)
+  max = Math.floor(max)
+  return Math.floor(Math.random() * (max - min)) + min // The maximum is exclusive and the minimum is inclusive
 }
