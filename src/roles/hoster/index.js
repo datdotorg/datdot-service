@@ -78,7 +78,7 @@ async function hoster(identity, log, APIS) {
         await receive_data_and_start_hosting(data)
         log({ type: 'hoster', data: [`Hosting for the amendment ${amendmentID} started`] })
       } catch (error) { 
-        log({ type: 'error', data: [`Error: ${error}`] }) 
+        log({ type: 'error', data: { text: 'Caught error from hosting setup (hoster)', error }})
       }
     }
     if (event.method === 'DropHosting') {
@@ -115,7 +115,7 @@ async function hoster(identity, log, APIS) {
       const performanceChallenge = await chainAPI.getPerformanceChallengeByID(performance_challenge_id)
       const feed = await chainAPI.getFeedByID(performanceChallenge.feed)
       const stringkey = feed.feedkey.toString('hex')
-      if (organizer.feed[stringkey]) organizer.performance_challenge_id = performance_challenge_id
+      if (organizer.feeds[stringkey]) organizer.performance_challenge_id = performance_challenge_id
     }
   }
   // HELPERS
@@ -174,19 +174,22 @@ async function hoster(identity, log, APIS) {
 
 async function receive_data_and_start_hosting(data) {
   const { account, swarmAPI, amendmentID, feedKey, hosterKey, encoderSigningKey, encoder_pos, attestorKey, plan, signatures, ranges, log } = data
+  const expectedChunkCount = getRangesCount(ranges)
   await addKey(account, feedKey, plan)
-  await loadFeedData(account, swarmAPI, amendmentID, ranges, feedKey, log)
-  await getEncodedDataFromAttestor({ account, amendmentID, hosterKey, attestorKey, encoderSigningKey, encoder_pos, feedKey, signatures, ranges, log })
+  log({ type: 'hosting setup', data: { text: 'Key added in hosting setup for', amendment: amendmentID } })
+  await loadFeedData({ account, swarmAPI, amendmentID, ranges, feedKey, expectedChunkCount, log })
+  log({ type: 'hosting setup', data: { text: 'Feed loaded', amendment: amendmentID } })
+  await getEncodedDataFromAttestor({ account, amendmentID, hosterKey, attestorKey, encoderSigningKey, expectedChunkCount, encoder_pos, feedKey, signatures, ranges, log })
+  log({ type: 'hosting setup', data: { text: 'Encoded data received and stored', amendment: amendmentID } })
 }
 
-async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, attestorKey, encoderSigningKey, encoder_pos, feedKey, signatures, ranges, log }) {
+async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, attestorKey, encoderSigningKey, expectedChunkCount, encoder_pos, feedKey, signatures, ranges, log }) {
   const log2attestor = log.sub(`<-Attestor ${attestorKey.toString('hex').substring(0, 5)}`)
   log2attestor({ type: 'hoster', data: [`getEncodedDataFromAttestor`] })
 
   const unique_el = `${amendmentID}/${encoder_pos}`
 
   return new Promise(async (resolve, reject) => {
-    const expectedChunkCount = getRangesCount(ranges)
     const all_hosted = []
     let counter = 0
 
@@ -225,18 +228,16 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
         log2attestor({ type: 'error', data: [`Error getting results ${err}`] })
       })
       if (!results) return log2attestor({ type: 'fail', data: 'Error storing data' })
-      if (results.length === expectedChunkCount) {
-        log2attestor({ type: 'hoster', data: [`All data (${expectedChunkCount} chunks) verified & successfully hosted`] })
-        
-        // send signed unique_el as an extension message
-        var ext = clone.registerExtension(unique_el, { encoding: 'binary ' })
-        const data = Buffer.from(unique_el, 'binary')
-        const dataBuf = account.sign(data)
-        ext.broadcast(dataBuf)
+      log2attestor({ type: 'hoster', data: { text: `All chunks hosted`, len: results.length, expectedChunkCount } })
+      if (results.length !== expectedChunkCount) return log2attestor({ type: 'fail', data: 'Not enought resolved results' })
+      // send signed unique_el as an extension message
+      var ext = clone.registerExtension(unique_el, { encoding: 'binary ' })
+      const data = Buffer.from(unique_el, 'binary')
+      const dataBuf = account.sign(data)
+      ext.broadcast(dataBuf)
 
-        log2attestor(`All data (${expectedChunkCount} chunks) verified & successfully hosted -----------`)
-        resolve(`All data chunks verified & successfully hosted`)
-      }
+      log2attestor(`All data (${expectedChunkCount} chunks) verified & successfully hosted`)
+      resolve()
 
       // store data
       async function store_data(chunk_promise) {
@@ -307,27 +308,54 @@ async function removeFeed(account, key, log) {
   await removeKey(key)
 }
 
-async function loadFeedData(account, swarmAPI, amendmentID, ranges, key, log) {
+async function loadFeedData({ account, swarmAPI, amendmentID, ranges, feedKey, expectedChunkCount, log }) {
+  var download_count = 0
   return new Promise(async (resolve, reject) => {
     try {
-      const storage = await getStorage({account, key, log})
-      const { feed } = storage
+      const storage = await getStorage({ account, key: feedKey, cb: onconnection, log })
+      var feed
+      const stringKey = feedKey.toString('hex')
+      if (!storage) {
+        feed = new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true })
+        var mode = { server: false, client: true } // @TODO
+        const discovery = swarmAPI.swarm.join(feed.discoveryKey, mode)
+        swarmAPI.swarm.on('connection', async (socket) => onconnection(socket))  
+        await ready(feed)
+        const db = sub(account.db, stringKey, { valueEncoding: 'binary' })
+        const storage = new HosterStorage({ db, discovery, feed, log })
+        account.storages.set(stringKey, storage)
+      } else {
+        feed = storage.feed
+      }
+      
       const ext = feed.registerExtension('datdot-hoster', { encoding: 'binary ' })
-      const mode = { server: false, client: true }
-      swarmAPI.connect_topic(log, amendmentID, feed.discoveryKey, mode, () => { return onconnection })
+
       async function onconnection (socket) {
         const peerkey = socket.remotePublicKey
-        log({ type: 'hoster', data: { text: `New connection`, peerkey: socket.remotePublicKey, isInitiator: socket.isInitiator } })
+        log({ type: 'hoster', data: { text: `Got connection`, peerkey: peerkey.toString('hex'), isInitiator: socket.isInitiator } })
         socket.pipe(feed.replicate(socket.isInitiator)).pipe(socket)
-        await hypercore_replicated(feed)
+        feed.on('download', async () => {
+          download_count++
+          log({ type: 'hoster', data: { text: `Download count`, download_count, expectedChunkCount } })
+          if (download_count === expectedChunkCount) {
+            try { 
+              // await discovery.refresh({ server: true, client: false })
+              // setTimeout(()=> { socket.end() }, 2000)
+              
+            }
+            catch(err) { log({ type: 'hoster', data: { text: `Closing socket error`, err } }) }
+          }
+        })
 
-        const stringKey = feedkey.toString('hex')
-        // hoster keeps track of how many downloads they have by incremented counter
-        const counter = organizer.feeds[stringKey].counter++
-        const data = Buffer.from(`${organizer.performance_challenge_id}`, 'binary')
-        const perf_sig = account.sign(data)
-        log({ type: 'challenge', data: [`Signing extension message: ${perf_sig}`] })
-        ext.broadcast(perf_sig)
+        if (socket.isInitiator === false) { // serving data
+          const stringKey = feedKey.toString('hex')
+          // hoster keeps track of how many downloads they have by incremented counter
+          const counter = organizer.feeds[stringKey].counter++
+          const data = Buffer.from(`${organizer.performance_challenge_id}`, 'binary')
+          const perf_sig = account.sign(data)
+          log({ type: 'hosting', data: [`Signing extension message: ${perf_sig}`] })
+          ext.broadcast(perf_sig)
+        }
 
       }
       let all = []
@@ -339,6 +367,7 @@ async function loadFeedData(account, swarmAPI, amendmentID, ranges, key, log) {
         }
       }
       await Promise.all(all)
+      log({ type: 'hoster', data: { text: `All chunks downloaded` } })
       resolve()
     } catch (e) { reject(e) }
   })
@@ -374,19 +403,10 @@ async function getDataFromStorage(account, key, index, log) {
 }
 
 async function getStorage ({account, key, log}) {
-
   const stringKey = key.toString('hex')
   if (account.storages.has(stringKey)) {
     return account.storages.get(stringKey)
   }
-  
-  const feed = new hypercore(RAM, key, { valueEncoding: 'binary', sparse: true })
-  await ready(feed)
-
-  const db = sub(account.db, stringKey, { valueEncoding: 'binary' })
-  const storage = new HosterStorage({ db, feed, log })
-  account.storages.set(stringKey, storage)
-  return storage
 }
 
 async function saveKeys(account, keys) {

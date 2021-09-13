@@ -71,21 +71,25 @@ async function attester (identity, log, APIS) {
       const [attestorID] = amendment.providers.attestors
       const attestorAddress = await chainAPI.getUserAddress(attestorID)
       if (attestorAddress !== myAddress) return
-      log({ type: 'chainEvent', data: [`Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`] })
-      const { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges } = await getData(amendment, contract)
+      log({ type: 'chainEvent', data: { text: `Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment)} })
+      const { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges } = await getData(chainAPI, amendment, contract)
       const data = { account: vaultAPI, hosterKeys, hosterSigningKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges, log }
-      const { failedKeys, sigs } = await attest_hosting_setup(data).catch((error) => log({ type: 'error', data: [`Error: ${error}`] }))
-      log({ type: 'attestor', data: { text: `Resolved all the responses for amendment`, amendmentID, failedKeys } })  
+      const { failedKeys, sigs } = await attest_hosting_setup(data).catch((error) => log({ type: 'error', data: { text: 'Caught error from hosting setup (attester)', error } }))
+      log({ type: 'attestor', data: { text: `Resolved all the responses for amendment`, amendmentID, failedKeys, sigs } })
+      
       failedKeys.forEach(async (key) => await chainAPI.getUserIDByNoiseKey(Buffer.from(key, 'hex')))
+      log({ type: 'attestor', data: { text: `Failed key user IDs`, failedKeys } })  
       const signatures = {}
       for (var i = 0, len = sigs.length; i < len; i++) {
         const { unique_el_signature, hosterKey } = sigs[i]
-        const hoster_id = await chainAPI.getUserIDBySigningKey(Buffer.from(hosterKey, 'hex'))
+        const hoster_id = await chainAPI.getUserIDByNoiseKey(Buffer.from(hosterKey, 'hex'))
         signatures[hoster_id] = unique_el_signature
       }
       const report = { id: amendmentID, failed: failedKeys, signatures }
+      log({ type: 'attestor', data: { text: `Report ready`, amendmentID, report: JSON.stringify(report) } })  
       const nonce = await vaultAPI.getNonce()
       await chainAPI.amendmentReport({ report, signer, nonce })
+      log({ type: 'attester', data: { text: 'Report sent', amendmentID, report: JSON.stringify(report) } })
     }
 
     if (event.method === 'NewStorageChallenge') {
@@ -96,7 +100,7 @@ async function attester (identity, log, APIS) {
       if (attestorAddress !== myAddress) return
       log({ type: 'chainEvent', data: `Attestor ${attestorID}:  Event received: ${event.method} ${event.data.toString()}` })
       
-      const data = await get_storage_challenge_data(storageChallenge)
+      const data = await get_storage_challenge_data(storageChallenge, chainAPI)
       data.log = log
       
       const res = await attest_storage_challenge(data).catch((error) => {
@@ -133,7 +137,9 @@ async function attester (identity, log, APIS) {
         for (var j = 0, len2 = hosterIDs.length; j < len2; j++) {
           const id = hosterIDs[j]
           all_hosterIDs.push(id)
-          const random_range = ranges[getRandomInt(0, ranges.length + 1)]
+          const x = getRandomInt(0, ranges.length + 1)
+          log({ type: 'attester', data: { text: 'Selecting random range', ranges, x } })
+          const random_range = ranges[x]
           chunks[id] = getRandomInt(random_range[0], random_range[1] + 1) // chain doesn't emit WHICH chunks attester should check
         }
         log({ type: 'challenge', data: { text: 'getting data for contract', contract: contractIDs[i], chunks } })
@@ -142,7 +148,8 @@ async function attester (identity, log, APIS) {
       // join swarm and check performance when you connect to any of the hosters
       const mode = { server: false, client: true }
       const topic = swarmkey
-      swarmAPI.connect_topic(log, performanceChallengeID, topic, mode, async (remotekey) => {
+      swarmAPI.swarm.join(topic, mode)
+      swarmAPI.swarm.on('connection', async (socket) => {
         log({ type: 'attestor challenge', data: { text: `New connection` } })
         const ids = all_hosterIDs
         for (var i = 0, len = ids.length; i < len; i++) {
@@ -156,13 +163,31 @@ async function attester (identity, log, APIS) {
             ids.unshift()
           }
         }
+        onconnection(socket)
       })
+      
+
+      // swarmAPI.connect_topic(log, performanceChallengeID, topic, mode, async (remotekey) => {
+      //   log({ type: 'attestor challenge', data: { text: `New connection` } })
+      //   const ids = all_hosterIDs
+      //   for (var i = 0, len = ids.length; i < len; i++) {
+      //     const hosterID = ids.shift()
+      //     const hosterkey = await chainAPI.getHosterKey(hosterID)
+      //     console.log({remotekey, hosterkey})
+      //     if (remotekey.equals(hosterkey)) {
+      //       all_hosterIDs.splice(all_hosterIDs.indexOf(hosterID), 1) // remove that id from all_hosterIDs
+      //       return onconnection
+      //     } else {
+      //       ids.unshift()
+      //     }
+      //   }
+      // })
 
       async function onconnection (socket) {
         log({ type: 'info', data: { text: 'Got the right peer', peer: hosterID } })
         const core = new hypercore(RAM, feedkey, { valueEncoding: 'binary', sparse: true })
         socket.pipe(core.replicate(socket.isInitiator)).pipe(socket)
-        await hypercore_replicated(core)
+        core.on('download', () => socket.end())
         const [stats, event_sig ] = (await check_performance(core, chunks[hosterID], log).catch(err => log({ type: 'fail', data: err }))) || []
         const data = Buffer.from(`${performanceChallengeID}`, 'binary')
         if (!datdot_crypto.verify_signature(event_sig, data, socket.remotePublicKey)) event_sig = stats = undefined
@@ -372,6 +397,7 @@ async function attest_hosting_setup (data) {
               unique_el_signature = sig
               const data = Buffer.from(unique_el, 'binary')
               if (!datdot_crypto.verify_signature(sig, data, hosterSigningKey)) unique_el_signature = undefined
+              log({ type: 'attestor', data: { text: 'Extension message with hoster signature received and verified', unique_el_signature } })
               if (ext_received.resolve) ext_received.resolve()
             },
             onerror (err) {
@@ -425,6 +451,7 @@ async function attest_hosting_setup (data) {
                 if (status === 'MUTED') continue
                 const promise = handlerCB('DATA', chunk)
                 chunks.push(promise)
+                log({ type: 'attester', data: { text: 'hosting setup', expectedChunkCount, i, amendmentID, len: chunks.length } })
                 promise.catch(err => {
                   log({ type: 'fail', data: { text: 'promise handlerCB', err } })
                   status = 'FAIL'
@@ -442,10 +469,10 @@ async function attest_hosting_setup (data) {
                   }
                 })
               }
-              log({ type: 'info', data: { text: 'Sending report', expectedChunkCount, len: chunks.length } })
               handlerCB('DONE')
               status = 'END'
               await Promise.all(chunks)
+              log({ type: 'attester', data: { text: 'Sending report', expectedChunkCount, len: chunks.length } })
               clearTimeout(tid)
               // beam.destroy()
               resolve(failedKeys)
@@ -699,7 +726,7 @@ async function get_data_and_stats (feed, index, log) {
 
  // HELPERS
 
- async function get_storage_challenge_data (storageChallenge) {
+ async function get_storage_challenge_data (storageChallenge, chainAPI) {
   const { id, checks, hoster: hosterID, attestor: attestorID } = storageChallenge
   const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
   const hosterSigningKey = await chainAPI.getSigningKey(hosterID)
@@ -709,7 +736,7 @@ async function get_data_and_stats (feed, index, log) {
     const contract_id = contract_ids[i]
     const contract = await chainAPI.getItemByID(contract_id)
     const { feed: feedID, ranges, amendments } = await chainAPI.getContractByID(contract_id)
-    const [encoderID, pos] = await getEncoderID(amendments, hosterID)
+    const [encoderID, pos] = await getEncoderID(amendments, hosterID, chainAPI)
     const { feedkey, signatures } = await chainAPI.getFeedByID(feedID)
 
     checks[contract_id].feedKey = feedkey
@@ -723,14 +750,14 @@ async function get_data_and_stats (feed, index, log) {
   return { storageChallengeID: id, attestorKey, hosterKey, hosterSigningKey, checks }
 }
 
-async function getEncoderID (amendments, hosterID) {
+async function getEncoderID (amendments, hosterID, chainAPI) {
   const active_amendment = await chainAPI.getAmendmentByID(amendments[amendments.length-1])
   const pos =  active_amendment.providers.hosters.indexOf(hosterID)
   const encoderID = active_amendment.providers.encoders[pos]
   return [encoderID, pos]
 }
 
-async function getData (amendment, contract) {
+async function getData (chainAPI, amendment, contract) {
   const { encoders, hosters } = amendment.providers
   const enc_promises = encoders.map(async (id) => chainAPI.getEncoderKey(id))
   const encoderKeys = await Promise.all(enc_promises)

@@ -7,6 +7,8 @@ const Hyperbeam = require('hyperbeam')
 
 const proof_codec = require('datdot-codec/proof')
 
+const HosterStorage = require('./hoster/hoster-storage.js')
+const sub = require('subleveldown')
 const brotli = require('brotli')
 const ready = require('_datdot-service-helpers/hypercore-ready')
 const hypercore_replicated = require('_datdot-service-helpers/hypercore-replicated')
@@ -67,23 +69,45 @@ async function encode_hosting_setup (data) {
   const { amendmentID, swarmAPI, account, attestorKey, encoderKey, ranges, encoder_pos, signatures, feedKey, log } = data
   const log2Attestor = log.sub(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
   const expectedChunkCount = getRangesCount(ranges)
+  var download_count = 0
   let stats = {
     ackCount: 0
   }
   return new Promise(async (resolve, reject) => {
     if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
-    const stringkey = feedKey.toString('hex')
-    const feed = new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true })
-    await ready(feed)
-
-    const mode = { server: false, client: true }
-    swarmAPI.connect_topic(log, amendmentID, feed.discoveryKey, mode, () => { return onconnection })
+    const stringKey = feedKey.toString('hex')
+    var feed
+    if (account.storages.has(stringKey)) {
+      const storage = account.storages.get(stringKey)
+      feed = storage.feed
+      log({ type: 'encoder', data: { text: `Existing feed`, amendmentID, feedkey: feed.key.toString('hex') } })
+    } else {
+      feed = new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true })
+      log({ type: 'encoder', data: { text: `New feed`, amendmentID, feedkey: feed.key.toString('hex') } })
+      await ready(feed)
+      const mode = { server: false, client: true }
+      const discovery = swarmAPI.swarm.join(feed.discoveryKey, mode)
+      swarmAPI.swarm.on('connection', async (socket) => onconnection(socket))
+      const db = sub(account.db, stringKey, { valueEncoding: 'binary' })
+      const storage = new HosterStorage({ db, discovery, feed, log })
+      account.storages.set(stringKey, storage)
+    }
 
     async function onconnection (socket) {
       const peerkey = socket.remotePublicKey
       log({ type: 'encoder', data: { text: `Got connection`, peerkey: peerkey.toString('hex'), isInitiator: socket.isInitiator } })
       socket.pipe(feed.replicate(socket.isInitiator)).pipe(socket)
-      await hypercore_replicated(feed)
+      feed.on('download', () => {
+        download_count++
+        log({ type: 'encoder', data: { text: `Download count`, download_count, expectedChunkCount } })
+        if (download_count === expectedChunkCount) {
+          try { 
+            // socket.end() 
+            // setTimeout(()=> { socket.end() }, 2000)
+          }
+          catch(err) { log({ type: 'hoster', data: { text: `Closing socket error`, err } }) }
+        }
+      })
       // @NOTE:
       // sponsor provides only feedkey and swarmkey (no metadata)
       // when chain makes contracts, it checks if there is a signature for highest index of the contract
