@@ -102,7 +102,7 @@ async function encode_hosting_setup (data) {
         log({ type: 'encoder', data: { text: `Download count`, download_count, expectedChunkCount } })
         if (download_count === expectedChunkCount) {
           try { 
-            // socket.end() 
+            socket.end() 
             // setTimeout(()=> { socket.end() }, 2000)
           }
           catch(err) { log({ type: 'hoster', data: { text: `Closing socket error`, err } }) }

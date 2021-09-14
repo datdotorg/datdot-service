@@ -332,16 +332,16 @@ async function loadFeedData({ account, swarmAPI, amendmentID, ranges, feedKey, e
 
       async function onconnection (socket) {
         const peerkey = socket.remotePublicKey
-        log({ type: 'hoster', data: { text: `Got connection`, peerkey: peerkey.toString('hex'), isInitiator: socket.isInitiator } })
+        log({ type: 'hoster', data: { text: `Got connection`, amendmentID, peerkey: peerkey.toString('hex'), isInitiator: socket.isInitiator } })
         socket.pipe(feed.replicate(socket.isInitiator)).pipe(socket)
         feed.on('download', async () => {
           download_count++
-          log({ type: 'hoster', data: { text: `Download count`, download_count, expectedChunkCount } })
+          log({ type: 'hoster', data: { text: `Download count`, amendmentID, download_count, expectedChunkCount } })
           if (download_count === expectedChunkCount) {
             try { 
               // await discovery.refresh({ server: true, client: false })
               // setTimeout(()=> { socket.end() }, 2000)
-              
+              socket.end()
             }
             catch(err) { log({ type: 'hoster', data: { text: `Closing socket error`, err } }) }
           }
