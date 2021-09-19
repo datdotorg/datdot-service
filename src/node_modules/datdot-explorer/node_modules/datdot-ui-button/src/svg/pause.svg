@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="16" height="16" viewBox="0 0 16 16">
+  <defs>
+    <clipPath id="clip-pause">
+      <rect width="16" height="16"/>
+    </clipPath>
+  </defs>
+  <g id="pause" clip-path="url(#clip-pause)">
+    <path id="Path_315" data-name="Path 315" d="M109.011,18.712h0a1.984,1.984,0,0,1,.774,2.7h0l-.721,1.3h0l-3.471-1.923h0l.721-1.3a1.984,1.984,0,0,1,2.7-.774Z" transform="translate(-91.202 -18.264)" fill="none"/>
+    <path id="Union_67" data-name="Union 67" d="M-2183.09-29a1,1,0,0,1-1-1V-42a1,1,0,0,1,1-1h1.89a1,1,0,0,1,1,1v12a1,1,0,0,1-1,1Zm-5.91,0a1,1,0,0,1-1-1V-42a1,1,0,0,1,1-1h1.889a1,1,0,0,1,1,1v12a1,1,0,0,1-1,1Z" transform="translate(2193 44)" stroke="rgba(0,0,0,0)" stroke-miterlimit="10" stroke-width="1"/>
+  </g>
+</svg>
