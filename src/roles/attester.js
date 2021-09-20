@@ -20,7 +20,7 @@ const tempDB = require('_tempdb')
 const getRangesCount = require('getRangesCount')
 const compare_encodings = require('compare-encodings')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
-const get_index = require('get-index')
+const get_index = require('_datdot-service-helpers/get-index')
 const download_range = require('download-range')
 const { hexAddPrefix } = require('@polkadot/util')
 
@@ -86,10 +86,10 @@ async function attester (identity, log, APIS) {
         signatures[hoster_id] = unique_el_signature
       }
       const report = { id: amendmentID, failed: failedKeys, signatures }
-      log({ type: 'attestor', data: { text: `Report ready`, amendmentID, report: JSON.stringify(report) } })  
+      log({ type: 'attestor', data: { text: `Report ready`, amendmentID } })  
       const nonce = await vaultAPI.getNonce()
       await chainAPI.amendmentReport({ report, signer, nonce })
-      log({ type: 'attester', data: { text: 'Report sent', amendmentID, report: JSON.stringify(report) } })
+      log({ type: 'attester', data: { text: 'Report sent', amendmentID } })
     }
 
     if (event.method === 'NewStorageChallenge') {

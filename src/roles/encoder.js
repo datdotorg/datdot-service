@@ -1,23 +1,19 @@
 const { toPromises } = require('hypercore-promisifier')
 const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
-const hyperswarm = require('hyperswarm')
 const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
+const load_feed = require('_datdot-service-helpers/load_feed')
 
 const proof_codec = require('datdot-codec/proof')
 
-const HosterStorage = require('./hoster/hoster-storage.js')
-const sub = require('subleveldown')
+const HosterStorage = require('_datdot-service-helpers/hoster-storage')
 const brotli = require('brotli')
-const ready = require('_datdot-service-helpers/hypercore-ready')
-const hypercore_replicated = require('_datdot-service-helpers/hypercore-replicated')
 const getRangesCount = require('getRangesCount')
 const get_nodes = require('_datdot-service-helpers/get-nodes')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
-const destroy_swarm = require('_datdot-service-helpers/destroy-swarm')
 const serialize_before_compress = require('serialize-before-compress')
-const get_index = require('get-index')
+const get_index = require('_datdot-service-helpers/get-index')
 
 /******************************************************************************
   ROLE: Encoder
@@ -75,71 +71,31 @@ async function encode_hosting_setup (data) {
   }
   return new Promise(async (resolve, reject) => {
     if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
-    const stringKey = feedKey.toString('hex')
-    var feed
-    if (account.storages.has(stringKey)) {
-      const storage = account.storages.get(stringKey)
-      feed = storage.feed
-      log({ type: 'encoder', data: { text: `Existing feed`, amendmentID, feedkey: feed.key.toString('hex') } })
-    } else {
-      feed = new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true })
-      log({ type: 'encoder', data: { text: `New feed`, amendmentID, feedkey: feed.key.toString('hex') } })
-      await ready(feed)
-      const mode = { server: false, client: true }
-      const discovery = swarmAPI.swarm.join(feed.discoveryKey, mode)
-      swarmAPI.swarm.on('connection', async (socket) => onconnection(socket))
-      const db = sub(account.db, stringKey, { valueEncoding: 'binary' })
-      const storage = new HosterStorage({ db, discovery, feed, log })
-      account.storages.set(stringKey, storage)
-    }
+    const feed = await load_feed ('encoder', swarmAPI, account, feedKey, log)
 
-    async function onconnection (socket) {
-      const peerkey = socket.remotePublicKey
-      log({ type: 'encoder', data: { text: `Got connection`, peerkey: peerkey.toString('hex'), isInitiator: socket.isInitiator } })
-      socket.pipe(feed.replicate(socket.isInitiator)).pipe(socket)
-      feed.on('download', () => {
-        download_count++
-        log({ type: 'encoder', data: { text: `Download count`, download_count, expectedChunkCount } })
-        if (download_count === expectedChunkCount) {
-          try { 
-            socket.end() 
-            // setTimeout(()=> { socket.end() }, 2000)
-          }
-          catch(err) { log({ type: 'hoster', data: { text: `Closing socket error`, err } }) }
-        }
-      })
-      // @NOTE:
-      // sponsor provides only feedkey and swarmkey (no metadata)
-      // when chain makes contracts, it checks if there is a signature for highest index of the contract
-      // if not, it emits signature: true (only when signature is needed)  => OR ATTESTOR DOES THE CHECK when event is received
-      // if (signature)
-        // encoders in this contract get the signature for the highest index and send it to attestor
-        // attestor compares the signatures and nodes and if they match, it sends them to the chain with the report
-  
-      // create temp hypercore
-      const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
-      await core.ready()
+    // create temp hypercore
+    const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
+    await core.ready()
+    
+    // connect to attestor
+    const topic = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
+    const beam = new Hyperbeam(topic)
      
-      // connect to attestor
-      const topic = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
-      const beam = new Hyperbeam(topic)
-      
-      // send the key and signature
-      const temp_topic = topic + 'once'
-      const beam_temp = new Hyperbeam(temp_topic)
-      beam_temp.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
-      // beam_temp.write(JSON.stringify({ type: 'feedkey', data: [core.key.toString('hex'), signature.toString('hex')] }))
-      
-      // pipe streams
-      const coreStream = core.replicate(true, { live: true, ack: true })
-      coreStream.pipe(beam).pipe(coreStream)
-      coreStream.on('ack', ack => {
-        log2Attestor({ type: 'encoder', data: [`ACK from attestor: chunk received`] })
-        stats.ackCount++
-      })
-      // destroy_swarm(swarm)
-      start(core)
-    }
+    // send the key and signature
+    const temp_topic = topic + 'once'
+    const beam_temp = new Hyperbeam(temp_topic)
+    beam_temp.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
+    // beam_temp.write(JSON.stringify({ type: 'feedkey', data: [core.key.toString('hex'), signature.toString('hex')] }))
+     
+    // pipe streams
+    const coreStream = core.replicate(true, { live: true, ack: true })
+    coreStream.pipe(beam).pipe(coreStream)
+    coreStream.on('ack', ack => {
+      log2Attestor({ type: 'encoder', data: [`ACK from attestor: chunk received`] })
+      stats.ackCount++
+    })
+    // destroy_swarm(swarm)
+    start(core)
     
     async function start (core) {
       var total = 0
@@ -168,6 +124,7 @@ async function encode_hosting_setup (data) {
   }
   async function download_and_encode (account, index, feed, signatures, amendmentID, encoder_pos) {
     const data = await get_index(feed, index)
+    log({ type: 'encoder', data: [`Got data ${data}`]})
     const unique_el = `${amendmentID}/${encoder_pos}`
     const to_compress = serialize_before_compress(data, unique_el)
     const encoded_data = await brotli.compress(to_compress)

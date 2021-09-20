@@ -1,23 +1,18 @@
 const { toPromises } = require('hypercore-promisifier')
 const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
-const hyperswarm = require('hyperswarm')
 const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
 const brotli = require('brotli')
 const varint = require('varint')
-const sub = require('subleveldown')
+const load_feed = require('_datdot-service-helpers/load_feed')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
 
-const ready = require('_datdot-service-helpers/hypercore-ready')
-const get_index = require('get-index')
+const get_index = require('_datdot-service-helpers/get-index')
 const getRangesCount = require('getRangesCount')
-const HosterStorage = require('./hoster-storage.js')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
-const hypercore_replicated = require('_datdot-service-helpers/hypercore-replicated')
-const { keyPair } = require('hypercore-crypto')
 
 const DEFAULT_TIMEOUT = 7500
 
@@ -312,52 +307,18 @@ async function loadFeedData({ account, swarmAPI, amendmentID, ranges, feedKey, e
   var download_count = 0
   return new Promise(async (resolve, reject) => {
     try {
-      const storage = await getStorage({ account, key: feedKey, cb: onconnection, log })
-      var feed
-      const stringKey = feedKey.toString('hex')
-      if (!storage) {
-        feed = new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true })
-        var mode = { server: false, client: true } // @TODO
-        const discovery = swarmAPI.swarm.join(feed.discoveryKey, mode)
-        swarmAPI.swarm.on('connection', async (socket) => onconnection(socket))  
-        await ready(feed)
-        const db = sub(account.db, stringKey, { valueEncoding: 'binary' })
-        const storage = new HosterStorage({ db, discovery, feed, log })
-        account.storages.set(stringKey, storage)
-      } else {
-        feed = storage.feed
-      }
-      
+      const stringkey = feedKey.toString('hex')
+      log({ type: 'hoster', data: { text: 'loding feed data', stringkey } })
+      const feed = await load_feed ('hoster', swarmAPI, account, feedKey, log)    
+      log({ type: 'hoster', data: { text: 'feed loaded', feed_length: feed.length } })
       const ext = feed.registerExtension('datdot-hoster', { encoding: 'binary ' })
 
-      async function onconnection (socket) {
-        const peerkey = socket.remotePublicKey
-        log({ type: 'hoster', data: { text: `Got connection`, amendmentID, peerkey: peerkey.toString('hex'), isInitiator: socket.isInitiator } })
-        socket.pipe(feed.replicate(socket.isInitiator)).pipe(socket)
-        feed.on('download', async () => {
-          download_count++
-          log({ type: 'hoster', data: { text: `Download count`, amendmentID, download_count, expectedChunkCount } })
-          if (download_count === expectedChunkCount) {
-            try { 
-              // await discovery.refresh({ server: true, client: false })
-              // setTimeout(()=> { socket.end() }, 2000)
-              socket.end()
-            }
-            catch(err) { log({ type: 'hoster', data: { text: `Closing socket error`, err } }) }
-          }
-        })
-
-        if (socket.isInitiator === false) { // serving data
-          const stringKey = feedKey.toString('hex')
-          // hoster keeps track of how many downloads they have by incremented counter
-          const counter = organizer.feeds[stringKey].counter++
-          const data = Buffer.from(`${organizer.performance_challenge_id}`, 'binary')
-          const perf_sig = account.sign(data)
-          log({ type: 'hosting', data: [`Signing extension message: ${perf_sig}`] })
-          ext.broadcast(perf_sig)
-        }
-
-      }
+      // hoster keeps track of how many downloads they have by incremented counter
+      const counter = organizer.feeds[stringkey].counter++
+      const data = Buffer.from(`${organizer.performance_challenge_id}`, 'binary')
+      const perf_sig = account.sign(data)
+      log({ type: 'hosting', data: [`Signing extension message: ${perf_sig}`] })
+      ext.broadcast(perf_sig)
       let all = []
       let indizes = []
       for (const range of ranges) {
