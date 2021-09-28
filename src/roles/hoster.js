@@ -74,6 +74,7 @@ async function hoster(identity, log, APIS) {
         log({ type: 'hoster', data: [`Hosting for the amendment ${amendmentID} started`] })
       } catch (error) { 
         log({ type: 'error', data: { text: 'Caught error from hosting setup (hoster)', error }})
+        console.log(error)
       }
     }
     if (event.method === 'DropHosting') {
@@ -255,7 +256,7 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
           }
           try {
             if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
-            log2attestor({ type: 'hoster', data: [`Encoder data signature verified`] })
+            log2attestor({ type: 'hoster', data: { text:`Encoder data signature verified`, encoded_data } })
             const decompressed = await brotli.decompress(encoded_data)
             await datdot_crypto.verify_chunk_hash(index, decompressed, unique_el, nodes).catch(err => reject('not valid chunk hash', err))
             log2attestor({ type: 'hoster', data: [`Chunk hash verified`] })
@@ -308,10 +309,8 @@ async function loadFeedData({ account, swarmAPI, amendmentID, ranges, feedKey, e
   return new Promise(async (resolve, reject) => {
     try {
       const stringkey = feedKey.toString('hex')
-      log({ type: 'hoster', data: { text: 'loding feed data', stringkey } })
-      const feed = await load_feed ('hoster', swarmAPI, account, feedKey, log)    
-      log({ type: 'hoster', data: { text: 'feed loaded', feed_length: feed.length } })
-      const ext = feed.registerExtension('datdot-hoster', { encoding: 'binary ' })
+      const { feed, ext } = await load_feed ('hoster', swarmAPI, account, feedKey, log)
+      log({ type: 'hoster', data: { text: 'feed loaded', feed_length: feed.length, ext: !ext ? 'undefined' : 'extension' } })
 
       // hoster keeps track of how many downloads they have by incremented counter
       const counter = organizer.feeds[stringkey].counter++

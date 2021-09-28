@@ -1,10 +1,10 @@
 
 module.exports = [
   { "name": "alice", "behavior": ["register_chain_account", "subscribe_to_plan", "offer_service"] },
+  { "name": "eve", "behavior": ["register_chain_account", "author_hypercore"] },
   { "name": "bob", "behavior": ["register_chain_account", "offer_service"] },
   { "name": "charlie", "behavior": ["register_chain_account", "offer_service"] },
   { "name": "dave", "behavior": ["register_chain_account", "offer_service"] },
-  { "name": "eve", "behavior": ["register_chain_account", "author_hypercore"] },
   { "name": "janice", "behavior": ["register_chain_account", "offer_service"] },
   { "name": "ferdie", "behavior": ["register_chain_account", "offer_service"] },
   { "name": "one", "behavior": ["register_chain_account", "offer_service"] },

@@ -71,7 +71,7 @@ async function encode_hosting_setup (data) {
   }
   return new Promise(async (resolve, reject) => {
     if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
-    const feed = await load_feed ('encoder', swarmAPI, account, feedKey, log)
+    const { feed } = await load_feed ('encoder', swarmAPI, account, feedKey, log)
 
     // create temp hypercore
     const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
@@ -108,7 +108,8 @@ async function encode_hosting_setup (data) {
   // HELPERS
   async function sendDataToAttestor ({ account, core, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log }) {
     for (let index = range[0], len = range[1] + 1; index < len; index++) {
-      const msg = await download_and_encode(account, index, feed, signatures, amendmentID, encoder_pos)
+      log({ type: 'encoder', data: { text: 'Download index', index, range }})
+      const msg = await download_and_encode(account, index, feed, signatures, amendmentID, encoder_pos, log)
       send({ msg, core, log, stats, expectedChunkCount })
     }
   }
@@ -122,11 +123,11 @@ async function encode_hosting_setup (data) {
       }
     })
   }
-  async function download_and_encode (account, index, feed, signatures, amendmentID, encoder_pos) {
+  async function download_and_encode (account, index, feed, signatures, amendmentID, encoder_pos, log) {
     const data = await get_index(feed, index)
-    log({ type: 'encoder', data: [`Got data ${data}`]})
     const unique_el = `${amendmentID}/${encoder_pos}`
-    const to_compress = serialize_before_compress(data, unique_el)
+    const to_compress = serialize_before_compress(data, unique_el, log)
+    log({ type: 'encoder', data: {  text: `Got data`, data, to_compress }})
     const encoded_data = await brotli.compress(to_compress)
     const encoded_data_signature = account.sign(encoded_data)
     

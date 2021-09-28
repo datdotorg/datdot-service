@@ -597,7 +597,7 @@ async function attest_storage_challenge (data) {
         const json = chunk.toString('binary')
         const data = proof_codec.decode(json)
         const { contractID, index, encoded_data, encoded_data_signature, nodes } = data
-        log2hosterChallenge({ type: 'attestor', data: [`Storage proof received, ${index}`]})
+        log2hosterChallenge({ type: 'attestor', data: { text: `Storage proof received, ${index}`, encoded_data } })
 
         const check = checks[contractID] // { index, feedKey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey }
         const { index: check_index, feedKey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey } = check
@@ -664,7 +664,7 @@ async function connect_and_replicate (core, log) {
 
 async function on_ext_message (feed, log, done) {
   // return 'foo'
-  const string_key = feed.key.toString('hex')
+  const stringkey = feed.key.toString('hex')
   feed.registerExtension('datdot-hoster', { 
     encoding: 'binary',
     async onmessage (perf_sig) {
