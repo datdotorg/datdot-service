@@ -10,6 +10,8 @@ function i_dropdown ({page = '*', flow = 'ui-dropdown', name, options = {}, expa
     const recipients = []
     const make = message_maker(`${name} / ${flow} / ${page}`)
     const message = make({type: 'ready'})
+    const list_name = `${name}-list`
+
     let is_expanded = expanded
     let is_disabled = disabled
     let store_data = []
@@ -18,7 +20,7 @@ function i_dropdown ({page = '*', flow = 'ui-dropdown', name, options = {}, expa
         list.array.map( item => {
             const obj = item.current || item.selected ?  item : list.array[0]
             init_selected = {
-                name: button.name,
+                name,
                 body: obj.text,
                 icons: {
                     select: button.select ? button.select : undefined,
@@ -38,8 +40,8 @@ function i_dropdown ({page = '*', flow = 'ui-dropdown', name, options = {}, expa
         const send = protocol(get)
         const dropdown = document.createElement('i-dropdown')
         const shadow = dropdown.attachShadow({mode: 'closed'})
-        const i_button = make_button({page, option: mode === 'single-select' ? init_selected : button, mode, expanded: is_expanded, theme: button.theme}, dropdown_protocol)
-        const i_list = make_list({page, option: list, mode, hidden: is_expanded}, dropdown_protocol)
+        const i_button = make_button({page, name, option: mode === 'single-select' ? init_selected : button, mode, expanded: is_expanded, theme: button.theme}, dropdown_protocol)
+        const i_list = make_list({page, name: list_name, option: list, mode, hidden: is_expanded}, dropdown_protocol)
         send(message)
         dropdown.setAttribute('aria-label', name)
         if (is_disabled) dropdown.setAttribute('disabled', is_disabled)
@@ -53,16 +55,19 @@ function i_dropdown ({page = '*', flow = 'ui-dropdown', name, options = {}, expa
         function handle_collapsed () {
             // trigger expanded event via document.body
             document.body.addEventListener('click', (e)=> {
+                const make = message_maker(`All`)
+                const to = `${name} / ${flow} / ${page}`
                 const type = 'collapsed'
-                const to = `${button ? button.name : name} / listbox / ui-list`
                 is_expanded = false
-                recipients[button.name]( make({to, type, data: is_expanded}) )
-                recipients[list.name]( make({type, data: !is_expanded}) )
+                recipients[name]( make({type, data: is_expanded}) )
+                recipients[list_name]( make({type, data: !is_expanded}) )
                 send( make({to, type, data: {selected: store_data}}) )
             })
         }
         function handle_change_event (content) {
-            recipients[button.name](make({type: 'changed', data: content}))
+            const msg = make({type: 'changed', data: content})
+            recipients[name](msg)
+            send(msg)
         }
         function handle_select_event (data) {
             const {mode, selected} = data
@@ -89,11 +94,11 @@ function i_dropdown ({page = '*', flow = 'ui-dropdown', name, options = {}, expa
             // check which one dropdown is not using then do collapsed
             if (from !== name) {
                 recipients[name](make({type: 'collapsed', data: is_expanded}))
-                recipients[list.name](make({type, data: !is_expanded}))
+                recipients[list_name](make({type, data: !is_expanded}))
             }
             // check which dropdown is currently using then do expanded
             recipients[name](make({type, data: is_expanded}))
-            recipients[list.name](make({type, data: !is_expanded}))
+            recipients[list_name](make({type, data: !is_expanded}))
             if (is_expanded && from == name) shadow.append(i_list)
         }
         function dropdown_protocol (name) {
@@ -104,10 +109,8 @@ function i_dropdown ({page = '*', flow = 'ui-dropdown', name, options = {}, expa
         }
         function get (msg) {
             const {head, refs, type, data} = msg 
-            const from = head[0].split('/')[0].trim()
             send(msg)
-            // console.log(recipients);
-            if (type.match(/expanded|collapsed/)) return handle_expanded_event(data)
+            if (type.match(/expanded|collapsed/)) return handle_expanded_event( data)
             if (type.match(/selected/)) return handle_select_event(data)
         }
     }
@@ -126,15 +129,17 @@ function i_dropdown ({page = '*', flow = 'ui-dropdown', name, options = {}, expa
             padding, margin, width, height, opacity,
             shadow_color, offset_x, offset_y, blur, shadow_opacity,
             shadow_color_hover, offset_x_hover, offset_y_hover, blur_hover, shadow_opacity_hover,
-            margin_top
+            margin_top = '5px'
         } = theme.props
     }
+
+    const {direction = 'down', start = '0', end = '40px'} = list
 
     const style = `
     :host(i-dropdown) {
         position: relative;
         display: grid;
-        width: 100%;
+        max-width: 100%;
     }
     :host(i-dropdown[disabled]) {
         cursor: not-allowed;
@@ -146,10 +151,10 @@ function i_dropdown ({page = '*', flow = 'ui-dropdown', name, options = {}, expa
     i-list {
         position: absolute;
         left: 0;
-        top: 40px;
-        margin-top: ${margin_top ? margin_top : '5px'};
+        margin-top: ${margin_top};
         z-index: 1;
         width: 100%;
+        ${direction === 'down' ? `top: ${end}` : `bottom: ${end};`}
     }
     i-list[aria-hidden="false"] {
         animation: down 0.3s ease-in;
@@ -161,32 +166,32 @@ function i_dropdown ({page = '*', flow = 'ui-dropdown', name, options = {}, expa
     @keyframes down {
         0% {
             opacity: 0;
-            top: 0px;
+            ${direction === 'down' ? `top: ${start};` : `bottom: ${start};`}
         }
         50% {
             opacity: 0.5;
-            top: 20px;
+            ${direction === 'down' ? `top: 20px;` : `bottom: 20px;`}
         }
         100%: {
             opacity: 1;
-            top: 40px;
+            ${direction === 'down' ? `top: ${end}` : `bottom: ${end};`}
         }
     }
     
     @keyframes up {
         0% {
             opacity: 1;
-            top: 40px;
+            ${direction === 'down' ? `top: ${end}` : `bottom: ${end};`}
         }
         50% {
-            top: 20px;
+            ${direction === 'down' ? `top: 20px;` : `bottom: 20px;`}
         }
         75% {
             opacity: 0.5;
         }
         100%: {
             opacity: 0;
-            top: 0px;
+            ${direction === 'down' ? `top: ${start};` : `bottom: ${start};`}
         }
     } 
     ${custom_style}

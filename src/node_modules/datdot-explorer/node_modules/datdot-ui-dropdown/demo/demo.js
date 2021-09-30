@@ -20,7 +20,6 @@ function demo () {
         disabled: false,
         options: {
             button: {
-                name: 'terminal',
                 // select: {name: 'star'}
                 theme: {
                     props: {
@@ -44,7 +43,6 @@ function demo () {
                 }
             },
             list: {
-                name: 'terminal-selector',
                 array: [
                     {
                         text: 'Compact messages',
@@ -74,7 +72,6 @@ function demo () {
         disabled: false,
         options: {
             button: {
-                name: 'filter',
                 body: 'Filter',
                 // mode: 'selector',
                 icons: {
@@ -84,7 +81,6 @@ function demo () {
                 cover: 'https://images.unsplash.com/photo-1629122307243-c913571a1df6?ixid=MnwxMjA3fDB8MHxlZGl0b3JpYWwtZmVlZHw5MXx8fGVufDB8fHx8&ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
             },
             list: {
-                name: 'filter-options',
                 array: [
                     {
                         text: 'Option1',
@@ -105,27 +101,6 @@ function demo () {
                 ],
             }
         },
-        // body: {
-        //     content: 'Filter',
-        //     dropdown_icon: {dropdown_icon_name: 'filter'},
-        //     button_mode: 'selector',
-        //     list_name: 'filter-options',
-        //     list_icon: {list_icon_name: 'star'},
-        //     options: [
-        //         {
-        //             text: 'Option1',
-        //             // selected: false
-        //         },
-        //         {
-        //             text: 'Option2',
-        //             selected: false
-        //         },
-        //         {
-        //             text: 'Option3',
-        //             selected: true
-        //         }
-        //     ]
-        // },
         theme: {
             props: {
                 margin_top: '23px'
@@ -133,9 +108,32 @@ function demo () {
         }
     }
     
+    const dropdown_up_option = {
+        name: 'up-selector',
+        expanded: false,
+        options: {
+            button: {
+                name: 'up-selector'
+            },
+            list: {
+                name: 'up-list',
+                direction: 'up',
+                end: '55px',
+                array: [
+                    {text: 'datdot.org', role: 'menuitem'},
+                    {text: 'playproject.io', role: 'menuitem'}
+                ]
+            }
+        },
+    }
+
     const content = bel`
     <div class="${css.content}">
         <h1>Dropdown</h1>
+        <aside class="${css.example}">
+            <h2>menu</h2>
+            ${dropdown(dropdown_up_option, protocol(dropdown_up_option.name))}
+        </aside>
         <aside class="${css.example}">
             <h2>Single select</h2>
             ${dropdown(single_select_option, protocol(single_select_option.name))}
@@ -329,8 +327,8 @@ const css = csjs`
     /*-- collapsed --*/
     --listbox-collapsed-bg-color: var(--primary-bg-color);
     --listbox-collapsed-bg-color-hover: var(--primary-bg-color-hover);
-    --listbox-collapsed-icon-size: var(--size20);
-    --listbox-collapsed-icon-size-hover: var(--size20);
+    --listbox-collapsed-icon-size: var(--size14);
+    --listbox-collapsed-icon-size-hover: var(--size14);
     --listbox-collapsed-icon-fill: var(--primary-icon-fill);
     --listbox-collapsed-icon-fill-hover: var(--primary-icon-fill-hover);
     --listbox-collapsed-listbox-size: var(--primary-size);
