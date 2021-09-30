@@ -126,6 +126,7 @@ async function encode_hosting_setup (data) {
   async function download_and_encode (account, index, feed, signatures, amendmentID, encoder_pos, log) {
     const data = await get_index(feed, index)
     const unique_el = `${amendmentID}/${encoder_pos}`
+    console.log({text: `awaiting index as an encoder`, data, index})
     const to_compress = serialize_before_compress(data, unique_el, log)
     log({ type: 'encoder', data: {  text: `Got data`, data, to_compress }})
     const encoded_data = await brotli.compress(to_compress)

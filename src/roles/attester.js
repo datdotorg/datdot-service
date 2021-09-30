@@ -82,7 +82,9 @@ async function attester (identity, log, APIS) {
       const signatures = {}
       for (var i = 0, len = sigs.length; i < len; i++) {
         const { unique_el_signature, hosterKey } = sigs[i]
+        console.log({ text: 'Signature', sig: sigs[i] })
         const hoster_id = await chainAPI.getUserIDByNoiseKey(Buffer.from(hosterKey, 'hex'))
+        console.log({ text: 'Signature', sig: sigs[i], hoster_id })
         signatures[hoster_id] = unique_el_signature
       }
       const report = { id: amendmentID, failed: failedKeys, signatures }
@@ -234,6 +236,7 @@ async function attest_hosting_setup (data) {
     failed.push(failedKeys)
     sigs.push({ unique_el_signature, hosterKey })
   })
+  console.log({ text: 'resolved responses', amendmentID, failed, sigs})
   const failed_set =  [...new Set(failed.flat())]  
   const report = { failedKeys: failed_set, sigs }
   return report
@@ -665,7 +668,7 @@ async function connect_and_replicate (core, log) {
 async function on_ext_message (feed, log, done) {
   // return 'foo'
   const stringkey = feed.key.toString('hex')
-  feed.registerExtension('datdot-hoster', { 
+  feed.registerExtension(`datdot-hoster-${stringkey}`, { 
     encoding: 'binary',
     async onmessage (perf_sig) {
       log('got an ext message')
