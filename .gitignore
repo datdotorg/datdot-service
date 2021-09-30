@@ -1,6 +1,7 @@
 /@todo/*
 /node_modules/*
 /package-lock.json
+/pnpm-lock.yaml
 /npm-debug.log
 
 /yarn.lock
