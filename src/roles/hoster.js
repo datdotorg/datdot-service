@@ -3,7 +3,7 @@ const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
 const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
-const brotli = require('brotli')
+const brotli = require('_datdot-service-helpers/brotli')
 const varint = require('varint')
 const load_feed = require('_datdot-service-helpers/load_feed')
 

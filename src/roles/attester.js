@@ -4,7 +4,7 @@ const derive_topic = require('derive-topic')
 const hyperswarm = require('hyperswarm')
 const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
-const brotli = require('brotli')
+const brotli = require('_datdot-service-helpers/brotli')
 const varint = require('varint')
 const { data } = require('hypercore-crypto')
 

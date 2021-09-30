@@ -8,7 +8,7 @@ const load_feed = require('_datdot-service-helpers/load_feed')
 const proof_codec = require('datdot-codec/proof')
 
 const HosterStorage = require('_datdot-service-helpers/hoster-storage')
-const brotli = require('brotli')
+const brotli = require('_datdot-service-helpers/brotli')
 const getRangesCount = require('getRangesCount')
 const get_nodes = require('_datdot-service-helpers/get-nodes')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
