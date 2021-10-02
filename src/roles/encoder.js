@@ -71,7 +71,7 @@ async function encode_hosting_setup (data) {
   }
   return new Promise(async (resolve, reject) => {
     if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
-    const { feed } = await load_feed ('encoder', swarmAPI, account, feedKey, log)
+    const { feed, update_feed_storage } = await load_feed ({ role: 'encoder', swarmAPI, account, feedkey: feedKey, log })
 
     // create temp hypercore
     const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
@@ -101,24 +101,25 @@ async function encode_hosting_setup (data) {
       var total = 0
       for (const range of ranges) total += (range[1] + 1) - range[0]
       log2Attestor({ type: 'encoder', data: [`Start encoding and sending data to attestor`] })
-      for (const range of ranges) sendDataToAttestor({ account, core, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor })
+      for (const range of ranges) sendDataToAttestor({ account, core, range, feed, update_feed_storage, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor })
     }
   })
 
   // HELPERS
-  async function sendDataToAttestor ({ account, core, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log }) {
+  async function sendDataToAttestor ({ account, core, range, feed, update_feed_storage, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log }) {
     for (let index = range[0], len = range[1] + 1; index < len; index++) {
       log({ type: 'encoder', data: { text: 'Download index', index, range }})
       const msg = await download_and_encode(account, index, feed, signatures, amendmentID, encoder_pos, log)
-      send({ msg, core, log, stats, expectedChunkCount })
+      send({ account, feedkey: feed.key, task_id: amendmentID, update_feed_storage, msg, core, log, stats, expectedChunkCount })
     }
   }
-  async function send ({ msg, core, log, stats, expectedChunkCount }) {
+  async function send ({ account, feedkey, task_id, update_feed_storage, msg, core, stats, expectedChunkCount, log }) {
     return new Promise(async (resolve, reject) => {
       const message = await msg
       await core.append(proof_codec.encode(message))
       log({ type: 'encoder', data: [`MSG appended ${message.index}`]})
       if (stats.ackCount === expectedChunkCount) {
+        await update_feed_storage({ account, feedkey, task_id, log })
         resolve(`Encoded ${message.index} sent`)
       }
     })

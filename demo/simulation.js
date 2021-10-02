@@ -1,10 +1,10 @@
 process.env.DEBUG = '*,-hypercore-protocol'
 const spawn = require('cross-spawn')
 const path = require('path')
-const dht_rpc = require('dht-rpc')
+// const dht_rpc = require('dht-rpc')
 
-const bootstrap = new dht_rpc({ ephemeral: true })
-bootstrap.bind(10001)
+// const bootstrap = new dht_rpc({ ephemeral: true })
+// bootstrap.bind(10001)
 setTimeout(run, 1000)
 
 async function run (){
@@ -50,10 +50,11 @@ async function run (){
   const all = [process]
   const url = 'ws://localhost'
 
-  const bootstrap_nodes = [
-    { host: 'localhost', port: 10001 }
-  ]
-  const config = JSON.stringify({ chain: [url, 3399], chat: [url, 6697], bootstrap_nodes })
+  // const bootstrap_nodes = [
+  //   { host: 'localhost', port: 10001 }
+  // ]
+  // const config = JSON.stringify({ chain: [url, 3399], chat: [url, 6697], bootstrap_nodes })
+  const config = JSON.stringify({ chain: [url, 3399], chat: [url, 6697] })
 
   if (flag === '--production') {
     throw new Error('"--production" is currently unsuported')

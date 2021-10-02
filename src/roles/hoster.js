@@ -304,12 +304,11 @@ async function removeFeed(account, key, log) {
   await removeKey(key)
 }
 
-async function loadFeedData({ account, swarmAPI, amendmentID, ranges, feedKey, expectedChunkCount, log }) {
-  var download_count = 0
+async function loadFeedData({ account, swarmAPI, amendmentID, ranges, feedKey, log }) {
   return new Promise(async (resolve, reject) => {
     try {
       const stringkey = feedKey.toString('hex')
-      const { feed, ext } = await load_feed ('hoster', swarmAPI, account, feedKey, log)
+      const { feed, ext, update_feed_storage } = await load_feed ({ role: 'hoster', swarmAPI, account, feedkey: feedKey, log })
       log({ type: 'hoster', data: { text: 'feed loaded', feed_length: feed.length, ext: !ext ? 'undefined' : 'extension' } })
 
       // hoster keeps track of how many downloads they have by incremented counter
@@ -328,6 +327,7 @@ async function loadFeedData({ account, swarmAPI, amendmentID, ranges, feedKey, e
       }
       await Promise.all(all)
       log({ type: 'hoster', data: { text: `All chunks downloaded` } })
+      await update_feed_storage({ account, feedkey: feedKey, task_id: amendmentID, log })
       resolve()
     } catch (e) { reject(e) }
   })

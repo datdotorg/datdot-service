@@ -20,6 +20,7 @@
     "cross-spawn": "^7.0.3",
     "crypto": "^1.0.1",
     "csjs-inject": "^1.0.1",
+    "debug": "^4.3.2",
     "derive-key": "^1.0.1",
     "flat-tree": "^1.8.0",
     "hyperbeam": "^1.1.3",

@@ -77,17 +77,17 @@ async function attester (identity, log, APIS) {
       const { failedKeys, sigs } = await attest_hosting_setup(data).catch((error) => log({ type: 'error', data: { text: 'Caught error from hosting setup (attester)', error } }))
       log({ type: 'attestor', data: { text: `Resolved all the responses for amendment`, amendmentID, failedKeys, sigs } })
       
-      failedKeys.forEach(async (key) => await chainAPI.getUserIDByNoiseKey(Buffer.from(key, 'hex')))
-      log({ type: 'attestor', data: { text: `Failed key user IDs`, failedKeys } })  
+      const failed = await Promise.all(failedKeys.map(async (id) => await chainAPI.getUserIDByNoiseKey(Buffer.from(id, 'hex'))))
+      log({ type: 'attestor', data: { text: `Failed key user IDs`, amendmentID, failed } })  
       const signatures = {}
       for (var i = 0, len = sigs.length; i < len; i++) {
         const { unique_el_signature, hosterKey } = sigs[i]
-        console.log({ text: 'Signature', sig: sigs[i] })
+        console.log({ text: 'Signature', i, sig: sigs[i], amendmentID })
         const hoster_id = await chainAPI.getUserIDByNoiseKey(Buffer.from(hosterKey, 'hex'))
-        console.log({ text: 'Signature', sig: sigs[i], hoster_id })
+        console.log({ text: 'Signature with', sig: sigs[i], hoster_id, amendmentID })
         signatures[hoster_id] = unique_el_signature
       }
-      const report = { id: amendmentID, failed: failedKeys, signatures }
+      const report = { id: amendmentID, failed, signatures }
       log({ type: 'attestor', data: { text: `Report ready`, amendmentID } })  
       const nonce = await vaultAPI.getNonce()
       await chainAPI.amendmentReport({ report, signer, nonce })
@@ -218,13 +218,13 @@ async function attest_hosting_setup (data) {
   const messages = {}
   const responses = []
   for (var i = 0, len = encoderKeys.length; i < len; i++) {
-    const encoderKey = encoderKeys[i]
-    const hosterKey = hosterKeys[i]
-    const hosterSigningKey = hosterSigningKeys[i]
+    const encoderKey = await encoderKeys[i]
+    const hosterKey = await hosterKeys[i]
+    const hosterSigningKey = await hosterSigningKeys[i]
     const unique_el = `${amendmentID}/${i}`
     const opts = { log, amendmentID, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, ranges, feedKey }
     opts.compare_encodings_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
-    log({ type: 'attestor', data: [`Verify encodings!`] })
+    log({ type: 'attestor', data: { text: `Verify encodings!`, amendmentID, len } })
     responses.push(verify_and_forward_encodings(opts))
   }
 
@@ -762,21 +762,15 @@ async function getEncoderID (amendments, hosterID, chainAPI) {
 
 async function getData (chainAPI, amendment, contract) {
   const { encoders, hosters } = amendment.providers
-  const enc_promises = encoders.map(async (id) => chainAPI.getEncoderKey(id))
-  const encoderKeys = await Promise.all(enc_promises)
-  const hoster_promises = []
-  const signingkey_promises = []
+  const encoderKeys = encoders.map(async (id) => chainAPI.getEncoderKey(id))
+  const hosterSigningKeys = []
+  const hosterKeys = []
   hosters.forEach(async (id) => {
-    signingkey_promises.push(chainAPI.getSigningKey(id))
-    hoster_promises.push(chainAPI.getHosterKey(id))
+    hosterSigningKeys.push(chainAPI.getSigningKey(id))
+    hosterKeys.push(chainAPI.getHosterKey(id))
   })
   const feedID = contract.feed
-  const feedKey_promise = chainAPI.getFeedKey(feedID)
-
-  const hosterKeys = await Promise.all(hoster_promises)
-  const hosterSigningKeys = await Promise.all(signingkey_promises)
-  const feedKey = await feedKey_promise
-
+  const feedKey = await chainAPI.getFeedKey(feedID)
   const ranges = contract.ranges
   return { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges }
 }
