@@ -5,7 +5,8 @@ const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
 const brotli = require('_datdot-service-helpers/brotli')
 const varint = require('varint')
-const load_feed = require('_datdot-service-helpers/load_feed')
+const load_feed = require('_datdot-service-helpers/load-feed')
+const update_hoster_storage = require('_datdot-service-helpers/update-hoster-storage')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
@@ -308,7 +309,7 @@ async function loadFeedData({ account, swarmAPI, amendmentID, ranges, feedKey, l
   return new Promise(async (resolve, reject) => {
     try {
       const stringkey = feedKey.toString('hex')
-      const { feed, ext, update_feed_storage } = await load_feed ({ role: 'hoster', swarmAPI, account, feedkey: feedKey, log })
+      const { feed, ext } = await load_feed ({ role: 'hoster', swarmAPI, task_id: amendmentID, account, feedkey: feedKey, log })
       log({ type: 'hoster', data: { text: 'feed loaded', feed_length: feed.length, ext: !ext ? 'undefined' : 'extension' } })
 
       // hoster keeps track of how many downloads they have by incremented counter
@@ -327,7 +328,6 @@ async function loadFeedData({ account, swarmAPI, amendmentID, ranges, feedKey, l
       }
       await Promise.all(all)
       log({ type: 'hoster', data: { text: `All chunks downloaded` } })
-      await update_feed_storage({ account, feedkey: feedKey, task_id: amendmentID, log })
       resolve()
     } catch (e) { reject(e) }
   })
