@@ -95,7 +95,6 @@ async function encode_hosting_setup (data) {
       log2Attestor({ type: 'encoder', data: [`ACK from attestor: chunk received`] })
       stats.ackCount++
     })
-    // destroy_swarm(swarm)
     start(core)
     
     async function start (core) {

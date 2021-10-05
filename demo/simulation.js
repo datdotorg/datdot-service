@@ -1,13 +1,35 @@
 process.env.DEBUG = '*,-hypercore-protocol'
 const spawn = require('cross-spawn')
 const path = require('path')
-// const dht_rpc = require('dht-rpc')
+// const DHT = require('dht-rpc')
+const DHT = require('@hyperswarm/dht')
 
-// const bootstrap = new dht_rpc({ ephemeral: true })
-// bootstrap.bind(10001)
-setTimeout(run, 1000)
+run()
+// node.on('bootstrap', async () => {
+//   console.log('bootstrapped')
+// })
+
 
 async function run (){
+  
+  const bootstrapper1 = new DHT({ ephemeral: true })
+  await bootstrapper1.bind(10001)
+  
+  const bootstrapper2 = new DHT({ 
+    bootstrap: [
+      { host: bootstrapper1.address().address, port: bootstrapper1.address().port }, 
+    ], 
+    ephemeral: false 
+  })
+  await bootstrapper2.bind(10002)
+
+  const bootstrap_nodes = [
+    { host: bootstrapper1.address().address, port: bootstrapper1.address().port },
+    { host: bootstrapper2.address().address, port: bootstrapper2.address().port },
+  ]
+
+  console.log({bootstrap_nodes})
+
   await new Promise(resolve => setTimeout(resolve, 250))
 
   const [scenarioName, flag] = process.argv.slice(2)
@@ -50,13 +72,9 @@ async function run (){
   const all = [process]
   const url = 'ws://localhost'
 
-  // const bootstrap_nodes = [
-  //   { host: 'localhost', port: 10001 }
-  // ]
-  // const config = JSON.stringify({ chain: [url, 3399], chat: [url, 6697], bootstrap_nodes })
-  const config = JSON.stringify({ chain: [url, 3399], chat: [url, 6697] })
+  const config = JSON.stringify({ chain: [url, 3399], chat: [url, 6697], bootstrap: bootstrap_nodes })
 
-  if (flag === '--production') {
+ if (flag === '--production') {
     throw new Error('"--production" is currently unsuported')
     // const command1 = path.join(__dirname, '../datdot-substrate/target/release/datdot-node')
     // const child = spawn(command1, ['--dev'], { stdio: 'inherit' })
