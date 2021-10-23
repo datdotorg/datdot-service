@@ -1,32 +1,13 @@
 process.env.DEBUG = '*,-hypercore-protocol'
 const spawn = require('cross-spawn')
 const path = require('path')
-// const DHT = require('dht-rpc')
-const DHT = require('@hyperswarm/dht')
+const bootstrapper = require('./bootstrapper.js')
 
 run()
-// node.on('bootstrap', async () => {
-//   console.log('bootstrapped')
-// })
-
 
 async function run (){
-  
-  const bootstrapper1 = new DHT({ ephemeral: true })
-  await bootstrapper1.bind(10001)
-  
-  const bootstrapper2 = new DHT({ 
-    bootstrap: [
-      { host: bootstrapper1.address().address, port: bootstrapper1.address().port }, 
-    ], 
-    ephemeral: false 
-  })
-  await bootstrapper2.bind(10002)
 
-  const bootstrap_nodes = [
-    { host: bootstrapper1.address().address, port: bootstrapper1.address().port },
-    { host: bootstrapper2.address().address, port: bootstrapper2.address().port },
-  ]
+  const bootstrap_nodes = await bootstrapper({ amount: 10 })
 
   console.log({bootstrap_nodes})
 

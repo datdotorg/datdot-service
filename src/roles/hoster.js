@@ -1,4 +1,3 @@
-const { toPromises } = require('hypercore-promisifier')
 const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
 const hypercore = require('hypercore')
@@ -6,7 +5,7 @@ const Hyperbeam = require('hyperbeam')
 const brotli = require('_datdot-service-helpers/brotli')
 const varint = require('varint')
 const load_feed = require('_datdot-service-helpers/load-feed')
-const update_hoster_storage = require('_datdot-service-helpers/update-hoster-storage')
+const refresh_discovery_mode = require('_datdot-service-helpers/refresh-discovery-mode')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
@@ -31,6 +30,7 @@ async function hoster(identity, log, APIS) {
   const { swarmAPI, chainAPI, vaultAPI } = APIS
   const { myAddress, noiseKey: hosterKey } = identity
   log({ type: 'hoster', data: [`Listening to events for hoster role`] })
+  const account = await vaultAPI
 
   await chainAPI.listenToEvents(handleEvent)
 
@@ -54,7 +54,8 @@ async function hoster(identity, log, APIS) {
       const data = {
         amendmentID,
         swarmAPI,
-        account: await vaultAPI,
+        chainAPI,
+        account,
         hosterKey,
         encoderSigningKey,
         feedKey,
@@ -73,6 +74,7 @@ async function hoster(identity, log, APIS) {
       try {
         await receive_data_and_start_hosting(data)
         log({ type: 'hoster', data: [`Hosting for the amendment ${amendmentID} started`] })
+        refresh_discovery_mode({ account, feedkey: feedKey, mode: { server: true, client: false }, log })
       } catch (error) { 
         log({ type: 'error', data: { text: 'Caught error from hosting setup (hoster)', error }})
         console.log(error)
@@ -100,7 +102,7 @@ async function hoster(identity, log, APIS) {
         log({ type: 'hoster', data: [`Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}`] })
         
         const data = await get_storage_challenge_data(storageChallenge)
-        data.account = await vaultAPI
+        data.account = account
         data.log = log
         // log({ type: 'hoster', data: [`sendStorageChallengeToAttestor - ${data}`] })
         await send_storage_proofs_to_attestor(data).catch((error) => log({ type: 'error', data: [`Error: ${JSON.stringify(error)}`] }))
@@ -170,11 +172,11 @@ async function hoster(identity, log, APIS) {
 -------------------------------------------- */
 
 async function receive_data_and_start_hosting(data) {
-  const { account, swarmAPI, amendmentID, feedKey, hosterKey, encoderSigningKey, encoder_pos, attestorKey, plan, signatures, ranges, log } = data
+  const { account, chainAPI, swarmAPI, amendmentID, feedKey, hosterKey, encoderSigningKey, encoder_pos, attestorKey, plan, signatures, ranges, log } = data
   const expectedChunkCount = getRangesCount(ranges)
   await addKey(account, feedKey, plan)
   log({ type: 'hosting setup', data: { text: 'Key added in hosting setup for', amendment: amendmentID } })
-  await loadFeedData({ account, swarmAPI, amendmentID, ranges, feedKey, expectedChunkCount, log })
+  await loadFeedData({ account, swarmAPI, chainAPI, amendmentID, ranges, hosterKey, feedKey, expectedChunkCount, log })
   log({ type: 'hosting setup', data: { text: 'Feed loaded', amendment: amendmentID } })
   await getEncodedDataFromAttestor({ account, amendmentID, hosterKey, attestorKey, encoderSigningKey, expectedChunkCount, encoder_pos, feedKey, signatures, ranges, log })
   log({ type: 'hosting setup', data: { text: 'Encoded data received and stored', amendment: amendmentID } })
@@ -204,10 +206,11 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
     })
 
     async function replicate(feedkey) {
-      const clone = toPromises(new hypercore(RAM, feedkey, {
+      const clone = new hypercore(RAM, feedkey, {
         valueEncoding: 'binary',
         sparse: true
-      }))
+      })
+      await clone.ready()
 
       // pipe streams
       const cloneStream = clone.replicate(false, { live: true })
@@ -305,30 +308,36 @@ async function removeFeed(account, key, log) {
   await removeKey(key)
 }
 
-async function loadFeedData({ account, swarmAPI, amendmentID, ranges, feedKey, log }) {
+async function loadFeedData({ account, chainAPI, swarmAPI, amendmentID, ranges, hosterKey, feedKey, log }) {
   return new Promise(async (resolve, reject) => {
     try {
       const stringkey = feedKey.toString('hex')
-      const { feed, ext } = await load_feed ({ role: 'hoster', swarmAPI, task_id: amendmentID, account, feedkey: feedKey, log })
-      log({ type: 'hoster', data: { text: 'feed loaded', feed_length: feed.length, ext: !ext ? 'undefined' : 'extension' } })
+      const role = 'hoster'
+      await load_feed ({ role, swarmAPI, chainAPI, task_id: amendmentID, account, feedkey: feedKey, next, log })
 
-      // hoster keeps track of how many downloads they have by incremented counter
-      const counter = organizer.feeds[stringkey].counter++
-      const data = Buffer.from(`${organizer.performance_challenge_id}`, 'binary')
-      const perf_sig = account.sign(data)
-      log({ type: 'hosting', data: [`Signing extension message: ${perf_sig}`] })
-      ext.broadcast(perf_sig)
-      let all = []
-      let indizes = []
-      for (const range of ranges) {
-        for (let index = range[0], len = range[1] + 1; index < len; index++) {
-          indizes.push(index)
-          all.push(get_index(feed, index))
+      async function next ({ ext, feed, log }) {
+        // await swarmAPI.replicate({ account, socket, role, feed, log })
+        await new Promise(resolve => feed.update(resolve))
+        log({ type: 'hoster', data: { text: 'next', feedkey: feed.key.toString('hex'), feed_length: feed.length, ext: !ext ? 'undefined' : 'extension' } })
+  
+        // hoster keeps track of how many downloads they have by incremented counter
+        const counter = organizer.feeds[stringkey].counter++
+        const data = Buffer.from(`${organizer.performance_challenge_id}`, 'binary')
+        const perf_sig = account.sign(data)
+        log({ type: 'hosting', data: [`Signing extension message: ${perf_sig}`] })
+        ext.broadcast(perf_sig, hosterKey)
+        let all = []
+        let indizes = []
+        for (const range of ranges) {
+          for (let index = range[0], len = range[1] + 1; index < len; index++) {
+            indizes.push(index)
+            all.push(get_index(feed, index))
+          }
         }
+        await Promise.all(all)
+        log({ type: 'hoster', data: { text: `All chunks downloaded` } })
+        resolve()
       }
-      await Promise.all(all)
-      log({ type: 'hoster', data: { text: `All chunks downloaded` } })
-      resolve()
     } catch (e) { reject(e) }
   })
 }
@@ -422,7 +431,7 @@ async function send_storage_proofs_to_attestor(data) {
         reject({ type: `attestor_connection_fail`, data: err })
       }
     })
-    const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
+    const core = new hypercore(RAM, { valueEncoding: 'binary' })
     await core.ready()
     core.on('error', err => {
       Object.keys(checks).forEach(({ reject }) => reject(err))
@@ -451,6 +460,7 @@ async function send_storage_proofs_to_attestor(data) {
     for (var i = 0; i < contract_ids.length; i++) {
       const contractID = contract_ids[i]
       const { index, feedKey } = checks[contractID]
+      log2attestor4Challenge({ type: 'hoster', data: { text: 'Next check', check: checks[contractID], contractID, checks} })
       const message = await getDataFromStorage(account, feedKey, index, log2attestor4Challenge)
       if (!message) return
       message.type = 'proof'
@@ -479,7 +489,6 @@ async function send_storage_proofs_to_attestor(data) {
       ext.broadcast(dataBuf)
 
       log2attestor4Challenge({ type: 'hoster', data: [`${all.length} responses received from the attestor`] })
-      log2attestor4Challenge({ type: 'hoster', data: [`Destroying communication with the attestor`] })
       clearTimeout(tid)
       // beam_once.destroy()
       // beam.destroy()
