@@ -6,6 +6,7 @@ const brotli = require('_datdot-service-helpers/brotli')
 const varint = require('varint')
 const load_feed = require('_datdot-service-helpers/load-feed')
 const refresh_discovery_mode = require('_datdot-service-helpers/refresh-discovery-mode')
+const { toPromises } = require('hypercore-promisifier')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
@@ -206,10 +207,10 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
     })
 
     async function replicate(feedkey) {
-      const clone = new hypercore(RAM, feedkey, {
+      const clone = toPromises(new hypercore(RAM, feedkey, {
         valueEncoding: 'binary',
         sparse: true
-      })
+      }))
       await clone.ready()
 
       // pipe streams
@@ -431,7 +432,7 @@ async function send_storage_proofs_to_attestor(data) {
         reject({ type: `attestor_connection_fail`, data: err })
       }
     })
-    const core = new hypercore(RAM, { valueEncoding: 'binary' })
+    const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
     await core.ready()
     core.on('error', err => {
       Object.keys(checks).forEach(({ reject }) => reject(err))

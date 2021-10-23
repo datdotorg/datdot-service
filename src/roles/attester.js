@@ -7,6 +7,7 @@ const brotli = require('_datdot-service-helpers/brotli')
 const varint = require('varint')
 const { data } = require('hypercore-crypto')
 const load_feed = require('_datdot-service-helpers/load-feed')
+const { toPromises } = require('hypercore-promisifier')
 
 const { performance } = require('perf_hooks')
 
@@ -176,8 +177,7 @@ async function attester (identity, log, APIS) {
       
       async function next ({ feed, hosterID, log }) {
         log({ type: 'challenge', data: { text: 'Next callback', hosterID } })
-        await feed.update()
-        // await new Promise(resolve => feed.update(resolve))
+        await new Promise(resolve => feed.update(resolve))
         const hosterkey = await chainAPI.getHosterKey(hosterID)
         log({ type: 'challenge', data: { text: 'Got hosterkey from ', hosterID, hosterkey: hosterkey.toString('hex') } })
         const stats = (await check_performance(feed, chunks[hosterID], log).catch(err => log({ type: 'fail', data: err }))) || []
@@ -374,7 +374,7 @@ async function attest_hosting_setup (data) {
             const message = JSON.parse(data.toString('utf-8'))
             if (message.type === 'feedkey') {
               const feedKey = Buffer.from(message.feedkey, 'hex')
-              const clone = new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true })
+              const clone = toPromises(new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true }))
               await clone.ready()
               core = clone
               const cloneStream = clone.replicate(false, { live: true })
@@ -385,7 +385,7 @@ async function attest_hosting_setup (data) {
             }
           })
         } else {
-          core = new hypercore(RAM, { valueEncoding: 'binary' })
+          core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
           await core.ready()
           core.on('error', err => {
             Object.values(chunks).forEach(({ reject }) => reject(err))

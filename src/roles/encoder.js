@@ -4,6 +4,7 @@ const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
 const load_feed = require('_datdot-service-helpers/load-feed')
 const remove_task_from_storage = require('_datdot-service-helpers/remove-task-from-storage')
+const { toPromises } = require('hypercore-promisifier')
 
 const proof_codec = require('datdot-codec/proof')
 
@@ -77,8 +78,9 @@ async function encode_hosting_setup (data) {
       // await swarmAPI.replicate({ account, socket, role, feed, log })
       await new Promise(resolve => feed.update(resolve))
       // create temp hypercore
-      const core = new hypercore(RAM, { valueEncoding: 'binary' })
+      const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
       await core.ready()
+      console.log({ text: 'Encoders core', core })
       
       // connect to attestor
       const topic = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
