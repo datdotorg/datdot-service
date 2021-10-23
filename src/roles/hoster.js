@@ -230,7 +230,7 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
       })
       if (!results) return log2attestor({ type: 'fail', data: 'Error storing data' })
       log2attestor({ type: 'hoster', data: { text: `All chunks hosted`, len: results.length, expectedChunkCount } })
-      if (results.length !== expectedChunkCount) return log2attestor({ type: 'fail', data: 'Not enought resolved results' })
+      if (results.length !== expectedChunkCount) return log2attestor({ type: 'error', data: 'Not enought resolved results' })
       // send signed unique_el as an extension message
       var ext = clone.registerExtension(unique_el, { encoding: 'binary ' })
       const data = Buffer.from(unique_el, 'binary')
@@ -369,6 +369,7 @@ async function store_in_hoster_storage({ account, feedKey, index, encoded_data_s
 async function getDataFromStorage(account, key, index, log) {
   const storage = await getStorage({account, key, log})
   const data = await storage.getProofOfStorage(index)
+  log({ type: 'storage challenge', data: { text: 'Got encoded data from storage', data }})
   return data
 }
 
@@ -437,7 +438,7 @@ async function send_storage_proofs_to_attestor(data) {
     core.on('error', err => {
       Object.keys(checks).forEach(({ reject }) => reject(err))
     })
-    const coreStream = core.replicate(true, { live: true, ack: true })
+    const coreStream = core.replicate(false, { live: true, ack: true })
     coreStream.pipe(beam).pipe(coreStream)
     coreStream.on('ack', ack => {
       const index = ack.start
@@ -502,7 +503,7 @@ async function send_storage_proofs_to_attestor(data) {
       reject({ type: `hoster_proof_fail`, data: err })
     }
     
-    function send(message, i) {
+    function send (message, i) {
       return new Promise(async (resolve, reject) => {
         await core.append(JSON.stringify(message))
         sent_chunks[i] = { resolve, reject }

@@ -82,9 +82,8 @@ async function attester (identity, log, APIS) {
       const signatures = {}
       for (var i = 0, len = sigs.length; i < len; i++) {
         const { unique_el_signature, hosterKey } = sigs[i]
-        console.log({ text: 'Signature', i, sig: sigs[i], amendmentID })
         const hoster_id = await chainAPI.getUserIDByNoiseKey(Buffer.from(hosterKey, 'hex'))
-        console.log({ text: 'Signature with', sig: sigs[i], hoster_id, amendmentID })
+        console.log({ text: 'Signature', sig: sigs[i], hoster_id, amendmentID })
         signatures[hoster_id] = unique_el_signature
       }
       const report = { id: amendmentID, failed, signatures }
@@ -360,7 +359,7 @@ async function attest_hosting_setup (data) {
             reject({ type: `${role}_connection_fail`, data: err })
           } else beam_error = err
         })
-        let core
+        var core
         const once_topic = topic + 'once'
         var beam_once = new Hyperbeam(once_topic)
         beam_once.on('error', err => { 
@@ -377,7 +376,7 @@ async function attest_hosting_setup (data) {
               const clone = toPromises(new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true }))
               await clone.ready()
               core = clone
-              const cloneStream = clone.replicate(false, { live: true })
+              const cloneStream = clone.replicate(true, { live: true })
               cloneStream.pipe(beam).pipe(cloneStream)
               // beam_once.destroy()
               // beam_once = undefined
@@ -539,7 +538,7 @@ async function attest_storage_challenge (data) {
       reject({ type: `${role}_connection_fail`, data: err })
     })
     const all = []
-    let core
+    var core
     beam_once.once('data', async (data) => {
       const message = JSON.parse(data)
       if (message.type === 'feedkey') {
@@ -547,7 +546,7 @@ async function attest_storage_challenge (data) {
         const clone = new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true })
         await clone.ready()
         core = clone
-        const cloneStream = clone.replicate(false, { live: true })
+        const cloneStream = clone.replicate(true, { live: true })
         cloneStream.pipe(beam).pipe(cloneStream)
         // beam_once.destroy()
         // beam_once = undefined
@@ -559,7 +558,7 @@ async function attest_storage_challenge (data) {
       // get chunks from hoster for all the checks
       const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
       for (var i = 0, len = contract_ids.length; i < len; i++) {
-        const data_promise = core.get(i)
+        const data_promise = get_index(core, i)
         all.push(verify_chunk(data_promise))
       }
       try {
@@ -605,7 +604,9 @@ async function attest_storage_challenge (data) {
     function verify_chunk (chunk_promise) {
       return new Promise(async (resolve, reject) => {
         const chunk = await chunk_promise
+        log2hosterChallenge({ type: 'attestor', data: { text: `Getting chunk`, chunk } })
         const json = chunk.toString('binary')
+        log2hosterChallenge({ type: 'attestor', data: { text: `Getting json`, json } })
         const data = proof_codec.decode(json)
         const { contractID, index, encoded_data, encoded_data_signature, nodes } = data
         log2hosterChallenge({ type: 'attestor', data: { text: `Storage proof received, ${index}`, encoded_data } })

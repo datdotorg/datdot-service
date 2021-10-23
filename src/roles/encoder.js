@@ -93,7 +93,7 @@ async function encode_hosting_setup (data) {
       // beam_temp.write(JSON.stringify({ type: 'feedkey', data: [core.key.toString('hex'), signature.toString('hex')] }))
        
       // pipe streams
-      const coreStream = core.replicate(true, { live: true, ack: true })
+      const coreStream = core.replicate(false, { live: true, ack: true })
       coreStream.pipe(beam).pipe(coreStream)
       coreStream.on('ack', ack => {
         log2Attestor({ type: 'encoder', data: [`ACK from attestor: chunk received`] })
