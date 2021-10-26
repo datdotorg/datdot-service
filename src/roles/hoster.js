@@ -1,5 +1,6 @@
 const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
+const download_range = require('download-range')
 const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
 const brotli = require('_datdot-service-helpers/brotli')
@@ -7,6 +8,7 @@ const varint = require('varint')
 const load_feed = require('_datdot-service-helpers/load-feed')
 const refresh_discovery_mode = require('_datdot-service-helpers/refresh-discovery-mode')
 const { toPromises } = require('hypercore-promisifier')
+const hypercore_updated = require('_datdot-service-helpers/hypercore-updated')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
@@ -252,6 +254,7 @@ async function getEncodedDataFromAttestor({ account, amendmentID, hosterKey, att
           const { index, encoded_data, encoded_data_signature, nodes } = data
           log2attestor({ type: 'hoster', data: [`Storing verified message with index: ${data.index}`] })
           const isExisting = await account.storages.has(feedKey.toString('hex'))
+          log2attestor({ type: 'hoster', data: [`Is feed storage existing?: ${isExisting}`] })
           // Fix up the JSON serialization by converting things to buffers
           if (!isExisting) {
             const error = { type: 'encoded:error', error: 'UNKNOWN_FEED', ...{ key: feedKey.toString('hex') } }
@@ -316,27 +319,30 @@ async function loadFeedData({ account, chainAPI, swarmAPI, amendmentID, ranges, 
       const role = 'hoster'
       await load_feed ({ role, swarmAPI, chainAPI, task_id: amendmentID, account, feedkey: feedKey, next, log })
 
-      async function next ({ ext, feed, log }) {
+      async function next ({ ext, feed, otherIsInitiator, log }) {
         // await swarmAPI.replicate({ account, socket, role, feed, log })
-        await new Promise(resolve => feed.update(resolve))
+        await hypercore_updated(feed, log)
         log({ type: 'hoster', data: { text: 'next', feedkey: feed.key.toString('hex'), feed_length: feed.length, ext: !ext ? 'undefined' : 'extension' } })
   
-        // hoster keeps track of how many downloads they have by incremented counter
-        const counter = organizer.feeds[stringkey].counter++
-        const data = Buffer.from(`${organizer.performance_challenge_id}`, 'binary')
-        const perf_sig = account.sign(data)
-        log({ type: 'hosting', data: [`Signing extension message: ${perf_sig}`] })
-        ext.broadcast(perf_sig, hosterKey)
-        let all = []
-        let indizes = []
-        for (const range of ranges) {
-          for (let index = range[0], len = range[1] + 1; index < len; index++) {
-            indizes.push(index)
-            all.push(get_index(feed, index))
+        if (otherIsInitiator) {
+          // hoster keeps track of how many downloads they have by incremented counter
+          const counter = organizer.feeds[stringkey].counter++
+          const data = Buffer.from(`${organizer.performance_challenge_id}`, 'binary')
+          const perf_sig = account.sign(data)
+          log({ type: 'hoster', data: [`Signing extension message: ${perf_sig}`] })
+          ext.broadcast(perf_sig, hosterKey)
+        } else {
+          if (!account.cache[stringkey].downloaded) {
+            let all = []
+            for (const range of ranges) {
+              log({ type: 'hoster', data: {  text: 'Downloading range', ranges, range } })
+              all.push(download_range(feed, range))
+            }
+            await Promise.all(all)
+            log({ type: 'hoster', data: { text: `All chunks downloaded` } })
+            account.cache[stringkey].downloaded = true
           }
         }
-        await Promise.all(all)
-        log({ type: 'hoster', data: { text: `All chunks downloaded` } })
         resolve()
       }
     } catch (e) { reject(e) }

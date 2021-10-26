@@ -13,9 +13,9 @@ const { performance } = require('perf_hooks')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
-const remove_task_from_storage = require('_datdot-service-helpers/remove-task-from-storage')
+const remove_task_from_cache = require('_datdot-service-helpers/remove-task-from-cache')
 
-const hypercore_replicated = require('_datdot-service-helpers/hypercore-replicated')
+const hypercore_updated = require('_datdot-service-helpers/hypercore-updated')
 const tempDB = require('_tempdb')
 const getRangesCount = require('getRangesCount')
 const compare_encodings = require('compare-encodings')
@@ -83,7 +83,6 @@ async function attester (identity, log, APIS) {
       for (var i = 0, len = sigs.length; i < len; i++) {
         const { unique_el_signature, hosterKey } = sigs[i]
         const hoster_id = await chainAPI.getUserIDByNoiseKey(Buffer.from(hosterKey, 'hex'))
-        console.log({ text: 'Signature', sig: sigs[i], hoster_id, amendmentID })
         signatures[hoster_id] = unique_el_signature
       }
       const report = { id: amendmentID, failed, signatures }
@@ -149,11 +148,10 @@ async function attester (identity, log, APIS) {
             chunks[id] = { indexes: [] } // chain doesn't emit WHICH chunks attester should check
             chunks[id].indexes.push(getRandomInt(random_range[0], random_range[1]))
           }
-          log({ type: 'challenge', data: { text: 'getting data for contract', contract: contractIDs[i], chunks } })
         }
         // hen we have 2x same hoster - we check chunks from all contracts at once
         const all_hosterIDs = [...new Set(all_ids)]
-        log({ type: 'challenge', data: { text: 'Got all hoster Ids and chunks', all_ids, all_hosterIDs, chunks } })
+        log({ type: 'challenge', data: { text: 'Got all hoster Ids and chunks', contract: contractIDs[i], all_ids, all_hosterIDs, chunks: JSON.stringify(chunks) } })
         return { chunks, all_hosterIDs }
       }
       
@@ -176,7 +174,8 @@ async function attester (identity, log, APIS) {
       
       async function next ({ feed, hosterID, log }) {
         log({ type: 'challenge', data: { text: 'Next callback', hosterID } })
-        await new Promise(resolve => feed.update(resolve))
+        console.log({feed})
+        await hypercore_updated(feed, log)
         const hosterkey = await chainAPI.getHosterKey(hosterID)
         log({ type: 'challenge', data: { text: 'Got hosterkey from ', hosterID, hosterkey: hosterkey.toString('hex') } })
         const stats = (await check_performance(feed, chunks[hosterID], log).catch(err => log({ type: 'fail', data: err }))) || []
@@ -200,7 +199,7 @@ async function attester (identity, log, APIS) {
           resolved_reports.forEach(async report => report.hoster = await chainAPI.getUserIDByNoiseKey(report.hoster))
           log({ type: 'challenge', data: { text: 'Got all reports', resolved_reports } })
           // remove task from feed-storage
-          await remove_task_from_storage({ account, feedkey, task_id: performanceChallenge.id, log })
+          await remove_task_from_cache({ account, feedkey, task_id: performanceChallenge.id, log })
           // TODO: send just a summary to the chain, not the whole array
           const nonce = await vaultAPI.getNonce()
           log({ type: 'attestor', data: `Submitting performance challenge` })
@@ -241,7 +240,7 @@ async function attest_hosting_setup (data) {
     failed.push(failedKeys)
     sigs.push({ unique_el_signature, hosterKey })
   })
-  console.log({ text: 'resolved responses', amendmentID, failed, sigs})
+  console.log({ text: 'resolved responses', amendmentID, failed, sigs_len: sigs.length })
   const failed_set =  [...new Set(failed.flat())]  
   const report = { failedKeys: failed_set, sigs }
   return report
@@ -558,7 +557,7 @@ async function attest_storage_challenge (data) {
       // get chunks from hoster for all the checks
       const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
       for (var i = 0, len = contract_ids.length; i < len; i++) {
-        const data_promise = get_index(core, i)
+        const data_promise = get_index(core, i, log2hosterChallenge)
         all.push(verify_chunk(data_promise))
       }
       try {
@@ -653,37 +652,27 @@ async function check_performance (core, chunks, log) {
   })
 }
 
-async function connect_and_replicate (core, log) {
-  return new Promise(async (resolve, reject) => {
-    log({ type: 'attestor', data: [`Start to connect and to replicate`] })
-
-    const topic = feed.discoveryKey
-    
-    await hypercore_replicated(feed)
-    resolve()
-  })
-}
-
 async function get_data_and_stats (feed, chunks, log) {
   log({ type: 'challenge', data: { text: 'Getting data and stats', chunks } })
-  console.log({ feed })
   return new Promise(async (resolve, reject) => {
     try {
       const stats = await getStats(feed)
-      chunks.indexes.forEach(async index => {
-        const start = performance.now()
-        log({ type: 'challenge', data: { text: 'Downloading range', index } })
-        await download_range(feed, [index, index+1])
-        log({ type: 'challenge', data: { text: 'Range downloaded', index } })
-        const data = await get_index(feed, index)
+      const start = performance.now()
+      // log({ type: 'challenge', data: { text: 'Downloading range', chunks: chunks.indexes } })
+      // await download_range(feed, chunks.indexes)
+      // log({ type: 'challenge', data: { text: 'Range downloaded', index } })
+      for (var i = 0, len = chunks.indexes.length; i < len; i++) {
+        const index = chunks.indexes[i]
+        log({ type: 'challenge', data: { text: 'Getting data for performance index', index } })
+        const data = await get_index(feed, index, log)
         log({ type: 'challenge', data: { text: 'Got data for performance check', index } })
         if (!is_verified(data)) return
         log({ type: 'challenge', data: { text: 'Data for performance check verified', index } })
         const end = performance.now()
         const latency = end - start
-        stats.latency = (stats.latency + latency)/2 // get average latency for all the chunks
-      }) 
-      resolve(stats)
+        stats.latency = stats.latency ? (stats.latency + latency)/2 /* get average latency for all the chunks*/ : latency
+        if (i === (len - 1)) resolve(stats)
+      }
     } catch (e) {
       log(`Error: ${feed.key}@${index} ${e.message}`)
       reject(e)

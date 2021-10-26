@@ -3,11 +3,10 @@ const derive_topic = require('derive-topic')
 const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
 const load_feed = require('_datdot-service-helpers/load-feed')
-const remove_task_from_storage = require('_datdot-service-helpers/remove-task-from-storage')
+const remove_task_from_cache = require('_datdot-service-helpers/remove-task-from-cache')
 const { toPromises } = require('hypercore-promisifier')
-
+const hypercore_updated = require('_datdot-service-helpers/hypercore-updated')
 const proof_codec = require('datdot-codec/proof')
-
 const brotli = require('_datdot-service-helpers/brotli')
 const getRangesCount = require('getRangesCount')
 const get_nodes = require('_datdot-service-helpers/get-nodes')
@@ -76,11 +75,10 @@ async function encode_hosting_setup (data) {
 
     async function next ({ feed, log }) {
       // await swarmAPI.replicate({ account, socket, role, feed, log })
-      await new Promise(resolve => feed.update(resolve))
+      await hypercore_updated(feed, log)
       // create temp hypercore
       const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
       await core.ready()
-      console.log({ text: 'Encoders core', core })
       
       // connect to attestor
       const topic = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
@@ -126,17 +124,16 @@ async function encode_hosting_setup (data) {
       await core.append(proof_codec.encode(message))
       log({ type: 'encoder', data: [`MSG appended ${message.index}`]})
       if (stats.ackCount === expectedChunkCount) {
-        await remove_task_from_storage({ account, feedkey, task_id, log })
+        await remove_task_from_cache({ account, feedkey, task_id, log })
         resolve(`Encoded ${message.index} sent`)
       }
     })
   }
   async function download_and_encode (account, index, feed, signatures, amendmentID, encoder_pos, log) {
-    const data = await get_index(feed, index)
+    const data = await get_index(feed, index, log)
     const unique_el = `${amendmentID}/${encoder_pos}`
-    console.log({text: `awaiting index as an encoder`, data, index})
     const to_compress = serialize_before_compress(data, unique_el, log)
-    log({ type: 'encoder', data: {  text: `Got data`, data, to_compress }})
+    log({ type: 'encoder', data: {  text: `Got data`, data: data.toString('hex'), to_compress: to_compress.toString('hex') }})
     const encoded_data = await brotli.compress(to_compress)
     const encoded_data_signature = account.sign(encoded_data)
     
