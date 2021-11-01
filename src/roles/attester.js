@@ -21,8 +21,6 @@ const getRangesCount = require('getRangesCount')
 const compare_encodings = require('compare-encodings')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
 const get_index = require('_datdot-service-helpers/get-index')
-const download_range = require('download-range')
-
 const DEFAULT_TIMEOUT = 15000
 
 // global variables
@@ -35,7 +33,7 @@ const organizer = {
 module.exports = attester
 
 async function attester (identity, log, APIS) {
-  const { swarmAPI, chainAPI, vaultAPI } = APIS
+  const { chainAPI, vaultAPI } = APIS
   const { myAddress, signer, noiseKey: attestorKey } = identity
   log({ type: 'attestor', data: [`Listening to events for attestor role`] })
   const jobsDB = await tempDB(attestorKey)
@@ -158,31 +156,22 @@ async function attester (identity, log, APIS) {
 
       // join swarm and check performance when you connect to any of the hosters
       const role = 'attestor-challenge'
-      await load_feed ({ 
-        newfeed: true, 
-        targets: all_hosterIDs, 
-        role, 
-        swarmAPI,
-        chainAPI,
-        task_id: performanceChallengeID, 
-        account, 
-        feedkey, 
-        next,
-        onmessage,
-        log 
-      })
+      const feed = await load_feed({ targets: all_hosterIDs, role, account, onmessage, onerror, feedkey, log })
       
-      async function next ({ feed, hosterID, log }) {
-        log({ type: 'challenge', data: { text: 'Next callback', hosterID } })
-        console.log({feed})
-        await hypercore_updated(feed, log)
-        const hosterkey = await chainAPI.getHosterKey(hosterID)
-        log({ type: 'challenge', data: { text: 'Got hosterkey from ', hosterID, hosterkey: hosterkey.toString('hex') } })
-        const stats = (await check_performance(feed, chunks[hosterID], log).catch(err => log({ type: 'fail', data: err }))) || []
-        reports[hosterID] = { stats, hoster: hosterkey }
-      }
+      log({ type: 'challenge', data: { text: 'Next callback', hosterID } })
+      await hypercore_updated(feed, log)
+      console.log({feed})
+      const hosterkey = await chainAPI.getHosterKey(hosterID)
+      log({ type: 'challenge', data: { text: 'Got hosterkey from ', hosterID, hosterkey: hosterkey.toString('hex') } })
+      const stats = (await check_performance(feed, chunks[hosterID], log).catch(err => log({ type: 'fail', data: err }))) || []
+      reports[hosterID] = { stats, hoster: hosterkey }
 
-      async function onmessage (err, event_sig, hosterkey) {
+      const ext = account.cache['attestor-challenge'].topics[feed.discoveryKey.toString('hex')].ext
+      function onerror (err/* peerSocket???*/) {
+          // TODO: disconnect from peer
+          log({ type: 'attestor', data: 'error extension message' })   
+      }
+      async function onmessage (event_sig, hosterkey) {
         if (err) {
           event_sig = undefined
           log({ type: 'challenge', data: { text: 'No event signature', err } })
@@ -199,7 +188,7 @@ async function attester (identity, log, APIS) {
           resolved_reports.forEach(async report => report.hoster = await chainAPI.getUserIDByNoiseKey(report.hoster))
           log({ type: 'challenge', data: { text: 'Got all reports', resolved_reports } })
           // remove task from feed-storage
-          await remove_task_from_cache({ account, feedkey, task_id: performanceChallenge.id, log })
+          // await remove_task_from_cache({ account, feedkey, task_id: performanceChallenge.id, log })
           // TODO: send just a summary to the chain, not the whole array
           const nonce = await vaultAPI.getNonce()
           log({ type: 'attestor', data: `Submitting performance challenge` })

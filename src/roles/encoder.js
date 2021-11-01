@@ -21,7 +21,8 @@ const get_index = require('_datdot-service-helpers/get-index')
 module.exports = encoder
 
 async function encoder (identity, log, APIS) {
-  const { swarmAPI, chainAPI, vaultAPI } = APIS
+  const { chainAPI, vaultAPI } = APIS
+  const account = await vaultAPI
   const { myAddress, noiseKey: encoderKey } = identity
   log({ type: 'encoder', data: [`Listening to events for encoder role`] })
 
@@ -40,7 +41,7 @@ async function encoder (identity, log, APIS) {
       const { feedkey: feedKey, signatures } = await chainAPI.getFeedByID(contract.feed)
       const [attestorID] = attestors
       const attestorKey = await chainAPI.getAttestorKey(attestorID)
-      const data = { amendmentID, chainAPI, swarmAPI, account: vaultAPI, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, signatures, feedKey, log }
+      const data = { amendmentID, chainAPI, account, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, signatures, feedKey, log }
       await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${error}`] }))
       // log({ type: 'encoder', data: [`Encoding done`] })
     }
@@ -61,7 +62,7 @@ async function encoder (identity, log, APIS) {
 ----------------------------------------- */
 
 async function encode_hosting_setup (data) {
-  const { amendmentID, chainAPI, swarmAPI, account, attestorKey, encoderKey, ranges, encoder_pos, signatures, feedKey, log } = data
+  const { amendmentID, chainAPI, account, attestorKey, encoderKey, ranges, encoder_pos, signatures, feedKey, log } = data
   const log2Attestor = log.sub(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
   const expectedChunkCount = getRangesCount(ranges)
   var download_count = 0
@@ -71,40 +72,37 @@ async function encode_hosting_setup (data) {
   return new Promise(async (resolve, reject) => {
     if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
     const role = 'encoder'
-    await load_feed ({ role, swarmAPI, chainAPI, account, task_id: amendmentID, feedkey: feedKey, next, log })
+    const feed = await load_feed ({ role, account, feedkey: feedKey, log })
 
-    async function next ({ feed, log }) {
-      // await swarmAPI.replicate({ account, socket, role, feed, log })
-      await hypercore_updated(feed, log)
-      // create temp hypercore
-      const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
-      await core.ready()
-      
-      // connect to attestor
-      const topic = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
-      const beam = new Hyperbeam(topic)
-       
-      // send the key and signature
-      const temp_topic = topic + 'once'
-      const beam_temp = new Hyperbeam(temp_topic)
-      beam_temp.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
-      // beam_temp.write(JSON.stringify({ type: 'feedkey', data: [core.key.toString('hex'), signature.toString('hex')] }))
-       
-      // pipe streams
-      const coreStream = core.replicate(false, { live: true, ack: true })
-      coreStream.pipe(beam).pipe(coreStream)
-      coreStream.on('ack', ack => {
-        log2Attestor({ type: 'encoder', data: [`ACK from attestor: chunk received`] })
-        stats.ackCount++
-      })
-      start(core)
-   
-      async function start (core) {
-        var total = 0
-        for (const range of ranges) total += (range[1] + 1) - range[0]
-        log2Attestor({ type: 'encoder', data: [`Start encoding and sending data to attestor`] })
-        for (const range of ranges) sendDataToAttestor({ account, core, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor })
-      }
+    await hypercore_updated(feed, log)
+    // create temp hypercore
+    const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
+    await core.ready()
+    
+    // connect to attestor
+    const topic = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID })
+    const beam = new Hyperbeam(topic)
+     
+    // send the key and signature
+    const temp_topic = topic + 'once'
+    const beam_temp = new Hyperbeam(temp_topic)
+    beam_temp.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex')}))
+    // beam_temp.write(JSON.stringify({ type: 'feedkey', data: [core.key.toString('hex'), signature.toString('hex')] }))
+     
+    // pipe streams
+    const coreStream = core.replicate(false, { live: true, ack: true })
+    coreStream.pipe(beam).pipe(coreStream)
+    coreStream.on('ack', ack => {
+      log2Attestor({ type: 'encoder', data: [`ACK from attestor: chunk received`] })
+      stats.ackCount++
+    })
+    start(core)
+ 
+    async function start (core) {
+      var total = 0
+      for (const range of ranges) total += (range[1] + 1) - range[0]
+      log2Attestor({ type: 'encoder', data: [`Start encoding and sending data to attestor`] })
+      for (const range of ranges) sendDataToAttestor({ account, core, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor })
     }
 
     
@@ -124,7 +122,7 @@ async function encode_hosting_setup (data) {
       await core.append(proof_codec.encode(message))
       log({ type: 'encoder', data: [`MSG appended ${message.index}`]})
       if (stats.ackCount === expectedChunkCount) {
-        await remove_task_from_cache({ account, feedkey, task_id, log })
+        // await remove_task_from_cache({ account, feedkey, task_id, log })
         resolve(`Encoded ${message.index} sent`)
       }
     })
