@@ -156,17 +156,19 @@ async function attester (identity, log, APIS) {
 
       // join swarm and check performance when you connect to any of the hosters
       const role = 'attestor-challenge'
-      const feed = await load_feed({ targets: all_hosterIDs, role, account, onmessage, onerror, feedkey, log })
+      const targets = await Promise.all(all_hosterIDs.map(async id => await chainAPI.getHosterKey(id)))
+      const feed = await load_feed({ targets, role, account, onmessage, onerror, ontarget, feedkey, log })
+      log({ type: 'challenge', data: { text: 'Got challenge feed', fedkey: feed.key.toString('hex') } })
       
-      log({ type: 'challenge', data: { text: 'Next callback', hosterID } })
-      await hypercore_updated(feed, log)
-      console.log({feed})
-      const hosterkey = await chainAPI.getHosterKey(hosterID)
-      log({ type: 'challenge', data: { text: 'Got hosterkey from ', hosterID, hosterkey: hosterkey.toString('hex') } })
-      const stats = (await check_performance(feed, chunks[hosterID], log).catch(err => log({ type: 'fail', data: err }))) || []
-      reports[hosterID] = { stats, hoster: hosterkey }
-
-      const ext = account.cache['attestor-challenge'].topics[feed.discoveryKey.toString('hex')].ext
+      async function ontarget (hosterkey) {
+        const hosterID = await chainAPI.getHosterKey(hosterkey)
+        await hypercore_updated(feed, log)
+        log({ type: 'challenge', data: { text: 'Got hosterkey from ', hosterID, hosterkey: hosterkey.toString('hex') } })
+        const stats = (await check_performance(feed, chunks[hosterID], log).catch(err => log({ type: 'fail', data: err }))) || []
+        reports[hosterID] = { stats, hoster: hosterkey }
+      }
+      
+      const ext = account.cache['temp'].topics[feed.discoveryKey.toString('hex')].ext
       function onerror (err/* peerSocket???*/) {
           // TODO: disconnect from peer
           log({ type: 'attestor', data: 'error extension message' })   

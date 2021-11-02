@@ -9,6 +9,8 @@ const load_feed = require('_datdot-service-helpers/load-feed')
 const refresh_discovery_mode = require('_datdot-service-helpers/refresh-discovery-mode')
 const { toPromises } = require('hypercore-promisifier')
 const hypercore_updated = require('_datdot-service-helpers/hypercore-updated')
+const FeedStorage = require('_datdot-service-helpers/feed-storage.js')
+const sub = require('subleveldown')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
@@ -319,6 +321,14 @@ async function loadFeedData({ account, chainAPI, amendmentID, ranges, hosterKey,
       const stringkey = feedKey.toString('hex')
       const role = 'hoster'
       const feed = await load_feed ({ role, account, onerror, feedkey: feedKey, log })
+
+      // make hoster storage for feed
+      if (!account.storages.has(stringkey)) {
+        log({ type: role, data: { text: `New storage for feed, existing cache`, stringkey } })
+        const db = sub(account.db, stringkey, { valueEncoding: 'binary' })
+        const storage = new FeedStorage({ db, feed, log })
+        account.storages.set(stringkey, storage)
+      }
 
       function onerror (err/* peerSocket???*/) {
         // TODO: disconnect from peer
