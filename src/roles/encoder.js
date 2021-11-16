@@ -129,8 +129,9 @@ module.exports = APIS => {
       return new Promise(async (resolve, reject) => {
         const message = await msg
         await core.append(proof_codec.encode(message))
-        log({ type: 'encoder', data: [`MSG appended ${message.index}`]})
+        log({ type: 'encoder', data: {  text:`MSG appended`, index: message.index, amendmentID } })
         if (stats.ackCount === expectedChunkCount) {
+          log({ type: 'encoder', data: {  text:`All encoded sent`, amendmentID, index: message.index } })
           await remove_task_from_cache({ account, topic: feed.discoveryKey, log })
           resolve(`Encoded ${message.index} sent`)
         }
@@ -140,7 +141,7 @@ module.exports = APIS => {
       const data = await get_index(feed, index, log)
       const unique_el = `${amendmentID}/${encoder_pos}`
       const to_compress = serialize_before_compress(data, unique_el, log)
-      log({ type: 'encoder', data: {  text: `Got data`, data: data.toString('hex'), to_compress: to_compress.toString('hex') }})
+      log({ type: 'encoder', data: {  text: `Got data`, data: data.toString('hex'), index, to_compress: to_compress.toString('hex'), amendmentID }})
       const encoded_data = await brotli.compress(to_compress)
       const encoded_data_signature = account.sign(encoded_data)
       
