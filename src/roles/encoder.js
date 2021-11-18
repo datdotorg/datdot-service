@@ -76,7 +76,7 @@ module.exports = APIS => {
       if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
       const role = 'encoder'
 
-      const feed = await store.load_feed({
+      const { feed } = await store.load_feed({
         config: { intercept: false, fresh: false, persist: false },
         swarm_opts: { topic: datdot_crypto.get_discoverykey(feedKey), mode: { server: false, client: true } },
         feedkey: feedKey, 
@@ -132,7 +132,7 @@ module.exports = APIS => {
         log({ type: 'encoder', data: {  text:`MSG appended`, index: message.index, amendmentID } })
         if (stats.ackCount === expectedChunkCount) {
           log({ type: 'encoder', data: {  text:`All encoded sent`, amendmentID, index: message.index } })
-          await remove_task_from_cache({ account, topic: feed.discoveryKey, log })
+          await remove_task_from_cache({ account, topic: feed.discoveryKey, tasks: account.cache['general'].tasks, log })
           resolve(`Encoded ${message.index} sent`)
         }
       })

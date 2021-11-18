@@ -324,7 +324,7 @@ module.exports = APIS => {
         const stringkey = feedKey.toString('hex')
         const role = 'hoster'
 
-        const feed = await store.load_feed({
+        const { feed } = await store.load_feed({
           config: { intercept: true, fresh: false, persist: true },
           extension: { ext_cbs: { onerror }, name: `datdot-hoster-${stringkey}` },
           swarm_opts: { 
@@ -354,7 +354,7 @@ module.exports = APIS => {
         const data = Buffer.from(`${organizer.performance_challenge_id}`, 'binary')
         const perf_sig = account.sign(data)
         log({ type: 'hoster', data: [`Signing extension message: ${perf_sig}`] })
-        const ext = account.cache.topics[feed.discoveryKey.toString('hex')].ext
+        const ext = account.cache['intercept'].topics[feed.discoveryKey.toString('hex')].ext
         ext.broadcast(perf_sig, hosterKey)
         
         let all = []

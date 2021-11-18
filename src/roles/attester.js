@@ -161,7 +161,7 @@ module.exports = APIS => {
         const peerList = await Promise.all(all_hosterIDs.map(async id => await chainAPI.getHosterKey(id)))
         // const feed = await store.load_feed({ targets, role, account, onmessage, onerror, ontarget, feedkey, log })
 
-        const feed = await store.load_feed({
+        const { feed, next } = await store.load_feed({
           config: { intercept: false, fresh: true, persist: false },
           extension: { ext_cbs: { onmessage, onerror }, name: `datdot-hoster-${stringkey}` },
           swarm_opts: { topic: datdot_crypto.get_discoverykey(feedkey), mode: { server: false, client: true } },
@@ -202,7 +202,7 @@ module.exports = APIS => {
             resolved_reports.forEach(async report => report.hoster = await chainAPI.getUserIDByNoiseKey(report.hoster))
             log({ type: 'challenge', data: { text: 'Got all reports', resolved_reports } })
             // remove task from feed-storage
-            await remove_task_from_cache({ account, store, topic: feed.discoveryKey, log })
+            await remove_task_from_cache({ store, topic: feed.discoveryKey, tasks: account.cache['fresh'][next].tasks, log })
             // TODO: send just a summary to the chain, not the whole array
             const nonce = await vaultAPI.getNonce()
             log({ type: 'attestor', data: `Submitting performance challenge` })
