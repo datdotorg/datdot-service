@@ -159,9 +159,9 @@ module.exports = APIS => {
         // join swarm and check performance when you connect to any of the hosters
         const role = 'attestor-challenge'
         const peerList = await Promise.all(all_hosterIDs.map(async id => await chainAPI.getHosterKey(id)))
-        // const feed = await store.load_feed({ targets, role, account, onmessage, onerror, ontarget, feedkey, log })
+        // const feed = await store.start_task({ targets, role, account, onmessage, onerror, ontarget, feedkey, log })
 
-        const { feed, next } = await store.load_feed({
+        const { feed, swarmID } = await store.start_task({
           config: { intercept: false, fresh: true, persist: false },
           extension: { ext_cbs: { onmessage, onerror }, name: `datdot-hoster-${stringkey}` },
           swarm_opts: { topic: datdot_crypto.get_discoverykey(feedkey), mode: { server: false, client: true } },

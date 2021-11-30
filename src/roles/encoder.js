@@ -18,7 +18,6 @@ const datdot_crypto = require('datdot-crypto')
 /******************************************************************************
   ROLE: Encoder
 ******************************************************************************/
-
 module.exports = APIS => {
   
   return encoder 
@@ -64,8 +63,8 @@ module.exports = APIS => {
                 Hosting setup
   ----------------------------------------- */
 
-  async function encode_hosting_setup (data) {
-    const { store, amendmentID, chainAPI, account, attestorKey, encoderKey, ranges, encoder_pos, signatures, feedKey, log } = data
+  async function encode_hosting_setup (data, account_sign) {
+    const { store, amendmentID, account, attestorKey, encoderKey, ranges, encoder_pos, signatures, feedKey, log } = data
     const log2Attestor = log.sub(`->Attestor ${attestorKey.toString('hex').substring(0,5)}`)
     const expectedChunkCount = getRangesCount(ranges)
     var download_count = 0
@@ -75,8 +74,7 @@ module.exports = APIS => {
     return new Promise(async (resolve, reject) => {
       if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
       const role = 'encoder'
-
-      const { feed } = await store.load_feed({
+      const { feed, swarmID } = await store.start_task({
         config: { intercept: false, fresh: false, persist: false },
         swarm_opts: { topic: datdot_crypto.get_discoverykey(feedKey), mode: { server: false, client: true } },
         feedkey: feedKey, 
@@ -132,7 +130,7 @@ module.exports = APIS => {
         log({ type: 'encoder', data: {  text:`MSG appended`, index: message.index, amendmentID } })
         if (stats.ackCount === expectedChunkCount) {
           log({ type: 'encoder', data: {  text:`All encoded sent`, amendmentID, index: message.index } })
-          await remove_task_from_cache({ account, topic: feed.discoveryKey, tasks: account.cache['general'].tasks, log })
+          await remove_task_from_cache({ account, feed, swarmID, log })
           resolve(`Encoded ${message.index} sent`)
         }
       })
@@ -143,6 +141,8 @@ module.exports = APIS => {
       const to_compress = serialize_before_compress(data, unique_el, log)
       log({ type: 'encoder', data: {  text: `Got data`, data: data.toString('hex'), index, to_compress: to_compress.toString('hex'), amendmentID }})
       const encoded_data = await brotli.compress(to_compress)
+
+      // const encoded_data_signature = await account_sign(encoded_data)
       const encoded_data_signature = account.sign(encoded_data)
       
       const keys = Object.keys(signatures)

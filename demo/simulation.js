@@ -72,7 +72,10 @@ async function run (){
 
   const users = scenario
   const PORTS = [9001, 9002]
-  const file = path.join(__dirname, '../src/node_modules/datdot-simulate-user/user.js')
+
+  const file = path.join(__dirname, '../src/node_modules/datdot-simulate-user/user-vault.js')
+  // const file = path.join(__dirname, '../src/node_modules/datdot-simulate-user/user.js')
+  
   for (var i = 0, len = users.length; i < len; i++) {
     const scenario = JSON.stringify(users[i])
     const logkeeper_port = 9003 + i

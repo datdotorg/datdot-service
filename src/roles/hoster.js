@@ -324,7 +324,7 @@ module.exports = APIS => {
         const stringkey = feedKey.toString('hex')
         const role = 'hoster'
 
-        const { feed } = await store.load_feed({
+        const { feed, swarmID } = await store.start_task({
           config: { intercept: true, fresh: false, persist: true },
           extension: { ext_cbs: { onerror }, name: `datdot-hoster-${stringkey}` },
           swarm_opts: { 
