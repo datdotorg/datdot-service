@@ -7,7 +7,7 @@ async function bootstrappers ({ amount = 1, log = console.log.bind(console) } = 
 
   const node0 = await make_node({ port: 10000, ephemeral: false, bootstrap: [] })
   const info0 = info(node0)
-
+  
   const bootstrap_nodes = [{ host: info0.address.host, port: info0.address.port }]
 
 
@@ -32,6 +32,6 @@ function info (node) {
   const sk = node.defaultKeyPair.secretKey.toString('hex')
   // Your DHT routing id is hash(publicIp + publicPort) and will be autoconfigured internally.
   const id = node.table.id.toString('hex')
-  const { address: host, port } = node.address()
+  const { host, port } = node.address()
   return { id, pk, sk, address: { host, port } }
 }

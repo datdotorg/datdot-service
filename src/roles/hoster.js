@@ -75,7 +75,7 @@ module.exports = APIS => {
         // organizer stuff
         const stringkey = feedKey.toString('hex')
         organizer.amendments[amendmentID] = data
-        if (!organizer.feeds[stringkey]) organizer.feeds[stringkey] = { counter: 0 } // TODO check the last counter on chain and set it to that or else zero
+        if (!organizer.feeds[stringkey]) organizer.feeds[stringkey] = { counter: 0 } // TODO: check the last counter on chain and set it to that or else zero
 
         try {
           const feed = await receive_data_and_start_hosting(data)
@@ -90,12 +90,12 @@ module.exports = APIS => {
         const [feedID, hosterID] = event.data
         const hosterAddress = await chainAPI.getUserAddress(hosterID)
         if (hosterAddress === myAddress) {
-          // TODO close all the connections related to this feed
+          // TODO: close all the connections related to this feed
           log({ type: 'hoster', data: [`Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}`] })
           // const feedKey = await chainAPI.getFeedKey(feedID)
           // const hasKey = await account.storages.has(feedKey.toString('hex'))
           // if (hasKey) return await removeFeed(account, feedKey, amendmentID)
-          // TODO cancel hosting = remove feed, get out of swarm...
+          // TODO: cancel hosting = remove feed, get out of swarm...
         }
       }
       if (event.method === 'NewStorageChallenge') {
