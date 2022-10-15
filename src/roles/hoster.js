@@ -83,7 +83,6 @@ module.exports = APIS => {
           await refresh_discovery_mode({ account, feed, mode: { server: true, client: false }, log })
         } catch (error) { 
           log({ type: 'error', data: { text: 'Caught error from hosting setup (hoster)', error }})
-          console.log(error)
         }
       }
       if (event.method === 'DropHosting') {
