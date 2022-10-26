@@ -2,10 +2,8 @@ const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
 const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
-const load_feed = require('_datdot-service-helpers/load-feed')
 const remove_task_from_cache = require('_datdot-service-helpers/remove-task-from-cache')
 const { toPromises } = require('hypercore-promisifier')
-const hypercore_updated = require('_datdot-service-helpers/hypercore-updated')
 const proof_codec = require('datdot-codec/proof')
 const brotli = require('_datdot-service-helpers/brotli')
 const getRangesCount = require('getRangesCount')
@@ -83,7 +81,7 @@ module.exports = APIS => {
         log
       })
 
-      await hypercore_updated(feed, log)
+      await feed.update()
       // create temp hypercore
       const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
       await core.ready()

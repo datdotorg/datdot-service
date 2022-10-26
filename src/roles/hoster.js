@@ -5,10 +5,8 @@ const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
 const brotli = require('_datdot-service-helpers/brotli')
 const varint = require('varint')
-const load_feed = require('_datdot-service-helpers/load-feed')
 const refresh_discovery_mode = require('_datdot-service-helpers/refresh-discovery-mode')
 const { toPromises } = require('hypercore-promisifier')
-const hypercore_updated = require('_datdot-service-helpers/hypercore-updated')
 const FeedStorage = require('_datdot-service-helpers/feed-storage.js')
 const sub = require('subleveldown')
 
@@ -347,7 +345,7 @@ module.exports = APIS => {
           log({ type: 'hoster', data: 'error extension message' })   
         }
 
-        await hypercore_updated(feed, log)
+        await feed.update()
         // hoster keeps track of how many downloads they have by incremented counter
         // const counter = organizer.feeds[stringkey].counter++
         const data = Buffer.from(`${organizer.performance_challenge_id}`, 'binary')

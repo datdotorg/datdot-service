@@ -6,7 +6,6 @@ const Hyperbeam = require('hyperbeam')
 const brotli = require('_datdot-service-helpers/brotli')
 const varint = require('varint')
 const { data } = require('hypercore-crypto')
-const load_feed = require('_datdot-service-helpers/load-feed')
 const { toPromises } = require('hypercore-promisifier')
 
 const { performance } = require('perf_hooks')
@@ -15,7 +14,6 @@ const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
 const remove_task_from_cache = require('_datdot-service-helpers/remove-task-from-cache')
 
-const hypercore_updated = require('_datdot-service-helpers/hypercore-updated')
 const tempDB = require('_tempdb')
 const getRangesCount = require('getRangesCount')
 const compare_encodings = require('compare-encodings')
@@ -174,7 +172,7 @@ module.exports = APIS => {
         
         async function onpeer (hosterkey) {
           const hosterID = await chainAPI.getHosterKey(hosterkey)
-          await hypercore_updated(feed, log)
+          await feed.update()
           log({ type: 'challenge', data: { text: 'Got hosterkey from ', hosterID, hosterkey: hosterkey.toString('hex') } })
           const stats = (await check_performance(feed, chunks[hosterID], log).catch(err => log({ type: 'fail', data: err }))) || []
           reports[hosterID] = { stats, hoster: hosterkey }
