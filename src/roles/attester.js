@@ -70,7 +70,7 @@ module.exports = APIS => {
         const attestorAddress = await chainAPI.getUserAddress(attestorID)
         if (attestorAddress !== myAddress) return
         log({ type: 'chainEvent', data: { text: `Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment)} })
-        const { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges } = await getData(chainAPI, amendment, contract)
+        const { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges } = await getData({chainAPI, amendment, contract,log})
         const data = { account: vaultAPI, hosterKeys, hosterSigningKeys, attestorKey, feedKey, encoderKeys, amendmentID, ranges, log }
         const { failedKeys, sigs } = await attest_hosting_setup(data).catch((error) => log({ type: 'error', data: { text: 'Caught error from hosting setup (attester)', error } }))
         log({ type: 'attestor', data: { text: `Resolved all the responses for amendment`, amendmentID, failedKeys, sigs } })
@@ -260,6 +260,7 @@ module.exports = APIS => {
       let hoster_channel
       var pending = 0
       try {
+        log({ type: 'attester', data: { text: 'trying to connect to the encoder', topic_encoder }})
         encoder_channel = await connect_to('encoder', true, topic_encoder, expectedChunkCount)
         hoster_channel = await connect_to('hoster', false, topic_hoster, expectedChunkCount)
         await encoder_channel('HEAR', handler)
@@ -370,10 +371,11 @@ module.exports = APIS => {
           })
           if (isSender) {
             beam_once.once('data', async (data) => {
+              console.log('Got data from encoder')
               const message = JSON.parse(data.toString('utf-8'))
               if (message.type === 'feedkey') {
                 const feedKey = Buffer.from(message.feedkey, 'hex')
-                const clone = toPromises(new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true }))
+                const clone = new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true })
                 await clone.ready()
                 core = clone
                 const cloneStream = clone.replicate(true, { live: true })
@@ -384,7 +386,7 @@ module.exports = APIS => {
               }
             })
           } else {
-            core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
+            core = new hypercore(RAM, { valueEncoding: 'binary' })
             await core.ready()
             core.on('error', err => {
               Object.values(chunks).forEach(({ reject }) => reject(err))
@@ -738,7 +740,7 @@ module.exports = APIS => {
     return [encoderID, pos]
   }
 
-  async function getData (chainAPI, amendment, contract) {
+  async function getData ({ chainAPI, amendment, contract, log }) {
     const { encoders, hosters } = amendment.providers
     const encoderKeys = encoders.map(async (id) => chainAPI.getEncoderKey(id))
     const hosterSigningKeys = []
@@ -750,6 +752,7 @@ module.exports = APIS => {
     const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
     const ranges = contract.ranges
+    log({ type: 'attestor', data: { text: `Got the data for hosting setup`, data: feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges } })
     return { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges }
   }
 

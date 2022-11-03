@@ -7,10 +7,8 @@ const { toPromises } = require('hypercore-promisifier')
 const proof_codec = require('datdot-codec/proof')
 const brotli = require('_datdot-service-helpers/brotli')
 const getRangesCount = require('getRangesCount')
-const get_nodes = require('_datdot-service-helpers/get-nodes')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
 const serialize_before_compress = require('serialize-before-compress')
-const get_index = require('_datdot-service-helpers/get-index')
 const datdot_crypto = require('datdot-crypto')
 
 /******************************************************************************
@@ -136,7 +134,7 @@ module.exports = APIS => {
       })
     }
     async function download_and_encode (account, index, feed, signatures, amendmentID, encoder_pos, log) {
-      const data = await get_index(feed, index, log)
+      const data = await feed.get(index)
       const unique_el = `${amendmentID}/${encoder_pos}`
       const to_compress = serialize_before_compress(data, unique_el, log)
       log({ type: 'encoder', data: {  text: `Got data`, data: data.toString('hex'), index, to_compress: to_compress.toString('hex'), amendmentID }})
@@ -147,7 +145,8 @@ module.exports = APIS => {
       const indexes = keys.map(key => Number(key))
       const max = get_max_index(ranges)
       const version = indexes.find(v => v >= max)
-      const nodes = await get_nodes(feed, index, version)
+      // const nodes = await get_nodes(feed, index, version)
+      const nodes = {}
       return { type: 'proof', index, encoded_data, encoded_data_signature, nodes }
     }
   }
