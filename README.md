@@ -1,48 +1,25 @@
 # DatDot
-a p2p solution for hosting files with Dat protocol ([...more](https://github.com/playproject-io/datdot-substrate/issues/12))
+a p2p solution for hosting files with Hypercore protocol ([...more](https://datdot.org))
 
-join our [telegram](https://t.me/joinchat/CgTftxXJvp6iYayqDjP7lQ) or [gitter](https://gitter.im/playproject-io/community) chat
+## Community
+Join our [discord](https://discord.gg/Wf8wc2scCs)
 
 ![](https://i.imgur.com/oGPIbZQ.jpg)
 
-## Building
+## Build
 
-Clone
-##### `git clone https://github.com/playproject-io/datdot-service.git`
+This version is work in progress (to try out the code, see milestone-1 and milestone-2 branches)
 
-Install dependencies
-##### `npm install`
+## Research
 
+See our [research repo](https://github.com/playproject-io/datdot-research/)
 
-To run the service, you will also need to run the [datdot-substrate](https://github.com/playproject-io/datdot-substrate) chain
+## Organization
 
-
-Clone
-
-##### `git clone https://github.com/playproject-io/datdot-substrate.git`
-
-Build
-
-##### `cargo build -p datdot-node --release`
-
-## Running
-This scenario is part of our first milestone (Phase 1). To run it together with the chain, use:
-
-##### `node cli.js`
-
-To re-run the scenario, you will need to each time purge the chain storage using `./target/release/datdot-node purge-chain --dev`.
-
-If you want, you can also run the chain and the service as independent processes:
-
-Service
-
-##### `DEBUG=*,-hypercore-protocol node lab/scenarios/mvp-1.js`
-
-Chain
-
-##### `./target/release/datdot-node --dev`
-
+https://github.com/datdotorg
 
 ## License
 
 MIT
+
+
