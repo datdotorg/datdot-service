@@ -31,7 +31,6 @@
     "hypercore-promisifier": "^1.1.0",
     "hypercore-protocol": "^8.0.7",
     "hyperswarm": "^4.3.5",
-    "intercept-hypercore-storage": "github:ninabreznik/intercept-hypercore-storage",
     "levelup": "^4.3.2",
     "memdown": "^6.0.0",
     "noise-peer": "^2.1.1",
