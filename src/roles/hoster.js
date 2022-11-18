@@ -49,7 +49,6 @@ module.exports = APIS => {
         }
       }
       if (event.method === 'NewAmendment') {
-        return
         const [amendmentID] = event.data
         const amendment = await chainAPI.getAmendmentByID(amendmentID)
         const { hosters, attestors, encoders } = amendment.providers
@@ -195,7 +194,7 @@ module.exports = APIS => {
   async function loadFeedData({ account, store, ranges, feedKey, log }) {
     // replicate feed from author
     const { feed } = await store.load_feed({
-      swarm_opts: { topic: datdot_crypto.get_discoverykey(feedKey), mode: { server: false, client: true } },
+      swarm_opts: { topic: datdot_crypto.get_discoverykey(feedKey), mode: { server: true, client: true } },
       feedkey: feedKey, 
       log
     })

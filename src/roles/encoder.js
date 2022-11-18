@@ -78,29 +78,28 @@ module.exports = APIS => {
         reject({ type: `compare and send_timeout` })
       }, DEFAULT_TIMEOUT)
       try {
-        // replicate feed
-        // const { feed } = await store.load_feed({
-        //   swarm_opts: { topic: topic1, mode: { server: false, client: true } },
-        //   feedkey, 
-        //   log: log2Author
-        // })
+        // replicate feed from author
+        const { feed } = await store.load_feed({
+          swarm_opts: { topic: topic1, mode: { server: true, client: true } },
+          feedkey, 
+          log: log2Author
+        })
   
-        // await feed.update()
+        await feed.update()
     
-        // log2Author({ type: 'encoder', data: { text: `Loaded feed to connect to the author` } })
+        log2Author({ type: 'encoder', data: { text: `Loaded feed to connect to the author` } })
         
         // create temp feed for sending compressed and signed data to the attestor
         const topic2 = derive_topic({ senderKey: encoderKey, feedKey: feedkey, receiverKey: attestorKey, id: amendmentID })
         log2Attestor({ type: 'encoder', data: { text: `Loading feed to connect to the attestor`, topic: topic2.toString('hex') } })
-        
-        const { feed: temp_feed } = await store.load_feed({
+        var temp_feed
+       
+        const { feed: temp } = await store.load_feed({ // feed for attestor
           swarm_opts: { topic: topic2, mode: { server: true, client: false } },
           peers: { peerList: [ attestorKey.toString('hex') ], onpeer, msg: { send: { type: 'feedkey' } } },
           log: log2Attestor
         })
-
-        // console.log('Loaded feed to connect to the attestor', temp_feed)
-
+        temp_feed = temp
   
         async function onpeer ({ feed }) {
           log2Attestor({ type: 'encoder', data: { text: `Connected to the attestor` } })
@@ -108,10 +107,9 @@ module.exports = APIS => {
           for (const range of ranges) total += (range[1] + 1) - range[0]
           for (const range of ranges) encodeAndSend({ account, temp_feed, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor })
           
-          // TODO: when all done, remove task
-          // console.log('cache encoder', account.cache['fresh'][next1].tasks, account.cache['fresh'][next2].tasks)
-          await remove_task_from_cache({ store, topic: topic1, cache: account.cache, log: log2Author })
-          await remove_task_from_cache({ store, topic: topic2, cache: account.cache, log: log2Attestor })
+          // when all done, remove task
+          // await remove_task_from_cache({ store, topic: topic1, cache: account.cache, log: log2Author })
+          // await remove_task_from_cache({ store, topic: topic2, cache: account.cache, log: log2Attestor })
           clearTimeout(tid)
           resolve()
         }  
@@ -133,6 +131,7 @@ module.exports = APIS => {
     async function send ({ account, feedkey, task_id, msg, temp_feed, stats, expectedChunkCount, log }) {
       return new Promise(async (resolve, reject) => {
         const message = await msg
+
         await temp_feed.append(proof_codec.encode(message))
         log({ type: 'encoder', data: {  text:`MSG appended`, index: message.index, amendmentID } })
         if (stats.ackCount === expectedChunkCount) {
