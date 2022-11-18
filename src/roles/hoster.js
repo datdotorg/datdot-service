@@ -49,6 +49,7 @@ module.exports = APIS => {
         }
       }
       if (event.method === 'NewAmendment') {
+        return
         const [amendmentID] = event.data
         const amendment = await chainAPI.getAmendmentByID(amendmentID)
         const { hosters, attestors, encoders } = amendment.providers
@@ -223,7 +224,6 @@ module.exports = APIS => {
 
   async function getStorage ({account, key, log}) {
     const stringkey = key.toString('hex')
-    console.log('getting storage', account.storages)
     storage = await account.storages.get(stringkey)
     log({ type: 'hoster', data: { text: `Existing storage`, stringkey } })
     return storage
@@ -241,16 +241,15 @@ module.exports = APIS => {
     
     return new Promise(async (resolve, reject) => {
       try {
-        await store.load_feed({
+        await store.load_feed({ // hoster to attestor in hosting setup
           config: { permanent: true},
           swarm_opts: { topic, mode: { server: false, client: true } },
-          msg: { receive: { type: 'feedkey' }},
-          peers: { peerList: [attestorKey], onpeer },
+          peers: { peerList: [attestorKey.toString('hex')], onpeer, msg: { receive: { type: 'feedkey' }} },
           log: log2attestor
         })
         log2attestor({ type: 'hoster', data: { text: `feed to attestor loaded` } })
     
-        async function onpeer ({ feed, hosterkey, stringkey }) {
+        async function onpeer ({ feed }) {
           const all = []
           for (var i = 0; i < expectedChunkCount; i++) {
             log2attestor({ type: 'hoster', data: [`Getting data: counter ${i}`] })

@@ -161,7 +161,7 @@ module.exports = APIS => {
 
         // join swarm and check performance when you connect to any of the hosters
         const role = 'attestor-challenge'
-        const peerList = await Promise.all(all_hosterIDs.map(id => chainAPI.getHosterKey(id)))
+        const peerList = await Promise.all(all_hosterIDs.map(id => chainAPI.getHosterKey(id).toString('hex')))
 
         const { feed } = await store.load_feed({ // feed for challenge
           config: { intercept: false, fresh: true, persist: false },
@@ -174,7 +174,7 @@ module.exports = APIS => {
 
         log({ type: 'challenge', data: { text: 'Got challenge feed', fedkey: feed.key.toString('hex') } })
         
-        async function onpeer ({ hosterkey, stringkey }) {
+        async function onpeer ({ remotekey: hosterkey }) {
           const hosterID = await chainAPI.getHosterKey(hosterkey)
           await feed.update()
           log({ type: 'challenge', data: { text: 'Got hosterkey from ', hosterID, hosterkey: hosterkey.toString('hex') } })
@@ -293,14 +293,13 @@ module.exports = APIS => {
       try {
         await store.load_feed({ // feed for encoder
           swarm_opts: { topic: topic1, mode: { server: false, client: true } },
-          msg: { receive: { type: 'feedkey' } },
-          peers: { peerList: [key1], onpeer },
+          peers: { peerList: [key1.toString('hex')], onpeer,  msg: { receive: { type: 'feedkey' } } },
           log: log2encoder
         })
 
         log({ type: 'attestor', data: { text: 'Loaded feed to connect to the encoder', topic: topic1.toString('hex') }})
         
-        async function onpeer ({ feed, next, hosterkey, stringkey }) {
+        async function onpeer ({ feed, remotekey }) {
           log({ type: 'attestor', data: { text: 'Connected to the encoder', expectedChunkCount }})
           // get replicated data
           const chunks = []
@@ -336,13 +335,15 @@ module.exports = APIS => {
     const { feed } = await store.load_feed({ // feed for hoster
       config: { fresh: true },
       swarm_opts: { topic: topic2, mode: { server: true, client: false } },
-      msg: { send: { type: 'feedkey' } },
-      peers: { peerList: [ key2 ], onpeer },
+      peers: { peerList: [ key2 ], onpeer, msg: { send: { type: 'feedkey' } } },
       log: log2hoster
     })
 
-    await feed.append(chunk)
-    clearTimeout(tid)
+    async function onpeer ({ feed, remotekey }) {
+      await feed.append(chunk)
+      clearTimeout(tid)
+    }
+
   }
 
   /* ----------------------------------------------------------------------

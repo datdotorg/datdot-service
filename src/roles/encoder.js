@@ -79,15 +79,15 @@ module.exports = APIS => {
       }, DEFAULT_TIMEOUT)
       try {
         // replicate feed
-        const { feed } = await store.load_feed({
-          swarm_opts: { topic: topic1, mode: { server: false, client: true } },
-          feedkey, 
-          log: log2Author
-        })
+        // const { feed } = await store.load_feed({
+        //   swarm_opts: { topic: topic1, mode: { server: false, client: true } },
+        //   feedkey, 
+        //   log: log2Author
+        // })
   
-        await feed.update()
+        // await feed.update()
     
-        log2Author({ type: 'encoder', data: { text: `Loaded feed to connect to the author` } })
+        // log2Author({ type: 'encoder', data: { text: `Loaded feed to connect to the author` } })
         
         // create temp feed for sending compressed and signed data to the attestor
         const topic2 = derive_topic({ senderKey: encoderKey, feedKey: feedkey, receiverKey: attestorKey, id: amendmentID })
@@ -95,15 +95,14 @@ module.exports = APIS => {
         
         const { feed: temp_feed } = await store.load_feed({
           swarm_opts: { topic: topic2, mode: { server: true, client: false } },
-          msg: { send: { type: 'feedkey' } },
-          peers: { peerList: [ attestorKey ], onpeer },
+          peers: { peerList: [ attestorKey.toString('hex') ], onpeer, msg: { send: { type: 'feedkey' } } },
           log: log2Attestor
         })
 
         // console.log('Loaded feed to connect to the attestor', temp_feed)
 
   
-        async function onpeer ({ hosterkey, stringkey }) {
+        async function onpeer ({ feed }) {
           log2Attestor({ type: 'encoder', data: { text: `Connected to the attestor` } })
           var total = 0
           for (const range of ranges) total += (range[1] + 1) - range[0]
@@ -111,8 +110,8 @@ module.exports = APIS => {
           
           // TODO: when all done, remove task
           // console.log('cache encoder', account.cache['fresh'][next1].tasks, account.cache['fresh'][next2].tasks)
-          // await remove_task_from_cache({ store, topic: topic1, cache_type: account.cache['fresh'][next1], log: log2Author })
-          // await remove_task_from_cache({ store, topic: topic2, cache_type: account.cache['fresh'][next2], log: log2Attestor })
+          await remove_task_from_cache({ store, topic: topic1, cache: account.cache, log: log2Author })
+          await remove_task_from_cache({ store, topic: topic2, cache: account.cache, log: log2Attestor })
           clearTimeout(tid)
           resolve()
         }  

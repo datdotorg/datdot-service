@@ -1,15 +1,15 @@
 process.env.DEBUG = '*,-hypercore-protocol'
 const spawn = require('cross-spawn')
 const path = require('path')
-const bootstrapper = require('./bootstrapper.js')
+const createTestnet = require('@hyperswarm/testnet')
 
 run()
 
 async function run (){
 
-  const bootstrap_nodes = await bootstrapper({ amount: 10 })
+  const { bootstrap } = await createTestnet(20)
 
-  console.log({bootstrap_nodes})
+  console.log({ bootstrap })
 
   await new Promise(resolve => setTimeout(resolve, 250))
 
@@ -53,7 +53,7 @@ async function run (){
   const all = [process]
   const url = 'ws://localhost'
 
-  const config = JSON.stringify({ chain: [url, 3399], chat: [url, 6697], bootstrap: bootstrap_nodes })
+  const config = JSON.stringify({ chain: [url, 3399], chat: [url, 6697], bootstrap })
 
  if (flag === '--production') {
     throw new Error('"--production" is currently unsuported')
