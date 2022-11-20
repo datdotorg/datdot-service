@@ -10,7 +10,7 @@ const getRangesCount = require('getRangesCount')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
 const serialize_before_compress = require('serialize-before-compress')
 const datdot_crypto = require('datdot-crypto')
-const DEFAULT_TIMEOUT = 7500
+const DEFAULT_TIMEOUT = 10500
 
 /******************************************************************************
   ROLE: Encoder

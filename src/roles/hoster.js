@@ -16,7 +16,7 @@ const proof_codec = require('datdot-codec/proof')
 const getRangesCount = require('getRangesCount')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
 
-const DEFAULT_TIMEOUT = 17500
+const DEFAULT_TIMEOUT = 10500
 
 // global variables (later local DB)
 const organizer = {
