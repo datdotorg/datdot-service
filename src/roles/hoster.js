@@ -192,10 +192,12 @@ module.exports = APIS => {
   }
 
   async function loadFeedData({ account, store, ranges, feedKey, log }) {
+    const topic = datdot_crypto.get_discoverykey(feedKey)
     // replicate feed from author
-    const { feed } = await store.load_feed({
-      swarm_opts: { topic: datdot_crypto.get_discoverykey(feedKey), mode: { server: true, client: true } },
-      feedkey: feedKey, 
+    const { feed } = await store.load_feed({ feedkey: feedKey, topic, log })
+
+    await store.connect({ 
+      swarm_opts: { topic, mode: { server: true, client: true } }, 
       log
     })
     
@@ -240,14 +242,16 @@ module.exports = APIS => {
     
     return new Promise(async (resolve, reject) => {
       try {
-        await store.load_feed({ // hoster to attestor in hosting setup
-          config: { permanent: true},
-          swarm_opts: { topic, mode: { server: false, client: true } },
-          peers: { peerList: [attestorKey.toString('hex')], onpeer, msg: { receive: { type: 'feedkey' }} },
-          log: log2attestor
-        })
-        log2attestor({ type: 'hoster', data: { text: `feed to attestor loaded` } })
+        // hoster to attestor in hosting setup
+        // await store.load_feed({ newfeed: false, topic, log: log2attestor })
+        // log2attestor({ type: 'hoster', data: { text: `feed to attestor loaded` } })
     
+        // await store.connect({
+        //   swarm_opts: { topic, mode: { server: false, client: true } },
+        //   peers: { peerList: [attestorKey.toString('hex')], onpeer, msg: { receive: { type: 'feedkey' }} },
+        //   log: log2attestor
+        // })
+
         async function onpeer ({ feed }) {
           const all = []
           for (var i = 0; i < expectedChunkCount; i++) {

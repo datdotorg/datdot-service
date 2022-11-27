@@ -1,6 +1,6 @@
 
 module.exports = [
-  { "name": "alice", "behavior": ["register_chain_account", "subscribe_to_plan", "offer_service"] },
+  { "name": "alice", "behavior": ["register_chain_account", "sponsor_plan", "offer_service"] },
   { "name": "eve", "behavior": ["register_chain_account", "author_hypercore"] },
   { "name": "bob", "behavior": ["register_chain_account", "offer_service"] },
   { "name": "charlie", "behavior": ["register_chain_account", "offer_service"] },

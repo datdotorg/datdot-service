@@ -79,33 +79,34 @@ module.exports = APIS => {
       }, DEFAULT_TIMEOUT)
       try {
         // replicate feed from author
-        const { feed } = await store.load_feed({
+        const { feed } = await store.load_feed({ feedkey, log: log2Author })
+        await feed.update()
+
+        await store.connect({ 
           swarm_opts: { topic: topic1, mode: { server: true, client: true } },
-          feedkey, 
           log: log2Author
         })
-  
-        await feed.update()
     
         log2Author({ type: 'encoder', data: { text: `Loaded feed to connect to the author` } })
         
         // create temp feed for sending compressed and signed data to the attestor
         const topic2 = derive_topic({ senderKey: encoderKey, feedKey: feedkey, receiverKey: attestorKey, id: amendmentID })
         log2Attestor({ type: 'encoder', data: { text: `Loading feed to connect to the attestor`, topic: topic2.toString('hex') } })
-        var temp_feed
        
-        const { feed: temp } = await store.load_feed({ // feed for attestor
+        // feed for attestor
+        const { feed: temp} = await store.load_feed({  topic: topic2, log: log2Attestor })
+
+        await store.connect({ 
           swarm_opts: { topic: topic2, mode: { server: true, client: false } },
-          peers: { peerList: [ attestorKey.toString('hex') ], onpeer, msg: { send: { type: 'feedkey' } } },
+          peers: { feed: temp, peerList: [ attestorKey.toString('hex') ], onpeer, msg: { send: { type: 'feedkey' } } },
           log: log2Attestor
         })
-        temp_feed = temp
   
-        async function onpeer ({ feed }) {
+        async function onpeer () {
           log2Attestor({ type: 'encoder', data: { text: `Connected to the attestor` } })
           var total = 0
           for (const range of ranges) total += (range[1] + 1) - range[0]
-          for (const range of ranges) encodeAndSend({ account, temp_feed, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor })
+          for (const range of ranges) encodeAndSend({ account, temp_feed: temp, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor })
           
           // when all done, remove task
           // await remove_task_from_cache({ store, topic: topic1, cache: account.cache, log: log2Author })

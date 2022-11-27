@@ -291,8 +291,13 @@ module.exports = APIS => {
         reject({ type: `compare and send_timeout` })
       }, DEFAULT_TIMEOUT)
       try {
-        await store.load_feed({ // feed for encoder
-          swarm_opts: { topic: topic1, mode: { server: false, client: true } },
+
+        // feed to encoder
+        await store.load_feed({  newfeed: false, topic: topic1, log: log2encoder })
+            
+        // connect to encoder
+        await store.connect({ 
+          swarm_opts: { topic: topic1, mode: { server: false, client: true } }, 
           peers: { peerList: [key1.toString('hex')], onpeer,  msg: { receive: { type: 'feedkey' } } },
           log: log2encoder
         })
@@ -318,7 +323,7 @@ module.exports = APIS => {
     })
   }
 
-  async function compare_and_fwd_chunk ({ feed, i, key1, key2, compare_encodings_CB, expectedChunkCount }) {
+  async function compare_and_fwd_chunk ({ feed, i, key1: encoderKey, key2, compare_encodings_CB, expectedChunkCount }) {
     const chunk = feed.get(i)
     await compare_encodings_CB(chunk, encoderKey)
     await send_to_hoster({ topic2, key2, chunk })
@@ -332,10 +337,13 @@ module.exports = APIS => {
 
     const log2hoster = log.sub(`<-Attestor to hoster ${key2.toString('hex').substring(0,5)}`)
 
-    const { feed } = await store.load_feed({ // feed for hoster
-      config: { fresh: true },
-      swarm_opts: { topic: topic2, mode: { server: true, client: false } },
-      peers: { peerList: [ key2 ], onpeer, msg: { send: { type: 'feedkey' } } },
+    // feed for hoster
+    const { feed } = await store.load_feed({ topic: topic2, log: log2hoster })
+        
+    // connect to hoster
+    await store.connect({ 
+      swarm_opts: { topic: topic2, mode: { server: true, client: false } }, 
+      peers: { feed, peerList: [ key2 ], onpeer, msg: { send: { type: 'feedkey' } } } ,
       log: log2hoster
     })
 
