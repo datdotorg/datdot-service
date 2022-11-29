@@ -42,8 +42,12 @@ module.exports = APIS => {
         const [attestorID] = attestors
         const attestorKey = await chainAPI.getAttestorKey(attestorID)
         const data = { store, amendmentID, chainAPI, account, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, signatures, feedKey, log }
-        await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${JSON.stringify(error)}`] }))
-        // log({ type: 'encoder', data: [`Encoding done`] })
+        const { topic1, topic2, log1, log2 } = await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${JSON.stringify(error)}`] }))
+        // when all done, remove task
+        log({ type: 'encoder', data: [`Encoding done`] })
+        // await remove_task_from_cache({ store, topic: topic1, cache: account.cache, log: log1 })
+        // await remove_task_from_cache({ store, topic: topic2, cache: account.cache, log: log2 })
+                  
       }
     }
     // HELPERS
@@ -104,15 +108,11 @@ module.exports = APIS => {
   
         async function onpeer () {
           log2Attestor({ type: 'encoder', data: { text: `Connected to the attestor` } })
-          var total = 0
-          for (const range of ranges) total += (range[1] + 1) - range[0]
-          for (const range of ranges) encodeAndSend({ account, temp_feed: temp, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor })
-          
-          // when all done, remove task
-          // await remove_task_from_cache({ store, topic: topic1, cache: account.cache, log: log2Author })
-          // await remove_task_from_cache({ store, topic: topic2, cache: account.cache, log: log2Attestor })
+          const all = []
+          for (const range of ranges) all.push(encodeAndSend({ account, temp_feed: temp, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor }))
+          Promise.all(all)
           clearTimeout(tid)
-          resolve()
+          resolve({ topic1, topic2, log1: log2Author, log2: log2Attestor })
         }  
       } catch(err) {
         log2Attestor({ type: 'encoder', data: { text: 'Error in hosting setup', err } })
@@ -125,20 +125,19 @@ module.exports = APIS => {
     async function encodeAndSend ({ account, temp_feed, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log }) {
       for (let index = range[0], len = range[1] + 1; index < len; index++) {
         log({ type: 'encoder', data: { text: 'Download index', index, range }})
-        const msg = await download_and_encode(account, index, feed, signatures, amendmentID, encoder_pos, log)
-        send({ account, feedkey: feed.key, task_id: amendmentID, msg, temp_feed, log, stats, expectedChunkCount })
+        const proof_promise = download_and_encode(account, index, feed, signatures, amendmentID, encoder_pos, log)
+        send({ account, feedkey: feed.key, task_id: amendmentID, proof_promise, temp_feed, log, stats, expectedChunkCount })
       }
     }
-    async function send ({ account, feedkey, task_id, msg, temp_feed, stats, expectedChunkCount, log }) {
+    async function send ({ proof_promise, temp_feed, stats, expectedChunkCount, log }) {
       return new Promise(async (resolve, reject) => {
-        const message = await msg
-
-        await temp_feed.append(proof_codec.encode(message))
-        log({ type: 'encoder', data: {  text:`MSG appended`, index: message.index, amendmentID } })
+        const proof = await proof_promise
+        await temp_feed.append(proof_codec.encode(proof))
+        log({ type: 'encoder', data: {  text:`MSG appended`, index: proof.index, amendmentID } })
         if (stats.ackCount === expectedChunkCount) {
-          log({ type: 'encoder', data: {  text:`All encoded sent`, amendmentID, index: message.index } })
+          log({ type: 'encoder', data: {  text:`All encoded sent`, amendmentID, index: proof.index } })
           // await remove_task_from_cache({ account, topic: feed.discoveryKey, tasks: account.cache['general'].tasks, log })
-          resolve(`Encoded ${message.index} sent`)
+          resolve(`Encoded ${proof.index} sent`)
         }
       })
     }
@@ -146,17 +145,10 @@ module.exports = APIS => {
       const data = await feed.get(index)
       const unique_el = `${amendmentID}/${encoder_pos}`
       const to_compress = serialize_before_compress(data, unique_el, log)
-      log({ type: 'encoder', data: {  text: `Got data`, data: data.toString('hex'), index, to_compress: to_compress.toString('hex'), amendmentID }})
+      log({ type: 'encoder', data: {  text: `Got data`, data: data.toString(), index, to_compress: to_compress.toString('hex'), amendmentID }})
       const encoded_data = await brotli.compress(to_compress)
-      const encoded_data_signature = account.sign(encoded_data)
-      
-      const keys = Object.keys(signatures)
-      const indexes = keys.map(key => Number(key))
-      const max = get_max_index(ranges)
-      const version = indexes.find(v => v >= max)
-      // const nodes = await get_nodes(feed, index, version)
-      const nodes = {}
-      return { type: 'proof', index, encoded_data, encoded_data_signature, nodes }
+      const signed_data = account.sign(encoded_data)
+      return { type: 'proof', index, encoded_data, signed_data }
     }
   }
 

@@ -243,14 +243,14 @@ module.exports = APIS => {
     return new Promise(async (resolve, reject) => {
       try {
         // hoster to attestor in hosting setup
-        // await store.load_feed({ newfeed: false, topic, log: log2attestor })
-        // log2attestor({ type: 'hoster', data: { text: `feed to attestor loaded` } })
+        await store.load_feed({ newfeed: false, topic, log: log2attestor })
+        log2attestor({ type: 'hoster', data: { text: `feed to attestor loaded` } })
     
-        // await store.connect({
-        //   swarm_opts: { topic, mode: { server: false, client: true } },
-        //   peers: { peerList: [attestorKey.toString('hex')], onpeer, msg: { receive: { type: 'feedkey' }} },
-        //   log: log2attestor
-        // })
+        await store.connect({
+          swarm_opts: { topic, mode: { server: false, client: true } },
+          peers: { peerList: [attestorKey.toString('hex')], onpeer, msg: { receive: { type: 'feedkey' }} },
+          log: log2attestor
+        })
 
         async function onpeer ({ feed }) {
           const all = []

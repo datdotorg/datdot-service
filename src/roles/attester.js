@@ -233,7 +233,7 @@ module.exports = APIS => {
       const hosterSigningKey = await hosterSigningKeys[i]
       const unique_el = `${amendmentID}/${i}`
       const opts = { store, amendmentID, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, ranges, feedKey, log }
-      opts.compare_encodings_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
+      opts.compare_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
       responses.push(verify_and_forward_encodings(opts))
     }
     
@@ -253,7 +253,7 @@ module.exports = APIS => {
   }
     
   async function verify_and_forward_encodings (opts) {
-    const { store, amendmentID, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, feedKey, ranges, compare_encodings_CB, log } = opts
+    const { store, amendmentID, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, feedKey, ranges, compare_CB, log } = opts
     const failedKeys = []
     var unique_el_signature
     return new Promise(async (resolve, reject) => {
@@ -266,7 +266,7 @@ module.exports = APIS => {
           store,
           topic1: derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID }), 
           topic2: derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID }), 
-          compare_encodings_CB, 
+          compare_CB, 
           key2: hosterKey, 
           key1: encoderKey, 
           expectedChunkCount: getRangesCount(ranges) ,
@@ -284,7 +284,7 @@ module.exports = APIS => {
   }
   
   async function connect_compare_send (opts) {
-    const { store,topic1, topic2, key1, key2, compare_encodings_CB, expectedChunkCount, log } = opts
+    const { store, topic1, topic2, key1, key2, compare_CB, expectedChunkCount, log } = opts
     const log2encoder = log.sub(`<-Attestor to encoder ${key1.toString('hex').substring(0,5)}`)
     return new Promise(async (resolve, reject) => {       
       const tid = setTimeout(() => {
@@ -309,7 +309,7 @@ module.exports = APIS => {
           // get replicated data
           const chunks = []
           for (var i = 0; i < expectedChunkCount; i++) {
-            chunks.push(compare_and_fwd_chunk({ feed, i, key1, key2, compare_encodings_CB, expectedChunkCount }))
+            chunks.push(compare_and_fwd_chunk({ store, feed, i, key1, key2, topic2, compare_CB, expectedChunkCount, log }))
           }
           await Promise.all(chunks)
           log({ type: 'attester', data: { text: 'Sending report', expectedChunkCount, len: chunks.length } })
@@ -323,14 +323,14 @@ module.exports = APIS => {
     })
   }
 
-  async function compare_and_fwd_chunk ({ feed, i, key1: encoderKey, key2, compare_encodings_CB, expectedChunkCount }) {
+  async function compare_and_fwd_chunk ({ store, feed, i, key1: encoderKey, key2, topic2, compare_CB, expectedChunkCount, log }) {
     const chunk = feed.get(i)
-    await compare_encodings_CB(chunk, encoderKey)
-    await send_to_hoster({ topic2, key2, chunk })
+    await compare_CB(chunk, encoderKey)
+    await send_to_hoster({ store, topic2, key2, chunk, log })
     log({ type: 'attester', data: { text: 'hosting setup', chunks: `${i}/${expectedChunkCount}` } })
   }
 
-  async function send_to_hoster ({ topic2, key2, chunk }) {
+  async function send_to_hoster ({ store, topic2, key2, chunk, log }) {
     const tid = setTimeout(() => {
       // reject({ type: `${role}_timeout` })
     }, DEFAULT_TIMEOUT)
