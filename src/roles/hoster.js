@@ -9,6 +9,7 @@ const refresh_discovery_mode = require('_datdot-service-helpers/refresh-discover
 const { toPromises } = require('hypercore-promisifier')
 const FeedStorage = require('_datdot-service-helpers/feed-storage.js')
 const sub = require('subleveldown')
+const remove_task_from_cache = require('_datdot-service-helpers/remove-task-from-cache')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
@@ -184,7 +185,7 @@ module.exports = APIS => {
       const log2Author = log.sub(`Hoster to author ${feedKey.toString('hex').substring(0,5)} ${attestorKey.toString('hex').substring(0,5)} `)
       const { feed } = await loadFeedData({ account, store, ranges, feedKey, log: log2Author })
       log({ type: 'hosting setup', data: { text: 'Feed loaded', amendment: amendmentID } })
-      const opts = { account, store, amendmentID, hosterKey, attestorKey, encoderSigningKey, expectedChunkCount, encoder_pos, feedKey, signatures, ranges, log }
+      const opts = { account, store, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoder_pos, feedKey, signatures, ranges, log }
       await getEncodedDataFromAttestor(opts)
       log({ type: 'hosting setup', data: { text: 'Encoded data received and stored', amendment: amendmentID } })
       resolve({ feed })
@@ -193,11 +194,12 @@ module.exports = APIS => {
 
   async function loadFeedData({ account, store, ranges, feedKey, log }) {
     const topic = datdot_crypto.get_discoverykey(feedKey)
+    
     // replicate feed from author
     const { feed } = await store.load_feed({ feedkey: feedKey, topic, log })
 
     await store.connect({ 
-      swarm_opts: { topic, mode: { server: true, client: true } }, 
+      swarm_opts: { topic, mode: { server: false, client: true } }, 
       log
     })
     
@@ -220,6 +222,7 @@ module.exports = APIS => {
     }
     await Promise.all(all)
     log({ type: 'hoster', data: {  text: 'All feeds in the range downloaded', ranges } })
+    await remove_task_from_cache({ store, topic, cache: account.cache, log })
     return { feed }
   }
 
@@ -231,26 +234,27 @@ module.exports = APIS => {
   }
 
   async function getEncodedDataFromAttestor(opts) {
-    const { account, store, amendmentID, hosterKey, attestorKey, encoderSigningKey, expectedChunkCount, encoder_pos, feedKey, signatures, ranges, log } = opts
+    const { account, store, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoder_pos, feedKey, signatures, ranges, log } = opts
     const log2attestor = log.sub(`hoster to attestor ${attestorKey.toString('hex').substring(0, 5)} amendment ${amendmentID}`)
     log2attestor({ type: 'hoster', data: [`getEncodedDataFromAttestor`] })
     
     const unique_el = `${amendmentID}/${encoder_pos}`
     const all = []
     let counter = 0
-    const topic = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID })
+    const topic = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID, log })
     
     return new Promise(async (resolve, reject) => {
       try {
         // hoster to attestor in hosting setup
         await store.load_feed({ newfeed: false, topic, log: log2attestor })
         log2attestor({ type: 'hoster', data: { text: `feed to attestor loaded` } })
-    
+        
         await store.connect({
           swarm_opts: { topic, mode: { server: false, client: true } },
           peers: { peerList: [attestorKey.toString('hex')], onpeer, msg: { receive: { type: 'feedkey' }} },
           log: log2attestor
         })
+        log2attestor({ type: 'hoster', data: { text: `waiting for onpeer`,topic: topic.toString('hex') } })
 
         async function onpeer ({ feed }) {
           const all = []

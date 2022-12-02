@@ -42,7 +42,7 @@ module.exports = APIS => {
         const [attestorID] = attestors
         const attestorKey = await chainAPI.getAttestorKey(attestorID)
         const data = { store, amendmentID, chainAPI, account, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, signatures, feedKey, log }
-        const { topic1, topic2, log1, log2 } = await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${JSON.stringify(error)}`] }))
+        await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${JSON.stringify(error)}`] }))
         // when all done, remove task
         log({ type: 'encoder', data: [`Encoding done`] })
         // await remove_task_from_cache({ store, topic: topic1, cache: account.cache, log: log1 })
@@ -85,16 +85,16 @@ module.exports = APIS => {
         // replicate feed from author
         const { feed } = await store.load_feed({ feedkey, log: log2Author })
         await feed.update()
+        log2Author({ type: 'encoder', data: { text: `Loaded feed to connect to the author` } })
 
         await store.connect({ 
           swarm_opts: { topic: topic1, mode: { server: true, client: true } },
           log: log2Author
         })
     
-        log2Author({ type: 'encoder', data: { text: `Loaded feed to connect to the author` } })
         
         // create temp feed for sending compressed and signed data to the attestor
-        const topic2 = derive_topic({ senderKey: encoderKey, feedKey: feedkey, receiverKey: attestorKey, id: amendmentID })
+        const topic2 = derive_topic({ senderKey: encoderKey, feedKey: feedkey, receiverKey: attestorKey, id: amendmentID, log })
         log2Attestor({ type: 'encoder', data: { text: `Loading feed to connect to the attestor`, topic: topic2.toString('hex') } })
        
         // feed for attestor
@@ -112,7 +112,7 @@ module.exports = APIS => {
           for (const range of ranges) all.push(encodeAndSend({ account, temp_feed: temp, range, feed, stats, signatures, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor }))
           Promise.all(all)
           clearTimeout(tid)
-          resolve({ topic1, topic2, log1: log2Author, log2: log2Attestor })
+          resolve()
         }  
       } catch(err) {
         log2Attestor({ type: 'encoder', data: { text: 'Error in hosting setup', err } })
