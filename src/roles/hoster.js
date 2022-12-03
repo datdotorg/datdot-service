@@ -7,7 +7,7 @@ const brotli = require('_datdot-service-helpers/brotli')
 const varint = require('varint')
 const refresh_discovery_mode = require('_datdot-service-helpers/refresh-discovery-mode')
 const { toPromises } = require('hypercore-promisifier')
-const FeedStorage = require('_datdot-service-helpers/feed-storage.js')
+const FeedStorage = require('_datdot-service-helpers/data-storage.js')
 const sub = require('subleveldown')
 const remove_task_from_cache = require('_datdot-service-helpers/remove-task-from-cache')
 
@@ -283,6 +283,8 @@ module.exports = APIS => {
       return new Promise(async (resolve, reject) => {
         counter++
         const { index, encoded_data, encoded_data_signature, nodes } = data
+        const { index, encoded_data, signed_data } = data
+        // TODO: check the proofs
         log2attestor({ type: 'hoster', data: [`Storing verified message with index: ${data.index}`] })
         const isExisting = await account.storages.has(feedKey.toString('hex'))
         log2attestor({ type: 'hoster', data: [`Is feed storage existing?: ${isExisting}`] })
@@ -297,13 +299,13 @@ module.exports = APIS => {
           // if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
           // log2attestor({ type: 'hoster', data: { text:`Encoder data signature verified`, encoded_data } })
           const decompressed = await brotli.decompress(encoded_data)
-          // await datdot_crypto.verify_chunk_hash(index, decompressed, unique_el, nodes).catch(err => reject('not valid chunk hash', err))
+          // await datdot_crypto.verify_chunk_hash(index, decompressed, unique_el).catch(err => reject('not valid chunk hash', err))
           // log2attestor({ type: 'hoster', data: [`Chunk hash verified`] })
           const keys = Object.keys(signatures)
           const indexes = keys.map(key => Number(key))
           const max = get_max_index(ranges)
           const version = indexes.find(v => v >= max)
-          // const not_verified = datdot_crypto.merkle_verify({ feedKey, hash_index: index * 2, version, signature: Buffer.from(signatures[version], 'binary'), nodes })
+          // const not_verified = datdot_crypto.merkle_verify({ feedKey, hash_index: index * 2, version, signature: Buffer.from(signatures[version], 'binary') })
           // if (not_verified) reject(not_verified)
           // log2attestor({ type: 'hoster', data: [`Chunk merkle verified`] })
           await store_in_hoster_storage({
@@ -313,7 +315,6 @@ module.exports = APIS => {
             encoded_data_signature,
             encoded_data,
             unique_el,  // need to store unique_el, to be able to decompress and serve chunks as hosters
-            nodes,
             log: log2attestor
           })
           log2attestor({ type: 'hoster', data: [`Hoster received & stored index: ${index} (${counter}/${expectedChunkCount}`] })
@@ -351,19 +352,19 @@ module.exports = APIS => {
     } */
   }
 
-  async function store_in_hoster_storage({ account, feedKey, index, encoded_data_signature, encoded_data, unique_el, nodes, log }) {
-    const storage = getStorage({account, key: feedKey, log})
+  async function store_in_hoster_storage({ account, feedKey, index, encoded_data_signature, encoded_data, unique_el, log }) {
+    const storage = await getStorage({account, key: feedKey, log})
+    log({ type: 'hoster', data: { text: 'loaded existing storage' } })
     return storage.storeEncoded({
       index,
       encoded_data_signature,
       encoded_data,
       unique_el,
-      nodes,
     })
   }
 
   async function getDataFromStorage(account, key, index, log) {
-    const storage = getStorage({account, key, log})
+    const storage = await getStorage({account, key, log})
     const data = await storage.getProofOfStorage(index)
     log({ type: 'storage challenge', data: { text: 'Got encoded data from storage', data }})
     return data

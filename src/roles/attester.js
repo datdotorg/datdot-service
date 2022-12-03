@@ -261,7 +261,7 @@ module.exports = APIS => {
         reject({ type: `compare and send_timeout` })
       }, DEFAULT_TIMEOUT)
       try {
-        log({ type: 'attester', data: { text: 'trying to connect to the encoder', encoderKey }})
+        log({ type: 'attester', data: { text: 'calling connect_compare_send', encoderKey }})
         await connect_compare_send({
           store,
           topic1: derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID, log }), 
@@ -269,7 +269,7 @@ module.exports = APIS => {
           compare_CB, 
           key2: hosterKey, 
           key1: encoderKey, 
-          expectedChunkCount: getRangesCount(ranges) ,
+          ranges,
           log
         })
         if (!unique_el_signature) failedKeys.push(hosterKey)
@@ -283,43 +283,50 @@ module.exports = APIS => {
   }
   
   async function connect_compare_send (opts) {
-    const { store, topic1, topic2, key1, key2, compare_CB, expectedChunkCount, log } = opts
+    const { store, topic1, topic2, key1, key2, compare_CB, ranges, log } = opts
     const log2encoder = log.sub(`<-Attestor to encoder ${key1.toString('hex').substring(0,5)}`)
     const log2hoster = log.sub(`<-Attestor to hoster ${key2.toString('hex').substring(0,5)}`)
-
+    
     return new Promise(async (resolve, reject) => {       
       const tid = setTimeout(() => {
         reject({ type: `compare and send_timeout` })
       }, DEFAULT_TIMEOUT)
       
+      const expectedChunkCount =  getRangesCount(ranges)
+      var feed1
+      var feed2
+      const all = []
+      const chunks = {}
+      
       try {
-        var feed1
-        var feed2
-        var chunks = []
-
+        
         // CONNECT TO ENCODER
+
+        log2encoder({ type: 'attester', data: { text: 'load feed for encoder', key1: key1.toString('hex') }})
         await store.load_feed({  newfeed: false, topic: topic1, log: log2encoder })
-            
+        
+        log2encoder({ type: 'attester', data: { text: 'connect to encoder encoder', key1: key1.toString('hex') }})
         await store.connect({ 
           swarm_opts: { topic: topic1, mode: { server: false, client: true } }, 
           peers: { peerList: [key1.toString('hex')], onpeer: onencoder,  msg: { receive: { type: 'feedkey' } } },
           log: log2encoder
         })
-
+        
         async function onencoder ({ feed, remotekey }) {
-          feed1 = feed
           log({ type: 'attestor', data: { text: 'Connected to the encoder', expectedChunkCount }})
+          feed1 = feed
           // get replicated data
           for (var i = 0; i < expectedChunkCount; i++) {
-            chunks.push(compare_and_fwd_chunk({ feed1, i, key1, compare_CB, expectedChunkCount, log }))
+            all.push(get_and_compare_chunks({ feed1, i, key1, compare_CB, expectedChunkCount, log }))
           }
           log({ type: 'attester', data: { text: 'chunks compared', chunks: chunks.length } })
         }
         
         // CONNECT TO HOSTER
-        
+
         const { feed} = await store.load_feed({ topic: topic2, log: log2hoster })
         feed2 = feed
+
         
         await store.connect({ 
           swarm_opts: { topic: topic2, mode: { server: true, client: false } }, 
@@ -330,27 +337,49 @@ module.exports = APIS => {
         async function onhoster ({ feed, remotekey }) {
           log({ type: 'attestor', data: { text: 'Connected to the hoster', topic: topic2.toString('hex') }})
           feed2 = feed
-          await Promise.all(chunks)
-          chunks.forEach(chunk => {
-            feed2.append(chunk)
-          })
-          clearTimeout(tid)
-          log({ type: 'attester', data: { text: 'Sending report', expectedChunkCount, len: chunks.length } })
-          resolve()
+          for (var i = 0; i < expectedChunkCount; i++ ) {
+            if (chunks[i]) {
+              feed2.append(chunks[i].chunk)
+              delete chunks[i]
+            } else {
+              chunks[i] = { send_to_hoster: (chunk) => feed2.append(chunk) }
+            }
+          }
+        }
+        
+        async function get_and_compare_chunks ({ feed1, i, key1: encoderKey, compare_CB, log }) {
+          const chunk_promise = feed1.get(i)
+          log({ type: 'attester', data: { text: 'got chunk from the encoder', i } })
+          const res = await compare_CB(chunk_promise, encoderKey)
+          log({ type: 'attester', data: { text: 'chunk comparison report', i, res } })
+          const chunk = await chunk_promise
+          log({ type: 'attester', data: { text: 'got the chunk', i, res } })
+
+          if (!chunks[i]) {
+            chunks[i] = { chunk }
+            log({ type: 'attester', data: { text: 'storing chunk', i, chunks } })
+          } else {
+            log({ type: 'attester', data: { text: 'calling send_to_hoster', i, chunks } })
+            chunks[i].send_to_hoster(chunk) 
+            delete chunks[i]
+          }
         }
 
+        await Promise.all(all)
+        clearTimeout(tid)
+        log({ type: 'attester', data: { text: 'Sending report', expectedChunkCount, len: chunks.length } })
+        resolve()
         
       } catch(err) {
         log({ type: 'fail', data: { text: 'Error: connect_compare_send', err }})
         reject(err)
       }
+
     })
+
+
   }
 
-  async function compare_and_fwd_chunk ({ feed1, i, key1: encoderKey, compare_CB, expectedChunkCount, log }) {
-    const chunk = feed1.get(i)
-    await compare_CB(chunk, encoderKey)
-  }
 
 
   /* ----------------------------------------------------------------------
