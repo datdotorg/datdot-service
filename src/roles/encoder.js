@@ -147,8 +147,8 @@ module.exports = APIS => {
       const to_compress = serialize_before_compress(data, unique_el, log)
       log({ type: 'encoder', data: {  text: `Got data`, data: data.toString(), index, to_compress: to_compress.toString('hex'), amendmentID }})
       const encoded_data = await brotli.compress(to_compress)
-      const signed_data = account.sign(encoded_data)
-      return { type: 'proof', index, encoded_data, signed_data }
+      const encoded_data_signature = account.sign(encoded_data)
+      return { type: 'proof', index, encoded_data, encoded_data_signature }
     }
   }
 

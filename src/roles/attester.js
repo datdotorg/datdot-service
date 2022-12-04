@@ -70,7 +70,7 @@ module.exports = APIS => {
         const attestorAddress = await chainAPI.getUserAddress(attestorID)
         if (attestorAddress !== myAddress) return
 
-        log({ type: 'chainEvent', data: { text: `Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment)} })
+        log({ type: 'attestor', data: { text: `Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment)} })
         const { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges } = await getAmendmentData({chainAPI, amendment, contract,log})
         
         const data = { store, amendmentID, feedKey, hosterKeys, hosterSigningKeys, attestorKey, encoderKeys, ranges, log }
@@ -319,7 +319,7 @@ module.exports = APIS => {
           for (var i = 0; i < expectedChunkCount; i++) {
             all.push(get_and_compare_chunks({ feed1, i, key1, compare_CB, expectedChunkCount, log }))
           }
-          log({ type: 'attester', data: { text: 'chunks compared', chunks: chunks.length } })
+          log({ type: 'attester', data: { text: 'chunks compared' } })
         }
         
         // CONNECT TO HOSTER
@@ -335,9 +335,10 @@ module.exports = APIS => {
         })
         
         async function onhoster ({ feed, remotekey }) {
-          log({ type: 'attestor', data: { text: 'Connected to the hoster', topic: topic2.toString('hex') }})
+          log({ type: 'attestor', data: { text: 'Connected to the hoster', topic: topic2.toString('hex'), chunks }})
           feed2 = feed
           for (var i = 0; i < expectedChunkCount; i++ ) {
+            log({ type: 'attestor', data: { text: 'Looping through chunks object', i, chunks }})
             if (chunks[i]) {
               feed2.append(chunks[i].chunk)
               delete chunks[i]
