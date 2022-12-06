@@ -78,9 +78,11 @@ module.exports = APIS => {
 
         try {
           const { feed } = await receive_data_and_start_hosting(data)
+          console.log('hoster loaded feed', feed)
+
           log({ type: 'hoster', data: {  text: `Feed loaded` } })
           log({ type: 'hoster', data: {  text: `Hosting for the amendment ${amendmentID} started` } })
-          await refresh_discovery_mode({ account, topic: feed.discoveryKey, mode: { server: true, client: false }, log })
+          await refresh_discovery_mode({ swarm: account.cache.swarm, topic: feed.discoveryKey, mode: { server: true, client: false }, log })
         } catch (error) { 
           log({ type: 'error', data: { text: 'Caught error from hosting setup (hoster)', error }})
         }
@@ -199,7 +201,7 @@ module.exports = APIS => {
     const { feed } = await store.load_feed({ feedkey: feedKey, topic, log })
 
     await store.connect({ 
-      swarm_opts: { topic, mode: { server: false, client: true } }, 
+      swarm_opts: { topic, mode: { server: true, client: true } }, 
       log
     })
     
@@ -222,7 +224,7 @@ module.exports = APIS => {
     }
     await Promise.all(all)
     log({ type: 'hoster', data: {  text: 'All feeds in the range downloaded', ranges } })
-    await remove_task_from_cache({ store, topic, cache: account.cache, log })
+    // await remove_task_from_cache({ store, topic, cache: account.cache, log })
     return { feed }
   }
 

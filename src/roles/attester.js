@@ -326,6 +326,7 @@ module.exports = APIS => {
 
         const { feed} = await store.load_feed({ topic: topic2, log: log2hoster })
         feed2 = feed
+        log({ type: 'attestor', data: { text: 'Feed to hoster loaded', topic: topic2.toString('hex') }})
 
         
         await store.connect({ 
