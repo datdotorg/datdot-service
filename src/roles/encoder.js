@@ -81,6 +81,7 @@ module.exports = APIS => {
       const tid = setTimeout(() => {
         reject({ type: `compare and send_timeout` })
       }, DEFAULT_TIMEOUT)
+      
       try {
         // replicate feed from author
         const { feed } = await store.load_feed({ feedkey, log: log2Author })
