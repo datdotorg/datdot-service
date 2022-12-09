@@ -12,7 +12,7 @@ const { performance } = require('perf_hooks')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
-const remove_task_from_cache = require('_datdot-service-helpers/remove-task-from-cache')
+const done_task_cleanup = require('_datdot-service-helpers/done-task-cleanup')
 
 const tempDB = require('_tempdb')
 const getRangesCount = require('getRangesCount')
@@ -204,7 +204,7 @@ module.exports = APIS => {
             resolved_reports.forEach(async report => report.hoster = await chainAPI.getUserIDByNoiseKey(report.hoster))
             log({ type: 'challenge', data: { text: 'Got all reports', resolved_reports } })
             // remove task from feed-storage
-            // await remove_task_from_cache({ store, topic: feed.discoveryKey, cache_type: account.cache['fresh'][next], log })
+            // await done_task_cleanup({ store, topic: feed.discoveryKey, cache_type: account.cache['fresh'][next], log })
             // TODO: send just a summary to the chain, not the whole array
             const nonce = await vaultAPI.getNonce()
             log({ type: 'attestor', data: `Submitting performance challenge` })

@@ -2,7 +2,7 @@ const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
 const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
-const remove_task_from_cache = require('_datdot-service-helpers/remove-task-from-cache')
+const done_task_cleanup = require('_datdot-service-helpers/done-task-cleanup')
 const { toPromises } = require('hypercore-promisifier')
 const proof_codec = require('datdot-codec/proof')
 const brotli = require('_datdot-service-helpers/brotli')
@@ -45,8 +45,8 @@ module.exports = APIS => {
         await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${JSON.stringify(error)}`] }))
         // when all done, remove task
         log({ type: 'encoder', data: [`Encoding done`] })
-        // await remove_task_from_cache({ store, topic: topic1, cache: account.cache, log: log1 })
-        // await remove_task_from_cache({ store, topic: topic2, cache: account.cache, log: log2 })
+        // await done_task_cleanup({ store, topic: topic1, cache: account.cache, log: log1 })
+        // await done_task_cleanup({ store, topic: topic2, cache: account.cache, log: log2 })
                   
       }
     }
@@ -137,7 +137,7 @@ module.exports = APIS => {
         log({ type: 'encoder', data: {  text:`MSG appended`, index: proof.index, amendmentID } })
         if (stats.ackCount === expectedChunkCount) {
           log({ type: 'encoder', data: {  text:`All encoded sent`, amendmentID, index: proof.index } })
-          // await remove_task_from_cache({ account, topic: feed.discoveryKey, tasks: account.cache['general'].tasks, log })
+          // await done_task_cleanup({ account, topic: feed.discoveryKey, tasks: account.cache['general'].tasks, log })
           resolve(`Encoded ${proof.index} sent`)
         }
       })

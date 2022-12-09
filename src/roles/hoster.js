@@ -9,7 +9,7 @@ const refresh_discovery_mode = require('_datdot-service-helpers/refresh-discover
 const { toPromises } = require('hypercore-promisifier')
 const FeedStorage = require('_datdot-service-helpers/data-storage.js')
 const sub = require('subleveldown')
-const remove_task_from_cache = require('_datdot-service-helpers/remove-task-from-cache')
+const done_task_cleanup = require('_datdot-service-helpers/done-task-cleanup')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
@@ -82,7 +82,6 @@ module.exports = APIS => {
 
           log({ type: 'hoster', data: {  text: `Feed loaded` } })
           log({ type: 'hoster', data: {  text: `Hosting for the amendment ${amendmentID} started` } })
-          await refresh_discovery_mode({ swarm: account.cache.swarm, topic: feed.discoveryKey, mode: { server: true, client: false }, log })
         } catch (error) { 
           log({ type: 'error', data: { text: 'Caught error from hosting setup (hoster)', error }})
         }
@@ -224,7 +223,9 @@ module.exports = APIS => {
     }
     await Promise.all(all)
     log({ type: 'hoster', data: {  text: 'All feeds in the range downloaded', ranges } })
-    // await remove_task_from_cache({ store, topic, cache: account.cache, log })
+    await refresh_discovery_mode({ swarm: account.cache.swarm, topic, mode: { server: true, client: false }, log })
+    await done_task_cleanup({ store, topic, cache: account.cache, log })
+
     return { feed }
   }
 
