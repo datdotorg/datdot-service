@@ -224,7 +224,7 @@ module.exports = APIS => {
     await Promise.all(all)
     log({ type: 'hoster', data: {  text: 'All feeds in the range downloaded', ranges } })
     await refresh_discovery_mode({ swarm: account.cache.swarm, topic, mode: { server: true, client: false }, log })
-    await done_task_cleanup({ store, topic, cache: account.cache, log })
+    // await done_task_cleanup({ store, topic, cache: account.cache, log })
 
     return { feed }
   }
