@@ -152,7 +152,8 @@ module.exports = APIS => {
       })
     }
     async function download_and_encode (account, index, feed, signatures, amendmentID, encoder_pos, log) {
-      const data = await feed.get(index)
+      const data_promise = feed.get(index)
+      const data = await data_promise
       const unique_el = `${amendmentID}/${encoder_pos}`
       const to_compress = serialize_before_compress(data, unique_el, log)
       log({ type: 'encoder', data: {  text: `Got data`, data: data.toString(), index, to_compress: to_compress.toString('hex'), amendmentID }})

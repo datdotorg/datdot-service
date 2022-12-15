@@ -203,7 +203,7 @@ module.exports = APIS => {
             const resolved_reports = await Promise.all(reports).catch(err => log({ type: 'error', data: { text: 'Performance challenge error', err } }))
             resolved_reports.forEach(async report => report.hoster = await chainAPI.getUserIDByNoiseKey(report.hoster))
             log({ type: 'challenge', data: { text: 'Got all reports', resolved_reports } })
-            // remove task from feed-storage
+            // remove task from feed-store
             await done_task_cleanup({ store, topic: feed.discoveryKey, cache_type: account.cache['fresh'][next], log })
             // TODO: send just a summary to the chain, not the whole array
             const nonce = await vaultAPI.getNonce()
