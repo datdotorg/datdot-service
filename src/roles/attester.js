@@ -204,7 +204,7 @@ module.exports = APIS => {
             resolved_reports.forEach(async report => report.hoster = await chainAPI.getUserIDByNoiseKey(report.hoster))
             log({ type: 'challenge', data: { text: 'Got all reports', resolved_reports } })
             // remove task from feed-storage
-            // await done_task_cleanup({ store, topic: feed.discoveryKey, cache_type: account.cache['fresh'][next], log })
+            await done_task_cleanup({ store, topic: feed.discoveryKey, cache_type: account.cache['fresh'][next], log })
             // TODO: send just a summary to the chain, not the whole array
             const nonce = await vaultAPI.getNonce()
             log({ type: 'attestor', data: `Submitting performance challenge` })
@@ -498,7 +498,7 @@ module.exports = APIS => {
           const json = chunk.toString('binary')
           log2hosterChallenge({ type: 'attestor', data: { text: `Getting json`, json } })
           const data = proof_codec.decode(json)
-          const { contractID, index, encoded_data, encoded_data_signature, nodes } = data
+          const { contractID, index, encoded_data, encoded_data_signature, p } = data
           log2hosterChallenge({ type: 'attestor', data: { text: `Storage proof received, ${index}`, encoded_data } })
 
           const check = checks[contractID] // { index, feedKey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey }
@@ -508,7 +508,7 @@ module.exports = APIS => {
           if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
           const unique_el = `${amendmentID}/${encoder_pos}`
           const decompressed = await brotli.decompress(encoded_data)
-          await datdot_crypto.verify_chunk_hash(index, decompressed, unique_el, nodes).catch(err => reject('not valid chunk hash', err))
+          await datdot_crypto.verify_chunk_hash(index, decompressed, unique_el).catch(err => reject('not valid chunk hash', err))
           const keys = Object.keys(signatures)
           const indexes = keys.map(key => Number(key))
           const max = get_max_index(ranges)
