@@ -4,6 +4,7 @@ const download_range = require('_datdot-service-helpers/download-range')
 const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
 const brotli = require('_datdot-service-helpers/brotli')
+const parse_decompressed = require('_datdot-service-helpers/parse-decompressed')
 const varint = require('varint')
 const refresh_discovery_mode = require('_datdot-service-helpers/refresh-discovery-mode')
 const { toPromises } = require('hypercore-promisifier')
@@ -184,7 +185,7 @@ module.exports = APIS => {
       const log2Author = log.sub(`Hoster to author ${feedKey.toString('hex').substring(0,5)} ${attestorKey.toString('hex').substring(0,5)} `)
       const { feed } = await loadFeedData({ account, store, ranges, feedKey, log: log2Author })
       log({ type: 'hosting setup', data: { text: 'Feed loaded', amendment: amendmentID } })
-      const opts = { account, store, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, signatures, ranges, log }
+      const opts = { account, store, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log }
       await getEncodedDataFromAttestor(opts)
       log({ type: 'hosting setup', data: { text: 'Encoded data received and stored', amendment: amendmentID } })
       resolve({ feed })
@@ -235,7 +236,7 @@ module.exports = APIS => {
   }
 
   async function getEncodedDataFromAttestor(opts) {
-    const { account, store, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, signatures, ranges, log } = opts
+    const { account, store, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log } = opts
     const log2attestor = log.sub(`hoster to attestor ${attestorKey.toString('hex').substring(0, 5)} amendment ${amendmentID}`)
     log2attestor({ type: 'hoster', data: { text: `getEncodedDataFromAttestor` } })
     
@@ -282,35 +283,34 @@ module.exports = APIS => {
       const data = proof_codec.decode(json)
       log2attestor({ type: 'hoster', data: { text: `Data decoded`, data } })
       log2attestor({ type: 'hoster', data: { text: `Downloaded index: ${data.index} from feed replicated from attestor ${attestorKey.toString('hex')}` } })
+      
       return new Promise(async (resolve, reject) => {
+        let { index, encoded_data, encoded_data_signature, p } = data
+        p = proof_codec.to_buffer(p)
+
+        log2attestor({ type: 'hoster', data: { text: `Storing verified message with index: ${index}` } })
         counter++
-        const { index, encoded_data, encoded_data_signature, p } = data
-        // TODO: check the proofs
-        log2attestor({ type: 'hoster', data: { text: `Storing verified message with index: ${data.index}` } })
-        const isExisting = await account.storages.has(feedKey.toString('hex'))
-        log2attestor({ type: 'hoster', data: { text: `Is feed storage existing?: ${isExisting}` } })
-        // Fix up the JSON serialization by converting things to buffers
-        if (!isExisting) {
-          const error = { type: 'encoded:error', error: 'UNKNOWN_FEED', ...{ key: feedKey.toString('hex') } }
-          // stream.write(error)
-          // stream.end()
-          return reject(error)
-        }
-        try {
+        const decompressed = await brotli.decompress(encoded_data)
+        const decoded = parse_decompressed(decompressed, unique_el)
+        const nodes = [...p.hash.nodes, ...p.upgrade.nodes, ...p.upgrade.additionalNodes]
+
+        // TODO: Fix up the JSON serialization by converting things to buffers
+        const hasStorage = await account.storages.has(feedKey.toString('hex'))
+        if (!hasStorage) { return reject({ type: 'Error', error: 'UNKNOWN_FEED', ...{ key: feedKey.toString('hex') } }) }
+        log2attestor({ type: 'hoster', data: { text:`Storage for feedkey exists` } })
+        try { 
+          // 1. verify encoder signature
           if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
           log2attestor({ type: 'hoster', data: { text:`Encoder data signature verified`, encoded_data } })
-          const decompressed = await brotli.decompress(encoded_data)
-          // TODO: check also if hash matches the proof
-          const verified = await datdot_crypto.verify_proof(p, feedKey)
-          if (!verified) reject('not valid chunk hash')
-          log2attestor({ type: 'hoster', data: { text: `Chunk hash verified` } })
-          const keys = Object.keys(signatures)
-          const indexes = keys.map(key => Number(key))
-          const max = get_max_index(ranges)
-          const version = indexes.find(v => v >= max)
-          // const not_verified = datdot_crypto.merkle_verify({ feedKey, hash_index: index * 2, version, signature: Buffer.from(signatures[version], 'binary') })
-          // if (not_verified) reject(not_verified)
-          // log2attestor({ type: 'hoster', data: { text: `Chunk merkle verified` } })
+         // 2. verify proof
+          const proof_verified = await datdot_crypto.verify_proof(p, feedKey)
+          if (!proof_verified) reject('not a valid proof')
+          log2attestor({ type: 'hoster', data: { text: `Proof verified` } })
+          // 3. verify chunk (see if hash matches the proof node hash)
+          const hash_verified = await datdot_crypto.verify_hash(index, nodes, decoded)
+          if (!hash_verified) reject('not a valid chunk hash')
+          log2attestor({ type: 'hoster', data: { text: `Chunk hash verified`, hash_verified } })
+
           await store_in_hoster_storage({
             account,
             feedKey,

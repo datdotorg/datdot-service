@@ -159,7 +159,8 @@ module.exports = APIS => {
       log({ type: 'encoder', data: {  text: `Got data`, data: data.toString(), index, to_compress: to_compress.toString('hex'), amendmentID }})
       const encoded_data = await brotli.compress(to_compress)
       const encoded_data_signature = account.sign(encoded_data)
-      const p = await feed.core.tree.proof({ upgrade: { start: 0, length: feed.length }})
+      const p = await feed.core.tree.proof({ hash: { index: index*2 }, upgrade: { start: 0, length: feed.length }}) 
+      console.log({encoder_proof: p})
       return { type: 'proof', index, encoded_data, encoded_data_signature, p: proof_codec.to_string(p) }
     }
   }
