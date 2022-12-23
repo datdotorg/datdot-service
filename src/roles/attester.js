@@ -32,12 +32,13 @@ module.exports = APIS => {
   
   return attester
 
-  async function attester (identity, log) {
-    const { chainAPI, vaultAPI, store } = APIS
+  async function attester (vaultAPI) {
+    const { identity, log, store } = vaultAPI
+    const { chainAPI } = APIS
+    const account = vaultAPI
     const { myAddress, signer, noiseKey: attestorKey } = identity
     log({ type: 'attestor', data: [`Listening to events for attestor role`] })
     const jobsDB = await tempDB(attestorKey)
-    const account = await vaultAPI
     chainAPI.listenToEvents(handleEvent)
 
   /* ----------------------------------------------------------------------
@@ -350,21 +351,28 @@ module.exports = APIS => {
         }
         
         async function get_and_compare_chunks ({ feed1, i, key1: encoderKey, compare_CB, log }) {
-          const chunk_promise = feed1.get(i)
-          log({ type: 'attester', data: { text: 'got chunk from the encoder', i } })
-          const res = await compare_CB(chunk_promise, encoderKey)
-          log({ type: 'attester', data: { text: 'chunk comparison report', i, res } })
-          const chunk = await chunk_promise
-          log({ type: 'attester', data: { text: 'got the chunk', i, res } })
-
-          if (!chunks[i]) {
-            chunks[i] = { chunk }
-            log({ type: 'attester', data: { text: 'storing chunk', i, chunks } })
-          } else {
-            log({ type: 'attester', data: { text: 'calling send_to_hoster', i, chunks } })
-            chunks[i].send_to_hoster(chunk) 
-            delete chunks[i]
-          }
+          return new Promise(async(resolve, reject) => {
+            // const tid = setTimeout(() => {
+            //   reject({ type: `get_and_compare_chunks timeout` })
+            // }, DEFAULT_TIMEOUT)
+            const chunk_promise = feed1.get(i)
+            log({ type: 'attester', data: { text: 'got chunk from the encoder', i } })
+            const res = await compare_CB(chunk_promise, encoderKey)
+            log({ type: 'attester', data: { text: 'chunk comparison report', i, res } })
+            const chunk = await chunk_promise
+            log({ type: 'attester', data: { text: 'got the chunk', i, res } })
+  
+            if (!chunks[i]) {
+              chunks[i] = { chunk }
+              log({ type: 'attester', data: { text: 'storing chunk', i, chunks } })
+            } else {
+              log({ type: 'attester', data: { text: 'calling send_to_hoster', i, chunks } })
+              chunks[i].send_to_hoster(chunk) 
+              delete chunks[i]
+            }
+            resolve()
+            // clearTimeout(tid)
+          })
         }
 
         await Promise.all(all)

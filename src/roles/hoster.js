@@ -32,11 +32,13 @@ module.exports = APIS => {
   
   return hoster
 
-  async function hoster(identity, log) {
-    const { chainAPI, vaultAPI, store } = APIS
+  async function hoster(vaultAPI) {
+    const { identity, log, store } = vaultAPI
+    const { chainAPI } = APIS
+    const account = vaultAPI
+
     const { myAddress, noiseKey: hosterKey } = identity
     log({ type: 'hoster', data: { text: `Listening to events for hoster role` } })
-    const account = await vaultAPI
 
     await chainAPI.listenToEvents(handleEvent)
 
@@ -193,39 +195,43 @@ module.exports = APIS => {
   }
 
   async function loadFeedData({ account, store, ranges, feedKey, log }) {
-    const topic = datdot_crypto.get_discoverykey(feedKey)
-    
-    // replicate feed from author
-    const { feed } = await store.load_feed({ feedkey: feedKey, topic, log })
-
-    await store.connect({ 
-      swarm_opts: { topic, mode: { server: true, client: true } }, 
-      log
-    })
-    
-    var stringkey = feed.key.toString('hex')
-    var storage
-    log({ type: 'hoster', data: { text: `Feed to author loaded`, stringkey } })
-    if (!account.storages.has(stringkey)) {
-      log({ type: 'hoster', data: { text: `New storage for feed`, stringkey } })
-      const db = sub(account.db, stringkey, { valueEncoding: 'binary' })
-      storage = new hosterStorage({ db, feed, log })
-      account.storages.set(stringkey, storage)
-    } else storage = await getStorage({account, key: feed.key, log})
-   
-
-    // make hoster storage for feed
-    let all = []
-    for (const range of ranges) {
-      log({ type: 'hoster', data: {  text: 'Downloading range', ranges, range } })
-      all.push(download_range(feed, range))
+    try {
+      const topic = datdot_crypto.get_discoverykey(feedKey)
+      
+      // replicate feed from author
+      const { feed } = await store.load_feed({ feedkey: feedKey, topic, log })
+  
+      await store.connect({ 
+        swarm_opts: { topic, mode: { server: true, client: true } }, 
+        log
+      })
+      
+      var stringkey = feed.key.toString('hex')
+      var storage
+      log({ type: 'hoster', data: { text: `Feed to author loaded`, stringkey } })
+      if (!account.storages.has(stringkey)) {
+        log({ type: 'hoster', data: { text: `New storage for feed`, stringkey } })
+        const db = sub(account.db, stringkey, { valueEncoding: 'binary' })
+        storage = new hosterStorage({ db, feed, log }) // comes with interecepting the feeds
+        account.storages.set(stringkey, storage)
+      } else storage = await getStorage({account, key: feed.key, log})
+     
+  
+      // make hoster storage for feed
+      let all = []
+      for (const range of ranges) {
+        log({ type: 'hoster', data: {  text: 'Downloading range', ranges, range } })
+        all.push(download_range(feed, range))
+      }
+      await Promise.all(all)
+      log({ type: 'hoster', data: {  text: 'All feeds in the range downloaded', ranges } })
+      await refresh_discovery_mode({ swarm: account.cache.swarm, topic, mode: { server: true, client: false }, log })
+      // await done_task_cleanup({ store, topic, cache: account.cache, log })
+  
+      return { feed }
+    } catch (err) {
+      log({ type: 'Error', data: {  text: 'Error: loading feed data', err } })
     }
-    await Promise.all(all)
-    log({ type: 'hoster', data: {  text: 'All feeds in the range downloaded', ranges } })
-    await refresh_discovery_mode({ swarm: account.cache.swarm, topic, mode: { server: true, client: false }, log })
-    // await done_task_cleanup({ store, topic, cache: account.cache, log })
-
-    return { feed }
   }
 
   async function getStorage ({account, key, log}) {
@@ -286,14 +292,10 @@ module.exports = APIS => {
       
       return new Promise(async (resolve, reject) => {
         let { index, encoded_data, encoded_data_signature, p } = data
-        p = proof_codec.to_buffer(p)
-
+        
         log2attestor({ type: 'hoster', data: { text: `Storing verified message with index: ${index}` } })
         counter++
-        const decompressed = await brotli.decompress(encoded_data)
-        const decoded = parse_decompressed(decompressed, unique_el)
-        const nodes = [...p.hash.nodes, ...p.upgrade.nodes, ...p.upgrade.additionalNodes]
-
+        
         // TODO: Fix up the JSON serialization by converting things to buffers
         const hasStorage = await account.storages.has(feedKey.toString('hex'))
         if (!hasStorage) { return reject({ type: 'Error', error: 'UNKNOWN_FEED', ...{ key: feedKey.toString('hex') } }) }
@@ -302,14 +304,19 @@ module.exports = APIS => {
           // 1. verify encoder signature
           if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
           log2attestor({ type: 'hoster', data: { text:`Encoder data signature verified`, encoded_data } })
-         // 2. verify proof
-          const proof_verified = await datdot_crypto.verify_proof(p, feedKey)
-          if (!proof_verified) reject('not a valid proof')
-          log2attestor({ type: 'hoster', data: { text: `Proof verified` } })
+
+          // 2. verify proof
+          // p = proof_codec.to_buffer(p)
+          // const proof_verified = await datdot_crypto.verify_proof(p, feedKey)
+          // if (!proof_verified) reject('not a valid proof')
+          // log2attestor({ type: 'hoster', data: { text: `Proof verified` } })
+          
           // 3. verify chunk (see if hash matches the proof node hash)
-          const hash_verified = await datdot_crypto.verify_hash(index, nodes, decoded)
-          if (!hash_verified) reject('not a valid chunk hash')
-          log2attestor({ type: 'hoster', data: { text: `Chunk hash verified`, hash_verified } })
+          // const decompressed = await brotli.decompress(encoded_data)
+          // const decoded = parse_decompressed(decompressed, unique_el)
+          // const block_verified = await datdot_crypto.verify_block(p, decoded)
+          // if (!block_verified) reject('not a valid chunk hash')
+          // log2attestor({ type: 'hoster', data: { text: `Chunk verified`, block_verified } })
 
           await store_in_hoster_storage({
             account,
