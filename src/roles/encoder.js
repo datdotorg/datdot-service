@@ -10,7 +10,7 @@ const getRangesCount = require('getRangesCount')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
 const serialize_before_compress = require('serialize-before-compress')
 const datdot_crypto = require('datdot-crypto')
-const DEFAULT_TIMEOUT = 10500
+const DEFAULT_TIMEOUT = 5000
 
 /******************************************************************************
   ROLE: Encoder
@@ -21,9 +21,9 @@ module.exports = APIS => {
   return encoder 
 
   async function encoder (vaultAPI) {
-    const { identity, log, store } = vaultAPI
+    const account = vaultAPI
+    const { identity, log, store } = account
     const { chainAPI } = APIS
-    const account = await vaultAPI
     const { myAddress, noiseKey: encoderKey } = identity
     log({ type: 'encoder', data: [`Listening to events for encoder role`] })
 
@@ -44,9 +44,7 @@ module.exports = APIS => {
         const attestorKey = await chainAPI.getAttestorKey(attestorID)
         const data = { store, amendmentID, chainAPI, account, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, feedKey, log }
         await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${JSON.stringify(error)}`] }))
-        // when all done, remove task
         log({ type: 'encoder', data: { type: `Encoding done` } })
-        // await done_task_cleanup({ account, topic: feed.discoveryKey, tasks: account.cache['general'].tasks, log })                  
       }
     }
     // HELPERS
@@ -85,7 +83,7 @@ module.exports = APIS => {
         log2Author({ type: 'encoder', data: { text: `Loaded feed to connect to the author` } })
 
         await store.connect({ 
-          swarm_opts: { topic: topic1, mode: { server: true, client: true } },
+          swarm_opts: { role: 'encoder2author', topic: topic1, mode: { server: false, client: true } },
           log: log2Author
         })
     
@@ -98,7 +96,7 @@ module.exports = APIS => {
         const { feed: temp} = await store.load_feed({  topic: topic2, log: log2Attestor })
 
         await store.connect({ 
-          swarm_opts: { topic: topic2, mode: { server: true, client: false } },
+          swarm_opts: { role: 'encoder2attestor', topic: topic2, mode: { server: true, client: false } },
           peers: { feed: temp, peerList: [ attestorKey.toString('hex') ], onpeer, msg: { send: { type: 'feedkey' } } },
           log: log2Attestor
         })
@@ -108,6 +106,8 @@ module.exports = APIS => {
           const all = []
           for (const range of ranges) all.push(encodeAndSend({ account, temp_feed: temp, range, feed, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor }))
           await Promise.all(all)
+          await done_task_cleanup({ role: 'encoder2author', topic: topic1, cache: account.cache, log })                  
+          // await done_task_cleanup({ role: 'encoder2attestor', topic: topic2, cache: account.cache, log })                  
           log2Attestor({ type: 'encoder', data: { text: `All chunks appended and sent to the attestor`, all } })
           clearTimeout(tid)
           resolve()

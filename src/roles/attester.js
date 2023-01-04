@@ -1,12 +1,9 @@
 const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
-const hyperswarm = require('hyperswarm')
 const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
 const brotli = require('_datdot-service-helpers/brotli')
 const varint = require('varint')
-const { data } = require('hypercore-crypto')
-const { toPromises } = require('hypercore-promisifier')
 
 const { performance } = require('perf_hooks')
 
@@ -19,7 +16,7 @@ const getRangesCount = require('getRangesCount')
 const compare_encodings = require('compare-encodings')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
 const get_index = require('_datdot-service-helpers/get-index')
-const DEFAULT_TIMEOUT = 10500
+const DEFAULT_TIMEOUT = 5000
 
 // global variables
 const organizer = {
@@ -33,9 +30,9 @@ module.exports = APIS => {
   return attester
 
   async function attester (vaultAPI) {
-    const { identity, log, store } = vaultAPI
     const { chainAPI } = APIS
     const account = vaultAPI
+    const { identity, log, store } = account
     const { myAddress, signer, noiseKey: attestorKey } = identity
     log({ type: 'attestor', data: [`Listening to events for attestor role`] })
     const jobsDB = await tempDB(attestorKey)
@@ -74,7 +71,7 @@ module.exports = APIS => {
         log({ type: 'attestor', data: { text: `Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment)} })
         const { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges } = await getAmendmentData({chainAPI, amendment, contract,log})
         
-        const data = { store, amendmentID, feedKey, hosterKeys, hosterSigningKeys, attestorKey, encoderKeys, ranges, log }
+        const data = { account, amendmentID, feedKey, hosterKeys, hosterSigningKeys, attestorKey, encoderKeys, ranges, log }
         const { failedKeys, sigs } = await attest_hosting_setup(data).catch((error) => {
           log({ type: 'error', data: { text: 'Caught error from hosting setup (attester)', error } })
           throw new Error('hosting setup (attester) error')
@@ -167,7 +164,7 @@ module.exports = APIS => {
         const { feed } = await store.load_feed({ // feed for challenge
           config: { intercept: false, fresh: true, persist: false },
           extension: { ext_cbs: { onmessage, onerror }, name: `datdot-hoster-${stringkey}` },
-          swarm_opts: { mode: { server: false, client: true } },
+          swarm_opts: { role: 'perf_attestor', mode: { server: false, client: true } },
           feedkey, 
           peers: { peerList, onpeer },
           log
@@ -205,7 +202,7 @@ module.exports = APIS => {
             resolved_reports.forEach(async report => report.hoster = await chainAPI.getUserIDByNoiseKey(report.hoster))
             log({ type: 'challenge', data: { text: 'Got all reports', resolved_reports } })
             // remove task from feed-store
-            await done_task_cleanup({ store, topic: feed.discoveryKey, cache_type: account.cache['fresh'][next], log })
+            // await done_task_cleanup({ store, topic: feed.discoveryKey, cache_type: account.cache['fresh'][next], log })
             // TODO: send just a summary to the chain, not the whole array
             const nonce = await vaultAPI.getNonce()
             log({ type: 'attestor', data: `Submitting performance challenge` })
@@ -224,55 +221,71 @@ module.exports = APIS => {
   ---------------------------------------------------------------------- */
 
   async function attest_hosting_setup (data) {
-    const { store, amendmentID, feedKey, hosterKeys, hosterSigningKeys, attestorKey, encoderKeys, ranges, log } = data
-    const messages = {}
-    const responses = []
-    log({ type: 'attestor', data: { text: `Attest hosting setup`, amendmentID, encoderKeys } })
-    for (var i = 0, len = encoderKeys.length; i < len; i++) {
-      const encoderKey = await encoderKeys[i]
-      const hosterKey = await hosterKeys[i]
-      const hosterSigningKey = await hosterSigningKeys[i]
-      const unique_el = `${amendmentID}/${i}`
-      const opts = { store, amendmentID, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, ranges, feedKey, log }
-      opts.compare_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
-      responses.push(verify_and_forward_encodings(opts))
-    }
-    
-    const resolved_responses = await Promise.all(responses) // can be 0 to 6 pubKeys of failed providers
-    log({ type: 'attestor', data: { text: `Resolved responses!`, resolved_responses } })
-    const failed = []
-    const sigs = []
-    resolved_responses.forEach(res => {
-      const { failedKeys, unique_el_signature, hosterKey } = res
-      failed.push(failedKeys)
-      sigs.push({ unique_el_signature, hosterKey })
+    return new Promise(async (resolve, reject) => {
+      const { account, amendmentID, feedKey, hosterKeys, hosterSigningKeys, attestorKey, encoderKeys, ranges, log } = data
+      try {
+        const messages = {}
+        const topics_1 = []
+        const topics_2 = []
+        const responses = []
+        log({ type: 'attestor', data: { text: `Attest hosting setup`, amendmentID, encoderKeys } })
+        for (var i = 0, len = encoderKeys.length; i < len; i++) {
+          const encoderKey = await encoderKeys[i]
+          const hosterKey = await hosterKeys[i]
+          const hosterSigningKey = await hosterSigningKeys[i]
+          const unique_el = `${amendmentID}/${i}`
+          const topic1 = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID, log })
+          topics_1.push(topic1)
+          const topic2 = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID, log }) 
+          topics_2.push(topic2)
+          const opts = { store: account.store, amendmentID, topic1, topic2, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, ranges, feedKey, log }
+          opts.compare_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
+          responses.push(verify_and_forward_encodings(opts))
+        }
+        
+        const resolved_responses = await Promise.all(responses) // can be 0 to 6 pubKeys of failed providers
+        log({ type: 'attestor', data: { text: `Resolved responses!`, resolved_responses } })
+        const failed = []
+        const sigs = []
+        resolved_responses.forEach(res => {
+          const { failedKeys, unique_el_signature, hosterKey } = res
+          failed.push(failedKeys)
+          sigs.push({ unique_el_signature, hosterKey })
+        })
+        console.log({ text: 'resolved responses', amendmentID, failed, sigs_len: sigs.length })
+        const failed_set =  [...new Set(failed.flat())]  
+        const report = { failedKeys: failed_set, sigs }
+        topics_1.forEach(topic => done_task_cleanup({ role: 'attestor2encoder', topic, cache: account.cache, log }) )                 
+        // topics_2.forEach(topic => done_task_cleanup({ role: 'attestor2hoster', topic, cache: account.cache, log }) )                 
+        resolve(report)
+      } catch(err) {
+        log({ type: 'fail', data: { text: 'Error: attest_hosting_setup', err }})
+        reject(err)
+      }
     })
-    console.log({ text: 'resolved responses', amendmentID, failed, sigs_len: sigs.length })
-    const failed_set =  [...new Set(failed.flat())]  
-    const report = { failedKeys: failed_set, sigs }
-    return report
   }
     
   async function verify_and_forward_encodings (opts) {
-    const { store, amendmentID, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, feedKey, ranges, compare_CB, log } = opts
+    const { store, topic1, topic2, amendmentID, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, feedKey, ranges, compare_CB, log } = opts
     const failedKeys = []
     var unique_el_signature
     return new Promise(async (resolve, reject) => {
       const tid = setTimeout(() => {
-        reject({ type: `compare and send_timeout` })
+        reject({ type: `verify_and_forward_encodings timeout` })
       }, DEFAULT_TIMEOUT)
       try {
         log({ type: 'attester', data: { text: 'calling connect_compare_send', encoderKey }})
         await connect_compare_send({
           store,
-          topic1: derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID, log }), 
-          topic2: derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID, log }), 
+          topic1, 
+          topic2, 
           compare_CB, 
           key2: hosterKey, 
           key1: encoderKey, 
           ranges,
           log
         })
+        log({ type: 'attester', data: { text: 'All compared and sent, resolving now', encoderKey }})
         if (!unique_el_signature) failedKeys.push(hosterKey)
         clearTimeout(tid)
         resolve({ failedKeys, unique_el_signature, hosterKey })
@@ -285,30 +298,28 @@ module.exports = APIS => {
   
   async function connect_compare_send (opts) {
     const { store, topic1, topic2, key1, key2, compare_CB, ranges, log } = opts
+    const expectedChunkCount = getRangesCount(ranges)
     const log2encoder = log.sub(`<-Attestor to encoder ${key1.toString('hex').substring(0,5)}`)
     const log2hoster = log.sub(`<-Attestor to hoster ${key2.toString('hex').substring(0,5)}`)
     
     return new Promise(async (resolve, reject) => {       
       const tid = setTimeout(() => {
-        reject({ type: `compare and send_timeout` })
+        reject({ type: `connect_compare_send timeout` })
       }, DEFAULT_TIMEOUT)
       
-      const expectedChunkCount =  getRangesCount(ranges)
       var feed1
       var feed2
-      const all = []
+      const sentCount = 0
       const chunks = {}
       
       try {
-        
         // CONNECT TO ENCODER
-
         log2encoder({ type: 'attester', data: { text: 'load feed for encoder', key1: key1.toString('hex') }})
         await store.load_feed({  newfeed: false, topic: topic1, log: log2encoder })
         
         log2encoder({ type: 'attester', data: { text: 'connect to encoder encoder', key1: key1.toString('hex') }})
         await store.connect({ 
-          swarm_opts: { topic: topic1, mode: { server: false, client: true } }, 
+          swarm_opts: { role: 'attestor2encoder', topic: topic1, mode: { server: false, client: true } }, 
           peers: { peerList: [key1.toString('hex')], onpeer: onencoder,  msg: { receive: { type: 'feedkey' } } },
           log: log2encoder
         })
@@ -318,20 +329,46 @@ module.exports = APIS => {
           feed1 = feed
           // get replicated data
           for (var i = 0; i < expectedChunkCount; i++) {
-            all.push(get_and_compare_chunks({ feed1, i, key1, compare_CB, expectedChunkCount, log }))
+            get_and_compare_chunks({ feed1, i, key1, compare_CB, expectedChunkCount, log })
           }
           log({ type: 'attester', data: { text: 'chunks compared' } })
         }
+
+        async function get_and_compare_chunks ({ feed1, i, key1: encoderKey, compare_CB, log }) {
+          try {
+            const chunk_promise = feed1.get(i)
+            log({ type: 'attester', data: { text: 'got the chunk', i } })
+            const chunk = await chunk_promise
+            log({ type: 'attester', data: { text: 'chunk awaited', chunk } })
+            const res = await compare_CB(chunk_promise, encoderKey)
+            log({ type: 'attester', data: { text: 'chunk compared', i, res } })
+            if (!chunks[i]) {
+              chunks[i] = { chunk }
+              log({ type: 'attester', data: { text: 'storing chunk', i, chunks, sentCount,  expectedChunkCount } })
+            } else {
+              log({ type: 'attester', data: { text: 'calling send_to_hoster', i, chunks} })
+              chunks[i].send_to_hoster(chunk) 
+              delete chunks[i]
+              log({ type: 'attestor', data: { text: 'chunk appended', i, chunk: chunks[i] }})
+              if (sentCount === expectedChunkCount) {
+                log({ type: 'attestor', data: { text: 'all sent', sentCount, expectedChunkCount }})
+                clearTimeout(tid)
+                resolve()
+              }
+            }
+          } catch(err) {
+            log({ type: 'attester', data: { text: 'Error: get_and_compare_chunks', encoderKey }})
+            reject()
+          }
+        }
         
         // CONNECT TO HOSTER
-
         const { feed} = await store.load_feed({ topic: topic2, log: log2hoster })
         feed2 = feed
         log({ type: 'attestor', data: { text: 'Feed to hoster loaded', topic: topic2.toString('hex') }})
 
-        
         await store.connect({ 
-          swarm_opts: { topic: topic2, mode: { server: true, client: false } }, 
+          swarm_opts: { role: 'attestor2hoster', topic: topic2, mode: { server: true, client: false } }, 
           peers: { feed: feed2, peerList: [ key2.toString('hex') ], onpeer: onhoster, msg: { send: { type: 'feedkey' } } } ,
           log: log2hoster
         })
@@ -340,48 +377,26 @@ module.exports = APIS => {
           log({ type: 'attestor', data: { text: 'Connected to the hoster', topic: topic2.toString('hex'), chunks }})
           feed2 = feed
           for (var i = 0; i < expectedChunkCount; i++ ) {
-            log({ type: 'attestor', data: { text: 'Looping through chunks object', i, chunks }})
+            log({ type: 'attestor', data: { text: 'Looping through chunks object', i, chunks, sentCount,  expectedChunkCount }})
             if (chunks[i]) {
               feed2.append(chunks[i].chunk)
+              sentCount++
               delete chunks[i]
+              log({ type: 'attestor', data: { text: 'chunk appended', i, chunk: chunks[i] }})
+              if (sentCount === expectedChunkCount) {
+                log({ type: 'attestor', data: { text: 'all sent', sentCount, expectedChunkCount }})
+                clearTimeout(tid)
+                resolve()
+              }
             } else {
               chunks[i] = { send_to_hoster: (chunk) => feed2.append(chunk) }
+              log({ type: 'attestor', data: { text: 'cb stored, no chunk yet', i }})
             }
           }
         }
-        
-        async function get_and_compare_chunks ({ feed1, i, key1: encoderKey, compare_CB, log }) {
-          return new Promise(async(resolve, reject) => {
-            // const tid = setTimeout(() => {
-            //   reject({ type: `get_and_compare_chunks timeout` })
-            // }, DEFAULT_TIMEOUT)
-            const chunk_promise = feed1.get(i)
-            log({ type: 'attester', data: { text: 'got chunk from the encoder', i } })
-            const res = await compare_CB(chunk_promise, encoderKey)
-            log({ type: 'attester', data: { text: 'chunk comparison report', i, res } })
-            const chunk = await chunk_promise
-            log({ type: 'attester', data: { text: 'got the chunk', i, res } })
-  
-            if (!chunks[i]) {
-              chunks[i] = { chunk }
-              log({ type: 'attester', data: { text: 'storing chunk', i, chunks } })
-            } else {
-              log({ type: 'attester', data: { text: 'calling send_to_hoster', i, chunks } })
-              chunks[i].send_to_hoster(chunk) 
-              delete chunks[i]
-            }
-            resolve()
-            // clearTimeout(tid)
-          })
-        }
-
-        await Promise.all(all)
-        clearTimeout(tid)
-        log({ type: 'attester', data: { text: 'Sending report', expectedChunkCount, len: chunks.length } })
-        resolve()
-        
       } catch(err) {
         log({ type: 'fail', data: { text: 'Error: connect_compare_send', err }})
+        clearTimeout(tid)
         reject(err)
       }
 

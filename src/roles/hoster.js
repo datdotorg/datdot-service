@@ -6,7 +6,6 @@ const Hyperbeam = require('hyperbeam')
 const brotli = require('_datdot-service-helpers/brotli')
 const parse_decompressed = require('_datdot-service-helpers/parse-decompressed')
 const varint = require('varint')
-const refresh_discovery_mode = require('_datdot-service-helpers/refresh-discovery-mode')
 const { toPromises } = require('hypercore-promisifier')
 const hosterStorage = require('_datdot-service-helpers/hoster-storage.js')
 const sub = require('subleveldown')
@@ -18,7 +17,7 @@ const proof_codec = require('datdot-codec/proof')
 const getRangesCount = require('getRangesCount')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
 
-const DEFAULT_TIMEOUT = 10500
+const DEFAULT_TIMEOUT = 5000
 
 // global variables (later local DB)
 const organizer = {
@@ -33,9 +32,9 @@ module.exports = APIS => {
   return hoster
 
   async function hoster(vaultAPI) {
-    const { identity, log, store } = vaultAPI
-    const { chainAPI } = APIS
     const account = vaultAPI
+    const { identity, log, store } = account
+    const { chainAPI } = APIS
 
     const { myAddress, noiseKey: hosterKey } = identity
     log({ type: 'hoster', data: { text: `Listening to events for hoster role` } })
@@ -202,7 +201,7 @@ module.exports = APIS => {
       const { feed } = await store.load_feed({ feedkey: feedKey, topic, log })
   
       await store.connect({ 
-        swarm_opts: { topic, mode: { server: true, client: true } }, 
+        swarm_opts: { role: 'hoster2author', topic, mode: { server: true, client: true } }, 
         log
       })
       
@@ -224,10 +223,8 @@ module.exports = APIS => {
         all.push(download_range(feed, range))
       }
       await Promise.all(all)
-      log({ type: 'hoster', data: {  text: 'All feeds in the range downloaded', ranges } })
-      await refresh_discovery_mode({ swarm: account.cache.swarm, topic, mode: { server: true, client: false }, log })
-      // await done_task_cleanup({ store, topic, cache: account.cache, log })
-  
+      log({ type: 'hoster', data: {  text: 'All feeds in the range downloaded', ranges } }) 
+      await done_task_cleanup({ role: 'hoster2author', topic: feed.discoveryKey, cache: account.cache, log })                   
       return { feed }
     } catch (err) {
       log({ type: 'Error', data: {  text: 'Error: loading feed data', err } })
@@ -258,7 +255,7 @@ module.exports = APIS => {
         log2attestor({ type: 'hoster', data: { text: `feed to attestor loaded` } })
         
         await store.connect({
-          swarm_opts: { topic, mode: { server: false, client: true } },
+          swarm_opts: { role: 'hoster2attestor', topic, mode: { server: false, client: true } },
           peers: { peerList: [attestorKey.toString('hex')], onpeer, msg: { receive: { type: 'feedkey' }} },
           log: log2attestor
         })
@@ -276,6 +273,7 @@ module.exports = APIS => {
           if (!results) throw new Error({ type: 'fail', data: 'Error storing data' })
           log2attestor({ type: 'hoster', data: { text: `All chunks hosted`, len: results.length, expectedChunkCount } })
           if (results.length !== expectedChunkCount) throw new Error({ type: 'error', data: 'Not enought resolved results' })
+          await done_task_cleanup({ role: 'hoster2attestor', topic, cache: account.cache, log: log2attestor })
           resolve()
         }  
       } catch (err) {
