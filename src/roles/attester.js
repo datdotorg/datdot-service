@@ -16,7 +16,7 @@ const getRangesCount = require('getRangesCount')
 const compare_encodings = require('compare-encodings')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
 const get_index = require('_datdot-service-helpers/get-index')
-const DEFAULT_TIMEOUT = 5000
+const DEFAULT_TIMEOUT = 10000
 
 // global variables
 const organizer = {
@@ -274,7 +274,7 @@ module.exports = APIS => {
         reject({ type: `verify_and_forward_encodings timeout` })
       }, DEFAULT_TIMEOUT)
       try {
-        log({ type: 'attester', data: { text: 'calling connect_compare_send', encoderKey }})
+        log({ type: 'attester', data: { text: 'calling connect_compare_send', encoderKey: encoderKey.toString('hex') }})
         await connect_compare_send({
           store,
           topic1, 
@@ -309,7 +309,7 @@ module.exports = APIS => {
       
       var feed1
       var feed2
-      const sentCount = 0
+      var sentCount = 0
       const chunks = {}
       
       try {
@@ -323,6 +323,7 @@ module.exports = APIS => {
           peers: { peerList: [key1.toString('hex')], onpeer: onencoder,  msg: { receive: { type: 'feedkey' } } },
           log: log2encoder
         })
+        log2encoder({ type: 'attester', data: { text: 'waiting for onencoder', key1: key1.toString('hex') }})
         
         async function onencoder ({ feed, remotekey }) {
           log({ type: 'attestor', data: { text: 'Connected to the encoder', expectedChunkCount }})

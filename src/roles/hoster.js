@@ -80,7 +80,6 @@ module.exports = APIS => {
 
         try {
           const { feed } = await receive_data_and_start_hosting(data)
-          log({ type: 'hoster', data: {  text: `Feed loaded` } })
           log({ type: 'hoster', data: {  text: `Hosting for the amendment ${amendmentID} started` } })
         } catch (error) { 
           log({ type: 'error', data: { text: 'Caught error from hosting setup (hoster)', error }})
