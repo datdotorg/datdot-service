@@ -345,7 +345,7 @@ module.exports = APIS => {
             log({ type: 'attester', data: { text: 'chunk compared', i, res } })
             if (!chunks[i]) {
               chunks[i] = { chunk }
-              log({ type: 'attester', data: { text: 'storing chunk', i, chunks, sentCount,  expectedChunkCount } })
+              log({ type: 'attester', data: { text: 'getting chunk', i, chunks, sentCount,  expectedChunkCount } })
             } else {
               log({ type: 'attester', data: { text: 'calling send_to_hoster', i, chunks} })
               chunks[i].send_to_hoster(chunk) 

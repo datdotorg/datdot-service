@@ -152,23 +152,26 @@ module.exports = APIS => {
       })
     }
     async function download_and_encode (account, index, feed, amendmentID, encoder_pos, log) {
-      const data_promise = feed.get(index)
-      const data = await data_promise
-      const unique_el = `${amendmentID}/${encoder_pos}`
-      const to_compress = serialize_before_compress(data, unique_el, log)
-      log({ type: 'encoder', data: {  text: `Got data`, data: data.toString(), index, to_compress: to_compress.toString('hex'), amendmentID }})
-      // encode and sign the encoded data
-      const encoded_data = await brotli.compress(to_compress)
-      const encoded_data_signature = account.sign(encoded_data)
-      console.log('making proof', log.path, index, feed.length)
-      // make a proof
-      const block = { index, nodes: await feed.core.tree.nodes(feed.length), value: true }
-      const upgrade = { start: 0, length: feed.length }
-      const p = await feed.core.tree.proof({ block, upgrade }) 
-      p.block.value = data// add value for this block/chunk to the proof
-    
-      console.log({encoder_proof: p, block_nodes: p.block.nodes[0]})
-      return { type: 'proof', index, encoded_data, encoded_data_signature, p: proof_codec.to_string(p) }
+      try {
+        const data_promise = feed.get(index)
+        const data = await data_promise
+        const unique_el = `${amendmentID}/${encoder_pos}`
+        const to_compress = serialize_before_compress(data, unique_el, log)
+        log({ type: 'encoder', data: {  text: `Got data`, data: data.toString(), index, to_compress: to_compress.toString('hex'), amendmentID }})
+        // encode and sign the encoded data
+        const encoded_data = await brotli.compress(to_compress)
+        const encoded_data_signature = account.sign(encoded_data)
+        // make a proof
+        const block = { index, nodes: await feed.core.tree.nodes(feed.length), value: true }
+        const upgrade = { start: 0, length: feed.length }
+        log({ type: 'encoder', data: {  text: `Making proof`, index, feed_len: feed.length, amendmentID }})
+        const p = await feed.core.tree.proof({ block, upgrade }) 
+        p.block.value = data// add value for this block/chunk to the proof
+        log({ type: 'encoder', data: {  text: `Proof ready`, nodes: p.block.nodes.map(node => node.index) }})
+        return { type: 'proof', index, encoded_data, encoded_data_signature, p: proof_codec.to_string(p) }
+      } catch(err) {
+        log({ type: 'encoder', data: {  text: 'Error in download_and_encode', err } })
+      }
     }
   }
 
