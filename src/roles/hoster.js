@@ -250,7 +250,7 @@ module.exports = APIS => {
     return new Promise(async (resolve, reject) => {
       try {
         // hoster to attestor in hosting setup
-        await store.load_feed({ newfeed: false, topic, log: log2attestor })
+        await store.load_feed({ make: false, topic, log: log2attestor })
         log2attestor({ type: 'hoster', data: { text: `feed to attestor loaded` } })
         
         await store.connect({

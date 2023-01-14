@@ -315,7 +315,7 @@ module.exports = APIS => {
       try {
         // CONNECT TO ENCODER
         log2encoder({ type: 'attester', data: { text: 'load feed for encoder', key1: key1.toString('hex') }})
-        await store.load_feed({  newfeed: false, topic: topic1, log: log2encoder })
+        await store.load_feed({  make: false, topic: topic1, log: log2encoder })
         
         log2encoder({ type: 'attester', data: { text: 'connect to encoder encoder', key1: key1.toString('hex') }})
         await store.connect({ 
