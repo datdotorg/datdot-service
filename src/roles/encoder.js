@@ -10,7 +10,7 @@ const getRangesCount = require('getRangesCount')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
 const serialize_before_compress = require('serialize-before-compress')
 const datdot_crypto = require('datdot-crypto')
-const DEFAULT_TIMEOUT = 5000
+const DEFAULT_TIMEOUT = 10000
 
 /******************************************************************************
   ROLE: Encoder
@@ -73,7 +73,7 @@ module.exports = APIS => {
       if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
       const topic1 = datdot_crypto.get_discoverykey(feedkey)
       const tid = setTimeout(() => {
-        reject({ type: `compare and send_timeout` })
+        reject({ type: `encode_hosting_setup timeout` })
       }, DEFAULT_TIMEOUT)
       
       try {
@@ -104,23 +104,23 @@ module.exports = APIS => {
         async function onpeer () {
           log2Attestor({ type: 'encoder', data: { text: `Connected to the attestor` } })
           const all = []
-          for (const range of ranges) all.push(encodeAndSend({ account, temp_feed: temp, range, feed, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor }))
-          await Promise.all(all)
-          await done_task_cleanup({ role: 'encoder2author', topic: topic1, cache: account.cache, log })                  
-          // await done_task_cleanup({ role: 'encoder2attestor', topic: topic2, cache: account.cache, log })                  
-          log2Attestor({ type: 'encoder', data: { text: `All chunks appended and sent to the attestor`, all } })
+          for (const range of ranges) all.push(encodeAndSendRange({ account, temp_feed: temp, range, feed, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor }))
+          const result = await Promise.all(all)
+          log2Attestor({ type: 'encoder', data: { text: `All chunks appended and sent to the attestor`, result } })
           clearTimeout(tid)
+          await done_task_cleanup({ role: 'encoder2author', topic: topic1, cache: account.cache, log })                  
           resolve()
         }  
       } catch(err) {
         log2Attestor({ type: 'encoder', data: { text: 'Error in hosting setup', err } })
+        clearTimeout(tid)
         reject()
       }
 
     })
 
     // HELPERS
-    async function encodeAndSend ({ account, temp_feed, range, feed, amendmentID, encoder_pos, expectedChunkCount, log }) {
+    async function encodeAndSendRange ({ account, temp_feed, range, feed, amendmentID, encoder_pos, expectedChunkCount, log }) {
       return new Promise(async (resolve, reject) => {
         try {
           const all = []
@@ -130,7 +130,7 @@ module.exports = APIS => {
             all.push(send({ account, feedkey: feed.key, task_id: amendmentID, proof_promise, temp_feed, log, expectedChunkCount }))
           }
           await Promise.all(all)
-          log({ type: 'encoder', data: { text: 'encodeAndSend resolved', all }})
+          log({ type: 'encoder', data: { text: 'encodeAndSendRange resolved', all }})
           resolve('range encoded and sent')
         } catch (err) {
           log({ type: 'encoder', data: {  text: 'Error', err } })
