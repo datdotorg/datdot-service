@@ -42,7 +42,7 @@ module.exports = APIS => {
         const { feedkey: feedKey } = await chainAPI.getFeedByID(contract.feed)
         const [attestorID] = attestors
         const attestorKey = await chainAPI.getAttestorKey(attestorID)
-        const data = { store, amendmentID, chainAPI, account, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, feedKey, log }
+        const data = { account, amendmentID, chainAPI, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, feedKey, log }
         await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${JSON.stringify(error)}`] }))
         log({ type: 'encoder', data: { type: `Encoding done` } })
       }
@@ -63,11 +63,12 @@ module.exports = APIS => {
   ----------------------------------------- */
   
   async function encode_hosting_setup (data) {
-    const{ store, amendmentID, chainAPI, account, attestorKey, encoderKey, ranges, encoder_pos, feedKey: feedkey, log } = data
-    const log2Attestor = log.sub(`Encoder to attestor ${attestorKey.toString('hex').substring(0,5)}`)
-    const log2Author= log.sub(`->Encoder to author ${attestorKey.toString('hex').substring(0,5)} ${feedkey.toString('hex').substring(0,5)}`)
+    const{ account, amendmentID, chainAPI, attestorKey, encoderKey, ranges, encoder_pos, feedKey: feedkey, log } = data
+    const log2Attestor = log.sub(`Encoder to attestor, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attestorKey.toString('hex').substring(0,5)}`)
+    const log2Author= log.sub(`->Encoder to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)}`)
     log2Attestor({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
     const expectedChunkCount = getRangesCount(ranges)
+    const { store } = account
 
     return new Promise(async (resolve, reject) => {
       if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
@@ -97,11 +98,11 @@ module.exports = APIS => {
 
         await store.connect({ 
           swarm_opts: { role: 'encoder2attestor', topic: topic2, mode: { server: true, client: false } },
-          peers: { feed: temp, peerList: [ attestorKey.toString('hex') ], onpeer, msg: { send: { type: 'feedkey' } } },
+          targets: { feed: temp, targetList: [ attestorKey.toString('hex') ], ontarget: onattestor, msg: { send: { type: 'feedkey' } } },
           log: log2Attestor
         })
   
-        async function onpeer () {
+        async function onattestor () {
           log2Attestor({ type: 'encoder', data: { text: `Connected to the attestor` } })
           const all = []
           for (const range of ranges) all.push(encodeAndSendRange({ account, temp_feed: temp, range, feed, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor }))
@@ -133,7 +134,7 @@ module.exports = APIS => {
           log({ type: 'encoder', data: { text: 'encodeAndSendRange resolved', all }})
           resolve('range encoded and sent')
         } catch (err) {
-          log({ type: 'encoder', data: {  text: 'Error', err } })
+          log({ type: 'encoder', data: {  text: 'Error in encodeAndSendRange', err } })
           reject('err', err)
         }
       })
@@ -146,7 +147,7 @@ module.exports = APIS => {
           log({ type: 'encoder', data: {  text:`MSG appended`, index: proof.index, amendmentID } })
           resolve(`Encoded ${proof.index} sent`)
         } catch (err) {
-          log({ type: 'encoder', data: {  text: 'Error', err } })
+          log({ type: 'encoder', data: {  text: 'Error in send', err } })
           reject('err', err)
         }
       })

@@ -182,7 +182,7 @@ module.exports = APIS => {
       const expectedChunkCount = getRangesCount(ranges)
       await addKey(account, feedKey, plan)
       log({ type: 'hosting setup', data: { text: 'Key added in hosting setup for', amendment: amendmentID } })
-      const log2Author = log.sub(`Hoster to author ${feedKey.toString('hex').substring(0,5)} ${attestorKey.toString('hex').substring(0,5)} `)
+      const log2Author = log.sub(`Hoster to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)} `)
       const { feed } = await loadFeedData({ account, store, ranges, feedKey, log: log2Author })
       log({ type: 'hosting setup', data: { text: 'Feed loaded', amendment: amendmentID } })
       const opts = { account, store, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log }
@@ -239,7 +239,7 @@ module.exports = APIS => {
 
   async function getEncodedDataFromAttestor(opts) {
     const { account, store, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log } = opts
-    const log2attestor = log.sub(`hoster to attestor ${attestorKey.toString('hex').substring(0, 5)} amendment ${amendmentID}`)
+    const log2attestor = log.sub(`hoster to attestor, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attestorKey.toString('hex').substring(0,5)} amendment ${amendmentID}`)
     log2attestor({ type: 'hoster', data: { text: `getEncodedDataFromAttestor` } })
     
     const unique_el = `${amendmentID}/${encoder_pos}`
@@ -255,12 +255,12 @@ module.exports = APIS => {
         
         await store.connect({
           swarm_opts: { role: 'hoster2attestor', topic, mode: { server: false, client: true } },
-          peers: { peerList: [attestorKey.toString('hex')], onpeer, msg: { receive: { type: 'feedkey' }} },
+          targets: { targetList: [attestorKey.toString('hex')], ontarget, msg: { receive: { type: 'feedkey' }} },
           log: log2attestor
         })
-        log2attestor({ type: 'hoster', data: { text: `waiting for onpeer`,topic: topic.toString('hex') } })
+        log2attestor({ type: 'hoster', data: { text: `waiting for ontarget`,topic: topic.toString('hex') } })
 
-        async function onpeer ({ feed }) {
+        async function ontarget ({ feed }) {
           const all = []
           for (var i = 0; i < expectedChunkCount; i++) {
             log2attestor({ type: 'hoster', data: { text: `Getting data: counter ${i}` } })

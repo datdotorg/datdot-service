@@ -159,20 +159,20 @@ module.exports = APIS => {
 
         // join swarm and check performance when you connect to any of the hosters
         const role = 'attestor-challenge'
-        const peerList = await Promise.all(all_hosterIDs.map(id => chainAPI.getHosterKey(id).toString('hex')))
+        const targetList = await Promise.all(all_hosterIDs.map(id => chainAPI.getHosterKey(id).toString('hex')))
 
         const { feed } = await store.load_feed({ // feed for challenge
           config: { intercept: false, fresh: true, persist: false },
           extension: { ext_cbs: { onmessage, onerror }, name: `datdot-hoster-${stringkey}` },
           swarm_opts: { role: 'perf_attestor', mode: { server: false, client: true } },
           feedkey, 
-          peers: { peerList, onpeer },
+          targets: { targetList, ontarget },
           log
         })
 
         log({ type: 'challenge', data: { text: 'Got challenge feed', fedkey: feed.key.toString('hex') } })
         
-        async function onpeer ({ remotekey: hosterkey }) {
+        async function ontarget ({ remotekey: hosterkey }) {
           const hosterID = await chainAPI.getHosterKey(hosterkey)
           await feed.update()
           log({ type: 'challenge', data: { text: 'Got hosterkey from ', hosterID, hosterkey: hosterkey.toString('hex') } })
@@ -238,7 +238,7 @@ module.exports = APIS => {
           topics_1.push(topic1)
           const topic2 = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID, log }) 
           topics_2.push(topic2)
-          const opts = { store: account.store, amendmentID, topic1, topic2, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, ranges, feedKey, log }
+          const opts = { account, amendmentID, topic1, topic2, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, ranges, feedKey, log }
           opts.compare_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
           responses.push(verify_and_forward_encodings(opts))
         }
@@ -252,7 +252,7 @@ module.exports = APIS => {
           failed.push(failedKeys)
           sigs.push({ unique_el_signature, hosterKey })
         })
-        console.log({ text: 'resolved responses', amendmentID, failed, sigs_len: sigs.length })
+        log({ type: 'attestor', data: { text: 'resolved responses', amendmentID, failed, sigs_len: sigs.length } })
         const failed_set =  [...new Set(failed.flat())]  
         const report = { failedKeys: failed_set, sigs }
         topics_1.forEach(topic => done_task_cleanup({ role: 'attestor2encoder', topic, cache: account.cache, log }) )                 
@@ -266,7 +266,7 @@ module.exports = APIS => {
   }
     
   async function verify_and_forward_encodings (opts) {
-    const { store, topic1, topic2, amendmentID, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, feedKey, ranges, compare_CB, log } = opts
+    const { account, topic1, topic2, amendmentID, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, feedKey, ranges, compare_CB, log } = opts
     const failedKeys = []
     var unique_el_signature
     return new Promise(async (resolve, reject) => {
@@ -276,7 +276,7 @@ module.exports = APIS => {
       try {
         log({ type: 'attester', data: { text: 'calling connect_compare_send', encoderKey: encoderKey.toString('hex') }})
         await connect_compare_send({
-          store,
+          account,
           topic1, 
           topic2, 
           compare_CB, 
@@ -297,10 +297,11 @@ module.exports = APIS => {
   }
   
   async function connect_compare_send (opts) {
-    const { store, topic1, topic2, key1, key2, compare_CB, ranges, log } = opts
+    const { account, topic1, topic2, key1, key2, compare_CB, ranges, log } = opts
+    const { store } = account
     const expectedChunkCount = getRangesCount(ranges)
-    const log2encoder = log.sub(`<-Attestor to encoder ${key1.toString('hex').substring(0,5)}`)
-    const log2hoster = log.sub(`<-Attestor to hoster ${key2.toString('hex').substring(0,5)}`)
+    const log2encoder = log.sub(`<-Attestor to encoder, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${key1.toString('hex').substring(0,5)}`)
+    const log2hoster = log.sub(`<-Attestor to hoster, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${key2.toString('hex').substring(0,5)}`)
     
     return new Promise(async (resolve, reject) => {       
       const tid = setTimeout(() => {
@@ -320,7 +321,7 @@ module.exports = APIS => {
         log2encoder({ type: 'attester', data: { text: 'connect to encoder encoder', key1: key1.toString('hex') }})
         await store.connect({ 
           swarm_opts: { role: 'attestor2encoder', topic: topic1, mode: { server: false, client: true } }, 
-          peers: { peerList: [key1.toString('hex')], onpeer: onencoder,  msg: { receive: { type: 'feedkey' } } },
+          targets: { targetList: [key1.toString('hex')], ontarget: onencoder,  msg: { receive: { type: 'feedkey' } } },
           log: log2encoder
         })
         log2encoder({ type: 'attester', data: { text: 'waiting for onencoder', key1: key1.toString('hex') }})
@@ -370,7 +371,7 @@ module.exports = APIS => {
 
         await store.connect({ 
           swarm_opts: { role: 'attestor2hoster', topic: topic2, mode: { server: true, client: false } }, 
-          peers: { feed: feed2, peerList: [ key2.toString('hex') ], onpeer: onhoster, msg: { send: { type: 'feedkey' } } } ,
+          targets: { feed: feed2, targetList: [ key2.toString('hex') ], ontarget: onhoster, msg: { send: { type: 'feedkey' } } } ,
           log: log2hoster
         })
         
