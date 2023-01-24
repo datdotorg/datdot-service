@@ -8,9 +8,7 @@ run()
 async function run (){
 
   const { bootstrap } = await createTestnet(20)
-
-  console.log({ bootstrap })
-
+  
   await new Promise(resolve => setTimeout(resolve, 250))
 
   const [scenarioName, flag] = process.argv.slice(2)

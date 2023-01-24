@@ -25,7 +25,7 @@ module.exports = APIS => {
     const { identity, log, store } = account
     const { chainAPI } = APIS
     const { myAddress, noiseKey: encoderKey } = identity
-    log({ type: 'encoder', data: [`Listening to events for encoder role`] })
+    // log({ type: 'encoder', data: [`Listening to events for encoder role`] })
 
     await chainAPI.listenToEvents(handleEvent)
     
@@ -64,9 +64,9 @@ module.exports = APIS => {
   
   async function encode_hosting_setup (data) {
     const{ account, amendmentID, chainAPI, attestorKey, encoderKey, ranges, encoder_pos, feedKey: feedkey, log } = data
-    const log2Attestor = log.sub(`Encoder to attestor, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attestorKey.toString('hex').substring(0,5)}`)
-    const log2Author= log.sub(`->Encoder to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)}`)
-    log2Attestor({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
+    const log2Attestor = log.sub(`Encoder to attestor, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attestorKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
+    const log2Author= log.sub(`->Encoder to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
+    // log2Attestor({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
     const expectedChunkCount = getRangesCount(ranges)
     const { store } = account
 
@@ -81,7 +81,7 @@ module.exports = APIS => {
         // replicate feed from author
         const { feed } = await store.load_feed({ feedkey, log: log2Author })
         await feed.update()
-        log2Author({ type: 'encoder', data: { text: `Loaded feed to connect to the author` } })
+        log2Author({ type: 'encoder', data: { text: `load feed` } })
 
         await store.connect({ 
           swarm_opts: { role: 'encoder2author', topic: topic1, mode: { server: false, client: true } },
@@ -91,7 +91,7 @@ module.exports = APIS => {
         
         // create temp feed for sending compressed and signed data to the attestor
         const topic2 = derive_topic({ senderKey: encoderKey, feedKey: feedkey, receiverKey: attestorKey, id: amendmentID, log })
-        log2Attestor({ type: 'encoder', data: { text: `Loading feed to connect to the attestor`, topic: topic2.toString('hex') } })
+        log2Attestor({ type: 'encoder', data: { text: `Loading feed`, attestor: attestorKey.toString('hex'), topic: topic2.toString('hex') } })
        
         // feed for attestor
         const { feed: temp} = await store.load_feed({  topic: topic2, log: log2Attestor })
@@ -107,7 +107,7 @@ module.exports = APIS => {
           const all = []
           for (const range of ranges) all.push(encodeAndSendRange({ account, temp_feed: temp, range, feed, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor }))
           const result = await Promise.all(all)
-          log2Attestor({ type: 'encoder', data: { text: `All chunks appended and sent to the attestor`, result } })
+          log2Attestor({ type: 'encoder', data: { text: `All encoded & sent`, result } })
           clearTimeout(tid)
           await done_task_cleanup({ role: 'encoder2author', topic: topic1, cache: account.cache, log })                  
           resolve()
@@ -126,14 +126,15 @@ module.exports = APIS => {
         try {
           const all = []
           for (let index = range[0], len = range[1] + 1; index < len; index++) {
-            log({ type: 'encoder', data: { text: 'Download index', index, range }})
+            // log({ type: 'encoder', data: { text: 'Download index', index, range }})
             const proof_promise = download_and_encode(account, index, feed, amendmentID, encoder_pos, log)
             all.push(send({ account, feedkey: feed.key, task_id: amendmentID, proof_promise, temp_feed, log, expectedChunkCount }))
           }
-          await Promise.all(all)
-          log({ type: 'encoder', data: { text: 'encodeAndSendRange resolved', all }})
+          const resolved = await Promise.all(all)
+          // log({ type: 'encoder', data: { text: 'encodeAndSendRange resolved', resolved }})
           resolve('range encoded and sent')
         } catch (err) {
+          log({ type: 'encoder', data: {  text: 'Error in encodeAndSendRange', err } })
           log({ type: 'encoder', data: {  text: 'Error in encodeAndSendRange', err } })
           reject('err', err)
         }
@@ -144,7 +145,7 @@ module.exports = APIS => {
         try {
           const proof = await proof_promise
           await temp_feed.append(proof_codec.encode(proof))
-          log({ type: 'encoder', data: {  text:`MSG appended`, index: proof.index, amendmentID } })
+          // log({ type: 'encoder', data: {  text:`MSG appended`, index: proof.index, amendmentID } })
           resolve(`Encoded ${proof.index} sent`)
         } catch (err) {
           log({ type: 'encoder', data: {  text: 'Error in send', err } })
@@ -154,21 +155,22 @@ module.exports = APIS => {
     }
     async function download_and_encode (account, index, feed, amendmentID, encoder_pos, log) {
       try {
+        log({ type: 'encoder', data: {  text: 'Get data for index', index } })
         const data_promise = feed.get(index)
         const data = await data_promise
         const unique_el = `${amendmentID}/${encoder_pos}`
         const to_compress = serialize_before_compress(data, unique_el, log)
-        log({ type: 'encoder', data: {  text: `Got data`, data: data.toString(), index, to_compress: to_compress.toString('hex'), amendmentID }})
+        // log({ type: 'encoder', data: {  text: `Got data`, data: data.toString(), index, to_compress: to_compress.toString('hex'), amendmentID }})
         // encode and sign the encoded data
         const encoded_data = await brotli.compress(to_compress)
         const encoded_data_signature = account.sign(encoded_data)
         // make a proof
         const block = { index, nodes: await feed.core.tree.nodes(feed.length), value: true }
         const upgrade = { start: 0, length: feed.length }
-        log({ type: 'encoder', data: {  text: `Making proof`, index, feed_len: feed.length, amendmentID }})
+        // log({ type: 'encoder', data: {  text: `Making proof`, index, feed_len: feed.length, amendmentID }})
         const p = await feed.core.tree.proof({ block, upgrade }) 
-        p.block.value = data// add value for this block/chunk to the proof
-        log({ type: 'encoder', data: {  text: `Proof ready`, nodes: p.block.nodes.map(node => node.index) }})
+        p.block.value = data // add value for this block/chunk to the proof
+        // log({ type: 'encoder', data: {  text: `Proof ready`, nodes: p.block.nodes.map(node => node.index) }})
         return { type: 'proof', index, encoded_data, encoded_data_signature, p: proof_codec.to_string(p) }
       } catch(err) {
         log({ type: 'encoder', data: {  text: 'Error in download_and_encode', err } })

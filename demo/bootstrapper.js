@@ -17,7 +17,7 @@ async function bootstrappers ({ amount = 1, log = console.log.bind(console) } = 
     bootstrap_nodes.push({ host: meta.address.host, port: meta.address.port })
   }
 
-  log('bootstrap_nodes', ...bootstrap_nodes)
+  // log('bootstrap_nodes', ...bootstrap_nodes)
   return bootstrap_nodes
 }
 

@@ -37,7 +37,7 @@ module.exports = APIS => {
     const { chainAPI } = APIS
 
     const { myAddress, noiseKey: hosterKey } = identity
-    log({ type: 'hoster', data: { text: `Listening to events for hoster role` } })
+    // log({ type: 'hoster', data: { text: `Listening to events for hoster role` } })
 
     await chainAPI.listenToEvents(handleEvent)
 
@@ -52,6 +52,7 @@ module.exports = APIS => {
         }
       }
       if (event.method === 'NewAmendment') {
+        return
         const [amendmentID] = event.data
         const amendment = await chainAPI.getAmendmentByID(amendmentID)
         const { hosters, attestors, encoders } = amendment.providers
@@ -80,7 +81,7 @@ module.exports = APIS => {
 
         try {
           const { feed } = await receive_data_and_start_hosting(data)
-          log({ type: 'hoster', data: {  text: `Hosting for the amendment ${amendmentID} started` } })
+          log({ type: 'hoster', data: {  text: `Hosting for the amendment ${amendmentID} started`, feedkey: feed.key.toString('hex') } })
         } catch (error) { 
           log({ type: 'error', data: { text: 'Caught error from hosting setup (hoster)', error }})
         }
@@ -181,13 +182,12 @@ module.exports = APIS => {
       const { store, account, amendmentID, feedKey, hosterKey, encoderSigningKey, encoder_pos, attestorKey, plan, signatures, ranges, log } = data
       const expectedChunkCount = getRangesCount(ranges)
       await addKey(account, feedKey, plan)
-      log({ type: 'hosting setup', data: { text: 'Key added in hosting setup for', amendment: amendmentID } })
       const log2Author = log.sub(`Hoster to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)} `)
+      log({ type: 'hoster', data: { text: 'load feed', amendment: amendmentID } })
       const { feed } = await loadFeedData({ account, store, ranges, feedKey, log: log2Author })
-      log({ type: 'hosting setup', data: { text: 'Feed loaded', amendment: amendmentID } })
       const opts = { account, store, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log }
       await getEncodedDataFromAttestor(opts)
-      log({ type: 'hosting setup', data: { text: 'Encoded data received and stored', amendment: amendmentID } })
+      // log({ type: 'hoster', data: { text: 'Encoded data received and stored', amendment: amendmentID } })
       resolve({ feed })
     })
   }
@@ -206,7 +206,7 @@ module.exports = APIS => {
       
       var stringkey = feed.key.toString('hex')
       var storage
-      log({ type: 'hoster', data: { text: `Feed to author loaded`, stringkey } })
+      log({ type: 'hoster', data: { text: `load feed`, stringkey } })
       if (!account.storages.has(stringkey)) {
         log({ type: 'hoster', data: { text: `New storage for feed`, stringkey } })
         const db = sub(account.db, stringkey, { valueEncoding: 'binary' })
@@ -218,11 +218,11 @@ module.exports = APIS => {
       // make hoster storage for feed
       let all = []
       for (const range of ranges) {
-        log({ type: 'hoster', data: {  text: 'Downloading range', ranges, range } })
+        // log({ type: 'hoster', data: {  text: 'Downloading range', ranges, range } })
         all.push(download_range(feed, range))
       }
       await Promise.all(all)
-      log({ type: 'hoster', data: {  text: 'All feeds in the range downloaded', ranges } }) 
+      log({ type: 'hoster', data: {  text: 'all ranges downloaded', ranges } }) 
       await done_task_cleanup({ role: 'hoster2author', topic: feed.discoveryKey, cache: account.cache, log })                   
       return { feed }
     } catch (err) {
@@ -240,7 +240,7 @@ module.exports = APIS => {
   async function getEncodedDataFromAttestor(opts) {
     const { account, store, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log } = opts
     const log2attestor = log.sub(`hoster to attestor, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attestorKey.toString('hex').substring(0,5)} amendment ${amendmentID}`)
-    log2attestor({ type: 'hoster', data: { text: `getEncodedDataFromAttestor` } })
+    // log2attestor({ type: 'hoster', data: { text: `getEncodedDataFromAttestor` } })
     
     const unique_el = `${amendmentID}/${encoder_pos}`
     const all = []
@@ -251,19 +251,19 @@ module.exports = APIS => {
       try {
         // hoster to attestor in hosting setup
         await store.load_feed({ make: false, topic, log: log2attestor })
-        log2attestor({ type: 'hoster', data: { text: `feed to attestor loaded` } })
+        log2attestor({ type: 'hoster', data: { text: `load feed`, attestor: attestorKey.toString('hex') } })
         
         await store.connect({
           swarm_opts: { role: 'hoster2attestor', topic, mode: { server: false, client: true } },
-          targets: { targetList: [attestorKey.toString('hex')], ontarget, msg: { receive: { type: 'feedkey' }} },
+          targets: { targetList: [attestorKey.toString('hex')], ontarget: onattestor, msg: { receive: { type: 'feedkey' }} },
           log: log2attestor
         })
-        log2attestor({ type: 'hoster', data: { text: `waiting for ontarget`,topic: topic.toString('hex') } })
+        // log2attestor({ type: 'hoster', data: { text: `waiting for ontarget`,topic: topic.toString('hex') } })
 
-        async function ontarget ({ feed }) {
+        async function onattestor ({ feed }) {
           const all = []
           for (var i = 0; i < expectedChunkCount; i++) {
-            log2attestor({ type: 'hoster', data: { text: `Getting data: counter ${i}` } })
+            // log2attestor({ type: 'hoster', data: { text: `Getting data: counter ${i}` } })
             all.push(store_data(feed.get(i)))
           }
           const results = await Promise.all(all).catch(err => {
@@ -284,24 +284,24 @@ module.exports = APIS => {
       const chunk = await chunk_promise
       const json = chunk.toString('binary')
       const data = proof_codec.decode(json)
-      log2attestor({ type: 'hoster', data: { text: `Data decoded`, data } })
-      log2attestor({ type: 'hoster', data: { text: `Downloaded index: ${data.index} from feed replicated from attestor ${attestorKey.toString('hex')}` } })
+      // log2attestor({ type: 'hoster', data: { text: `Data decoded`, data } })
+      log2attestor({ type: 'hoster', data: { text: `Got index: ${data.index}` } })
       
       return new Promise(async (resolve, reject) => {
         let { index, encoded_data, encoded_data_signature, p } = data
         
-        log2attestor({ type: 'hoster', data: { text: `Storing verified message with index: ${index}` } })
         counter++
         
         // TODO: Fix up the JSON serialization by converting things to buffers
         const hasStorage = await account.storages.has(feedKey.toString('hex'))
         if (!hasStorage) { return reject({ type: 'Error', error: 'UNKNOWN_FEED', ...{ key: feedKey.toString('hex') } }) }
-        log2attestor({ type: 'hoster', data: { text:`Storage for feedkey exists` } })
+        // log2attestor({ type: 'hoster', data: { text:`Storage for feedkey exists` } })
         try { 
           // 1. verify encoder signature
           if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
-          log2attestor({ type: 'hoster', data: { text:`Encoder data signature verified`, encoded_data } })
-
+          // log2attestor({ type: 'hoster', data: { text:`Encoder signature verified`, encoded_data } })
+          
+          log2attestor({ type: 'hoster', data: { text: `@TODO verify proof for index: ${index}` } })
           // 2. verify proof
           // p = proof_codec.to_buffer(p)
           // const proof_verified = await datdot_crypto.verify_proof(p, feedKey)
@@ -324,7 +324,7 @@ module.exports = APIS => {
             unique_el,  // need to store unique_el, to be able to decompress and serve chunks as hosters
             log: log2attestor
           })
-          log2attestor({ type: 'hoster', data: { text: `Hoster received & stored index: ${index} (${counter}/${expectedChunkCount}` } })
+          log2attestor({ type: 'hoster', data: { text: `stored index: ${index} (${counter}/${expectedChunkCount}` } })
           resolve({ type: 'encoded:stored', ok: true, index: data.index })
         } catch (e) {
           // Uncomment for better stack traces
@@ -501,6 +501,7 @@ module.exports = APIS => {
       
       function send (message, i) {
         return new Promise(async (resolve, reject) => {
+          console.log('appending hoster', JSON.stringify(message))
           await core.append(JSON.stringify(message))
           sent_chunks[i] = { resolve, reject }
         })

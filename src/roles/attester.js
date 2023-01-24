@@ -34,7 +34,7 @@ module.exports = APIS => {
     const account = vaultAPI
     const { identity, log, store } = account
     const { myAddress, signer, noiseKey: attestorKey } = identity
-    log({ type: 'attestor', data: [`Listening to events for attestor role`] })
+    // log({ type: 'attestor', data: [`I am an attestor`] })
     const jobsDB = await tempDB(attestorKey)
     chainAPI.listenToEvents(handleEvent)
 
@@ -76,10 +76,10 @@ module.exports = APIS => {
           log({ type: 'error', data: { text: 'Caught error from hosting setup (attester)', error } })
           throw new Error('hosting setup (attester) error')
         })
-        log({ type: 'attestor', data: { text: `Resolved all the responses for amendment`, amendmentID, failedKeys, sigs } })
+        log({ type: 'attestor', data: { text: `Hosting setup done`, amendmentID, failedKeys, sigs } })
         
         const failed = await Promise.all(failedKeys.map(async (id) => await chainAPI.getUserIDByNoiseKey(Buffer.from(id, 'hex'))))
-        log({ type: 'attestor', data: { text: `Failed key user IDs`, amendmentID, failed } })  
+        // log({ type: 'attestor', data: { text: `Failed key user IDs`, amendmentID, failed } })  
         const signatures = {}
         for (var i = 0, len = sigs.length; i < len; i++) {
           const { unique_el_signature, hosterKey } = sigs[i]
@@ -87,10 +87,10 @@ module.exports = APIS => {
           signatures[hoster_id] = unique_el_signature
         }
         const report = { id: amendmentID, failed, signatures }
-        log({ type: 'attestor', data: { text: `Report ready`, amendmentID } })  
+        // log({ type: 'attestor', data: { text: `Report ready`, amendmentID } })  
         const nonce = await vaultAPI.getNonce()
         await chainAPI.amendmentReport({ report, signer, nonce })
-        log({ type: 'attester', data: { text: 'Report sent', amendmentID } })
+        // log({ type: 'attester', data: { text: 'Report sent', amendmentID } })
       }
 
       if (event.method === 'NewStorageChallenge') {
@@ -228,7 +228,7 @@ module.exports = APIS => {
         const topics_1 = []
         const topics_2 = []
         const responses = []
-        log({ type: 'attestor', data: { text: `Attest hosting setup`, amendmentID, encoderKeys } })
+        // log({ type: 'attestor', data: { text: `Attest hosting setup`, amendmentID, encoderKeys } })
         for (var i = 0, len = encoderKeys.length; i < len; i++) {
           const encoderKey = await encoderKeys[i]
           const hosterKey = await hosterKeys[i]
@@ -244,7 +244,7 @@ module.exports = APIS => {
         }
         
         const resolved_responses = await Promise.all(responses) // can be 0 to 6 pubKeys of failed providers
-        log({ type: 'attestor', data: { text: `Resolved responses!`, resolved_responses } })
+        // log({ type: 'attestor', data: { text: `Resolved responses!`, resolved_responses } })
         const failed = []
         const sigs = []
         resolved_responses.forEach(res => {
@@ -252,7 +252,7 @@ module.exports = APIS => {
           failed.push(failedKeys)
           sigs.push({ unique_el_signature, hosterKey })
         })
-        log({ type: 'attestor', data: { text: 'resolved responses', amendmentID, failed, sigs_len: sigs.length } })
+        // log({ type: 'attestor', data: { text: 'resolved responses', amendmentID, failed, sigs_len: sigs.length } })
         const failed_set =  [...new Set(failed.flat())]  
         const report = { failedKeys: failed_set, sigs }
         topics_1.forEach(topic => done_task_cleanup({ role: 'attestor2encoder', topic, cache: account.cache, log }) )                 
@@ -274,7 +274,7 @@ module.exports = APIS => {
         reject({ type: `verify_and_forward_encodings timeout` })
       }, DEFAULT_TIMEOUT)
       try {
-        log({ type: 'attester', data: { text: 'calling connect_compare_send', encoderKey: encoderKey.toString('hex') }})
+        // log({ type: 'attester', data: { text: 'calling connect_compare_send', encoderKey: encoderKey.toString('hex') }})
         await connect_compare_send({
           account,
           topic1, 
@@ -285,7 +285,7 @@ module.exports = APIS => {
           ranges,
           log
         })
-        log({ type: 'attester', data: { text: 'All compared and sent, resolving now', encoderKey }})
+        // log({ type: 'attester', data: { text: 'All compared and sent, resolving now', encoderKey }})
         if (!unique_el_signature) failedKeys.push(hosterKey)
         clearTimeout(tid)
         resolve({ failedKeys, unique_el_signature, hosterKey })
@@ -315,25 +315,25 @@ module.exports = APIS => {
       
       try {
         // CONNECT TO ENCODER
-        log2encoder({ type: 'attester', data: { text: 'load feed for encoder', key1: key1.toString('hex') }})
+        log2encoder({ type: 'attester', data: { text: 'load feed', encoder: key1.toString('hex'), topic: topic1.toString('hex') }})
         await store.load_feed({  make: false, topic: topic1, log: log2encoder })
         
-        log2encoder({ type: 'attester', data: { text: 'connect to encoder encoder', key1: key1.toString('hex') }})
+        log2encoder({ type: 'attester', data: { text: 'connect', encoder: key1.toString('hex') }})
         await store.connect({ 
           swarm_opts: { role: 'attestor2encoder', topic: topic1, mode: { server: false, client: true } }, 
           targets: { targetList: [key1.toString('hex')], ontarget: onencoder,  msg: { receive: { type: 'feedkey' } } },
           log: log2encoder
         })
-        log2encoder({ type: 'attester', data: { text: 'waiting for onencoder', key1: key1.toString('hex') }})
+        // log2encoder({ type: 'attester', data: { text: 'waiting for onencoder', key1: key1.toString('hex') }})
         
         async function onencoder ({ feed, remotekey }) {
-          log({ type: 'attestor', data: { text: 'Connected to the encoder', expectedChunkCount }})
+          log({ type: 'attestor', data: { text: 'Connected to the encoder', encoder: key1.toString('hex'), expectedChunkCount }})
           feed1 = feed
           // get replicated data
           for (var i = 0; i < expectedChunkCount; i++) {
             get_and_compare_chunks({ feed1, i, key1, compare_CB, expectedChunkCount, log })
           }
-          log({ type: 'attester', data: { text: 'chunks compared' } })
+          // log({ type: 'attester', data: { text: 'chunks compared' } })
         }
 
         async function get_and_compare_chunks ({ feed1, i, key1: encoderKey, compare_CB, log }) {
@@ -341,19 +341,18 @@ module.exports = APIS => {
             const chunk_promise = feed1.get(i)
             log({ type: 'attester', data: { text: 'got the chunk', i } })
             const chunk = await chunk_promise
-            log({ type: 'attester', data: { text: 'chunk awaited', chunk } })
             const res = await compare_CB(chunk_promise, encoderKey)
             log({ type: 'attester', data: { text: 'chunk compared', i, res } })
             if (!chunks[i]) {
               chunks[i] = { chunk }
-              log({ type: 'attester', data: { text: 'getting chunk', i, chunks, sentCount,  expectedChunkCount } })
+              // log({ type: 'attester', data: { text: 'getting chunk', i, chunks, sentCount,  expectedChunkCount } })
             } else {
-              log({ type: 'attester', data: { text: 'calling send_to_hoster', i, chunks} })
+              log({ type: 'attester', data: { text: 'compare & send to hoster', i, chunks} })
               chunks[i].send_to_hoster(chunk) 
+              // log({ type: 'attestor', data: { text: 'chunk appended', i, chunk: chunks[i] }})
               delete chunks[i]
-              log({ type: 'attestor', data: { text: 'chunk appended', i, chunk: chunks[i] }})
               if (sentCount === expectedChunkCount) {
-                log({ type: 'attestor', data: { text: 'all sent', sentCount, expectedChunkCount }})
+                log({ type: 'attestor', data: { text: 'all chunks sent', sentCount, expectedChunkCount }})
                 clearTimeout(tid)
                 resolve()
               }
@@ -367,7 +366,7 @@ module.exports = APIS => {
         // CONNECT TO HOSTER
         const { feed} = await store.load_feed({ topic: topic2, log: log2hoster })
         feed2 = feed
-        log({ type: 'attestor', data: { text: 'Feed to hoster loaded', topic: topic2.toString('hex') }})
+        log({ type: 'attestor', data: { text: 'load feed', hoster: key2.toString('hex'), topic: topic2.toString('hex') }})
 
         await store.connect({ 
           swarm_opts: { role: 'attestor2hoster', topic: topic2, mode: { server: true, client: false } }, 
@@ -376,23 +375,25 @@ module.exports = APIS => {
         })
         
         async function onhoster ({ feed, remotekey }) {
-          log({ type: 'attestor', data: { text: 'Connected to the hoster', topic: topic2.toString('hex'), chunks }})
+          log({ type: 'attestor', data: { text: 'connected to the hoster', hoster: key2.toString('hex'), topic: topic2.toString('hex'), chunks }})
           feed2 = feed
           for (var i = 0; i < expectedChunkCount; i++ ) {
-            log({ type: 'attestor', data: { text: 'Looping through chunks object', i, chunks, sentCount,  expectedChunkCount }})
+            // log({ type: 'attestor', data: { text: 'Looping through chunks object', i, chunks, sentCount,  expectedChunkCount }})
             if (chunks[i]) {
               feed2.append(chunks[i].chunk)
               sentCount++
               delete chunks[i]
-              log({ type: 'attestor', data: { text: 'chunk appended', i, chunk: chunks[i] }})
+              // log({ type: 'attestor', data: { text: 'chunk appended', i, chunk: chunks[i] }})
               if (sentCount === expectedChunkCount) {
-                log({ type: 'attestor', data: { text: 'all sent', sentCount, expectedChunkCount }})
+                // log({ type: 'attestor', data: { text: 'all sent', sentCount, expectedChunkCount }})
                 clearTimeout(tid)
                 resolve()
               }
             } else {
-              chunks[i] = { send_to_hoster: (chunk) => feed2.append(chunk) }
-              log({ type: 'attestor', data: { text: 'cb stored, no chunk yet', i }})
+              chunks[i] = { send_to_hoster: (chunk) => {
+                feed2.append(chunk) 
+              } }
+              // log({ type: 'attestor', data: { text: 'cb stored, no chunk yet', i }})
             }
           }
         }
