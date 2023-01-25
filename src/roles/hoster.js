@@ -52,7 +52,6 @@ module.exports = APIS => {
         }
       }
       if (event.method === 'NewAmendment') {
-        return
         const [amendmentID] = event.data
         const amendment = await chainAPI.getAmendmentByID(amendmentID)
         const { hosters, attestors, encoders } = amendment.providers
@@ -501,7 +500,6 @@ module.exports = APIS => {
       
       function send (message, i) {
         return new Promise(async (resolve, reject) => {
-          console.log('appending hoster', JSON.stringify(message))
           await core.append(JSON.stringify(message))
           sent_chunks[i] = { resolve, reject }
         })

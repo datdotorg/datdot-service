@@ -10,6 +10,7 @@ const getRangesCount = require('getRangesCount')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
 const serialize_before_compress = require('serialize-before-compress')
 const datdot_crypto = require('datdot-crypto')
+const cloneDeep = require('clone-deep')
 const DEFAULT_TIMEOUT = 10000
 
 /******************************************************************************
@@ -168,9 +169,11 @@ module.exports = APIS => {
         const block = { index, nodes: await feed.core.tree.nodes(feed.length), value: true }
         const upgrade = { start: 0, length: feed.length }
         // log({ type: 'encoder', data: {  text: `Making proof`, index, feed_len: feed.length, amendmentID }})
-        const p = await feed.core.tree.proof({ block, upgrade }) 
+        const p = cloneDeep(await feed.core.tree.proof({ block, upgrade }))
         p.block.value = data // add value for this block/chunk to the proof
         // log({ type: 'encoder', data: {  text: `Proof ready`, nodes: p.block.nodes.map(node => node.index) }})
+        // TODO: upgrade to node 17
+        // const proof = structuredClone(p)
         return { type: 'proof', index, encoded_data, encoded_data_signature, p: proof_codec.to_string(p) }
       } catch(err) {
         log({ type: 'encoder', data: {  text: 'Error in download_and_encode', err } })

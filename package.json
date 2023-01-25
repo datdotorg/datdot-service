@@ -18,6 +18,7 @@
     "@polkadot/util-crypto": "^10.1.10",
     "b4a": "^1.6.1",
     "bel": "^6.0.0",
+    "clone-deep": "^4.0.1",
     "compact-encoding": "^2.11.0",
     "cross-spawn": "^7.0.3",
     "csjs-inject": "^1.0.1",
