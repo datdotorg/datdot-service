@@ -125,28 +125,25 @@ module.exports = APIS => {
     async function encodeAndSendRange ({ account, temp_feed, range, feed, amendmentID, encoder_pos, expectedChunkCount, log }) {
       return new Promise(async (resolve, reject) => {
         try {
-          const all = []
+          const sent = []
           for (let index = range[0], len = range[1] + 1; index < len; index++) {
-            // log({ type: 'encoder', data: { text: 'Download index', index, range }})
             const proof_promise = download_and_encode(account, index, feed, amendmentID, encoder_pos, log)
-            all.push(send({ account, feedkey: feed.key, task_id: amendmentID, proof_promise, temp_feed, log, expectedChunkCount }))
+            sent.push(send({ account, feedkey: feed.key, task_id: amendmentID, proof_promise, temp_feed, log }))
           }
-          const resolved = await Promise.all(all)
-          // log({ type: 'encoder', data: { text: 'encodeAndSendRange resolved', resolved }})
+          const resolved = await Promise.all(sent)
           resolve('range encoded and sent')
         } catch (err) {
-          log({ type: 'encoder', data: {  text: 'Error in encodeAndSendRange', err } })
           log({ type: 'encoder', data: {  text: 'Error in encodeAndSendRange', err } })
           reject('err', err)
         }
       })
     }
-    async function send ({ proof_promise, temp_feed, expectedChunkCount, log }) {
+    async function send ({ proof_promise, temp_feed, log }) {
       return new Promise(async (resolve, reject) => {
         try {
           const proof = await proof_promise
           await temp_feed.append(proof_codec.encode(proof))
-          // log({ type: 'encoder', data: {  text:`MSG appended`, index: proof.index, amendmentID } })
+          log({ type: 'encoder', data: {  text:`MSG appended`, index: proof.index, amendmentID } })
           resolve(`Encoded ${proof.index} sent`)
         } catch (err) {
           log({ type: 'encoder', data: {  text: 'Error in send', err } })
@@ -159,21 +156,20 @@ module.exports = APIS => {
         log({ type: 'encoder', data: {  text: 'Get data for index', index } })
         const data_promise = feed.get(index)
         const data = await data_promise
+        
+        // encode and sign the encoded data
         const unique_el = `${amendmentID}/${encoder_pos}`
         const to_compress = serialize_before_compress(data, unique_el, log)
-        // log({ type: 'encoder', data: {  text: `Got data`, data: data.toString(), index, to_compress: to_compress.toString('hex'), amendmentID }})
-        // encode and sign the encoded data
         const encoded_data = await brotli.compress(to_compress)
         const encoded_data_signature = account.sign(encoded_data)
+        
         // make a proof
-        const block = { index, nodes: await feed.core.tree.nodes(feed.length), value: true }
+        const block = { index, nodes: await feed.core.tree.missingNodes(feed.length), value: true }
         const upgrade = { start: 0, length: feed.length }
-        // log({ type: 'encoder', data: {  text: `Making proof`, index, feed_len: feed.length, amendmentID }})
         const p = cloneDeep(await feed.core.tree.proof({ block, upgrade }))
         p.block.value = data // add value for this block/chunk to the proof
-        // log({ type: 'encoder', data: {  text: `Proof ready`, nodes: p.block.nodes.map(node => node.index) }})
-        // TODO: upgrade to node 17
-        // const proof = structuredClone(p)
+        
+        log({ type: 'encoder', data: {  text: 'Returning the proof', index } })
         return { type: 'proof', index, encoded_data, encoded_data_signature, p: proof_codec.to_string(p) }
       } catch(err) {
         log({ type: 'encoder', data: {  text: 'Error in download_and_encode', err } })
@@ -186,4 +182,4 @@ module.exports = APIS => {
 // @NOTE:
 // 1. encoded chunk has to be unique ([pos of encoder in the event, data]), so that hoster can not delete and download the encoded chunk from another hoster just in time
 // 2. encoded chunk has to be signed by the original encoder so that the hoster cannot encode a chunk themselves and send it to attester
-// 3. attestor verifies unique encoding data was signed by original encoder
+// 3. hoster verifies unique encoding data was signed by original encoder

@@ -285,7 +285,7 @@ module.exports = APIS => {
           ranges,
           log
         })
-        // log({ type: 'attester', data: { text: 'All compared and sent, resolving now', encoderKey }})
+        log({ type: 'attester', data: { text: 'All compared and sent, resolving now', encoderKey }})
         if (!unique_el_signature) failedKeys.push(hosterKey)
         clearTimeout(tid)
         resolve({ failedKeys, unique_el_signature, hosterKey })
@@ -327,46 +327,33 @@ module.exports = APIS => {
         // log2encoder({ type: 'attester', data: { text: 'waiting for onencoder', key1: key1.toString('hex') }})
         
         async function onencoder ({ feed, remotekey }) {
-          log({ type: 'attestor', data: { text: 'Connected to the encoder', encoder: key1.toString('hex'), expectedChunkCount }})
+          log2encoder({ type: 'attestor', data: { text: 'Connected to the encoder', encoder: remotekey, expectedChunkCount }})
           feed1 = feed
-          // get replicated data
           for (var i = 0; i < expectedChunkCount; i++) {
-            get_and_compare_chunks({ feed1, i, key1, compare_CB, expectedChunkCount, log })
+            get_and_compare(feed1, i)
           }
-          // log({ type: 'attester', data: { text: 'chunks compared' } })
         }
 
-        async function get_and_compare_chunks ({ feed1, i, key1: encoderKey, compare_CB, log }) {
+        async function get_and_compare (feed1, i) {
           try {
+            log2encoder({ type: 'attester', data: { text: 'getting chunks', i, expectedChunkCount, key1 } })
             const chunk_promise = feed1.get(i)
-            log({ type: 'attester', data: { text: 'got the chunk', i } })
             const chunk = await chunk_promise
-            const res = await compare_CB(chunk_promise, encoderKey)
-            log({ type: 'attester', data: { text: 'chunk compared', i, res } })
-            if (!chunks[i]) {
-              chunks[i] = { chunk }
-              // log({ type: 'attester', data: { text: 'getting chunk', i, chunks, sentCount,  expectedChunkCount } })
-            } else {
-              log({ type: 'attester', data: { text: 'compare & send to hoster', i, chunks} })
-              chunks[i].send_to_hoster(chunk) 
-              // log({ type: 'attestor', data: { text: 'chunk appended', i, chunk: chunks[i] }})
-              delete chunks[i]
-              if (sentCount === expectedChunkCount) {
-                log({ type: 'attestor', data: { text: 'all chunks sent', sentCount, expectedChunkCount }})
-                clearTimeout(tid)
-                resolve()
-              }
-            }
+            const res = await compare_CB(chunk_promise, key1)
+            log2encoder({ type: 'attester', data: { text: 'chunk compare res', i, res: res.type, chunk } })
+            if (res.type !== 'verified') return reject('error: chunk not valid')
+            try_send({ chunk, i, log: log2encoder })
           } catch(err) {
-            log({ type: 'attester', data: { text: 'Error: get_and_compare_chunks', encoderKey }})
+            log2encoder({ type: 'attester', data: { text: 'Error: get_and_compare_chunk', remotekey }})
             reject()
           }
         }
-        
+
+
         // CONNECT TO HOSTER
-        const { feed} = await store.load_feed({ topic: topic2, log: log2hoster })
+        const { feed } = await store.load_feed({ topic: topic2, log: log2hoster })
         feed2 = feed
-        log({ type: 'attestor', data: { text: 'load feed', hoster: key2.toString('hex'), topic: topic2.toString('hex') }})
+        log2hoster({ type: 'attestor', data: { text: 'load feed', hoster: key2.toString('hex'), topic: topic2.toString('hex') }})
 
         await store.connect({ 
           swarm_opts: { role: 'attestor2hoster', topic: topic2, mode: { server: true, client: false } }, 
@@ -375,28 +362,44 @@ module.exports = APIS => {
         })
         
         async function onhoster ({ feed, remotekey }) {
-          log({ type: 'attestor', data: { text: 'connected to the hoster', hoster: key2.toString('hex'), topic: topic2.toString('hex'), chunks }})
-          feed2 = feed
+          log2hoster({ type: 'attestor', data: { text: 'connected to the hoster', hoster: remotekey, topic: topic2.toString('hex'), chunks }})
           for (var i = 0; i < expectedChunkCount; i++ ) {
-            // log({ type: 'attestor', data: { text: 'Looping through chunks object', i, chunks, sentCount,  expectedChunkCount }})
-            if (chunks[i]) {
-              feed2.append(chunks[i].chunk)
-              sentCount++
-              delete chunks[i]
-              // log({ type: 'attestor', data: { text: 'chunk appended', i, chunk: chunks[i] }})
-              if (sentCount === expectedChunkCount) {
-                // log({ type: 'attestor', data: { text: 'all sent', sentCount, expectedChunkCount }})
-                clearTimeout(tid)
-                resolve()
-              }
-            } else {
-              chunks[i] = { send_to_hoster: (chunk) => {
-                feed2.append(chunk) 
-              } }
-              // log({ type: 'attestor', data: { text: 'cb stored, no chunk yet', i }})
-            }
+            try_send({ i, feed2, log: log2hoster })
           }
         }
+
+        function try_send ({ chunk, i, feed2, log }) {
+          console.log('trying to send', i, chunk, chunks, chunks[i])
+          if (chunk) { // got chunk in onencoder
+            if (!chunks[i]) { 
+              chunks[i] = { chunk } 
+              log({ type: 'attestor', data: { text: 'add chunk to chunks', i }})
+            } 
+            else {
+              chunks[i].send_to_hoster(chunk)
+              log({ type: 'attestor', data: { text: 'call send_to_hoster cb', i , chunk, cb: chunks[i]}})
+              sentCount++
+              delete chunks[i]
+            }
+          }
+          else { // onhoster
+            if (chunks[i]) {
+              feed2.append(chunks[i].chunk)
+              log({ type: 'attestor', data: { text: 'chunk appended - onhoster', i, sentCount, expectedChunkCount }})
+              sentCount++
+              delete chunks[i]
+            } else { 
+              log({ type: 'attestor', data: { text: 'add send_to_hoster cb to chunks', i }})
+              chunks[i] = { send_to_hoster: (chunk) => { feed2.append(chunk) } } 
+            }
+          }
+          console.log({try_send: chunks})
+          if (sentCount === expectedChunkCount) {
+            log({ type: 'attestor', data: { text: 'all sent', sentCount, expectedChunkCount }})
+            clearTimeout(tid)
+            resolve()
+          }
+        }    
       } catch(err) {
         log({ type: 'fail', data: { text: 'Error: connect_compare_send', err }})
         clearTimeout(tid)

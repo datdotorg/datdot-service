@@ -281,9 +281,8 @@ module.exports = APIS => {
 
     async function store_data(chunk_promise) {
       const chunk = await chunk_promise
-      const json = chunk.toString('binary')
+      const json = chunk.toString()
       const data = proof_codec.decode(json)
-      // log2attestor({ type: 'hoster', data: { text: `Data decoded`, data } })
       log2attestor({ type: 'hoster', data: { text: `Got index: ${data.index}` } })
       
       return new Promise(async (resolve, reject) => {
@@ -298,21 +297,21 @@ module.exports = APIS => {
         try { 
           // 1. verify encoder signature
           if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
-          // log2attestor({ type: 'hoster', data: { text:`Encoder signature verified`, encoded_data } })
+          log2attestor({ type: 'hoster', data: { text:`Encoder signature verified`, encoded_data } })
           
-          log2attestor({ type: 'hoster', data: { text: `@TODO verify proof for index: ${index}` } })
           // 2. verify proof
-          // p = proof_codec.to_buffer(p)
-          // const proof_verified = await datdot_crypto.verify_proof(p, feedKey)
-          // if (!proof_verified) reject('not a valid proof')
-          // log2attestor({ type: 'hoster', data: { text: `Proof verified` } })
+          p = proof_codec.to_buffer(p)
+          log({ type: 'encoder', data: {  text: `Proof ready`, nodes: p.block.nodes.map(node => [ node.index, node.hash]), sig: p.upgrade.signature, val: p.block.value }})
+          const proof_verified = await datdot_crypto.verify_proof(p, feedKey)
+          if (!proof_verified) return reject('not a valid proof')
+          log2attestor({ type: 'hoster', data: { text: `Proof verified`, index } })
           
           // 3. verify chunk (see if hash matches the proof node hash)
-          // const decompressed = await brotli.decompress(encoded_data)
-          // const decoded = parse_decompressed(decompressed, unique_el)
-          // const block_verified = await datdot_crypto.verify_block(p, decoded)
-          // if (!block_verified) reject('not a valid chunk hash')
-          // log2attestor({ type: 'hoster', data: { text: `Chunk verified`, block_verified } })
+          const decompressed = await brotli.decompress(encoded_data)
+          const decoded = parse_decompressed(decompressed, unique_el)
+          const block_verified = await datdot_crypto.verify_block(p, decoded)
+          if (!block_verified) return reject('not a valid chunk hash')
+          log2attestor({ type: 'hoster', data: { text: `Chunk verified`, block_verified } })
 
           await store_in_hoster_storage({
             account,
@@ -327,9 +326,8 @@ module.exports = APIS => {
           resolve({ type: 'encoded:stored', ok: true, index: data.index })
         } catch (e) {
           // Uncomment for better stack traces
-          const error = { type: 'encoded:error', error: `ERROR_STORING: ${e.message}`, ...{ e }, data }
+          const error = { type: 'encoded:error', error: `ERROR_STORING: ${e}`, data }
           log2attestor({ type: 'error', data: { text: `Error: ${JSON.stringify(error)}` } })
-          // beam1.destroy()
           return reject(error)
         }
       })
