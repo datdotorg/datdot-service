@@ -228,8 +228,9 @@ module.exports = APIS => {
         const topics_1 = []
         const topics_2 = []
         const responses = []
+        const encoders_len = encoderKeys.length
         // log({ type: 'attestor', data: { text: `Attest hosting setup`, amendmentID, encoderKeys } })
-        for (var i = 0, len = encoderKeys.length; i < len; i++) {
+        for (var i = 0, len = encoders_len; i < len; i++) {
           const encoderKey = await encoderKeys[i]
           const hosterKey = await hosterKeys[i]
           const hosterSigningKey = await hosterSigningKeys[i]
@@ -238,7 +239,7 @@ module.exports = APIS => {
           topics_1.push(topic1)
           const topic2 = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID, log }) 
           topics_2.push(topic2)
-          const opts = { account, amendmentID, topic1, topic2, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, ranges, feedKey, log }
+          const opts = { account, topic1, topic2, encoderKey, hosterKey, ranges, log }
           opts.compare_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
           responses.push(verify_and_forward_encodings(opts))
         }
@@ -248,13 +249,14 @@ module.exports = APIS => {
         const failed = []
         const sigs = []
         resolved_responses.forEach(res => {
-          const { failedKeys, unique_el_signature, hosterKey } = res
+          const { failedKeys, proof_of_contact: unique_el_signature, hosterKey } = res
           failed.push(failedKeys)
           sigs.push({ unique_el_signature, hosterKey })
         })
         // log({ type: 'attestor', data: { text: 'resolved responses', amendmentID, failed, sigs_len: sigs.length } })
         const failed_set =  [...new Set(failed.flat())]  
         const report = { failedKeys: failed_set, sigs }
+        
         topics_1.forEach(topic => done_task_cleanup({ role: 'attestor2encoder', topic, cache: account.cache, log }) )                 
         // topics_2.forEach(topic => done_task_cleanup({ role: 'attestor2hoster', topic, cache: account.cache, log }) )                 
         resolve(report)
@@ -266,16 +268,15 @@ module.exports = APIS => {
   }
     
   async function verify_and_forward_encodings (opts) {
-    const { account, topic1, topic2, amendmentID, unique_el, attestorKey, encoderKey, hosterKey, hosterSigningKey, feedKey, ranges, compare_CB, log } = opts
+    const { account, topic1, topic2, encoderKey, hosterKey, ranges, compare_CB, log } = opts
     const failedKeys = []
-    var unique_el_signature
     return new Promise(async (resolve, reject) => {
       const tid = setTimeout(() => {
         reject({ type: `verify_and_forward_encodings timeout` })
       }, DEFAULT_TIMEOUT)
       try {
         // log({ type: 'attester', data: { text: 'calling connect_compare_send', encoderKey: encoderKey.toString('hex') }})
-        await connect_compare_send({
+        const proof_of_contact = await connect_compare_send({
           account,
           topic1, 
           topic2, 
@@ -285,12 +286,12 @@ module.exports = APIS => {
           ranges,
           log
         })
-        log({ type: 'attester', data: { text: 'All compared and sent, resolving now', encoderKey }})
-        if (!unique_el_signature) failedKeys.push(hosterKey)
+        log({ type: 'attester', data: { text: 'All compared and sent, resolving now', encoderKey.toString('hex') }})
+        if (!proof_of_contact) failedKeys.push(hosterKey)
         clearTimeout(tid)
-        resolve({ failedKeys, unique_el_signature, hosterKey })
+        resolve({ failedKeys, proof_of_contact, hosterKey })
       } catch (err) {
-        log({ type: 'attester', data: { text: 'Error: verify_and_forward_encodings', hosterKey }})
+        log({ type: 'attester', data: { text: 'Error: verify_and_forward_encodings', hosterKey: hosterKey.toString('hex') }})
         reject()
       }
     })
@@ -312,6 +313,7 @@ module.exports = APIS => {
       var feed2
       var sentCount = 0
       const chunks = {}
+      var proof_of_contact
       
       try {
         // CONNECT TO ENCODER
@@ -357,7 +359,7 @@ module.exports = APIS => {
 
         await store.connect({ 
           swarm_opts: { role: 'attestor2hoster', topic: topic2, mode: { server: true, client: false } }, 
-          targets: { feed: feed2, targetList: [ key2.toString('hex') ], ontarget: onhoster, msg: { send: { type: 'feedkey' } } } ,
+          targets: { feed: feed2, targetList: [ key2.toString('hex') ], ontarget: onhoster, msg: { send: { type: 'feedkey' } }, done } ,
           log: log2hoster
         })
         
@@ -369,7 +371,6 @@ module.exports = APIS => {
         }
 
         function try_send ({ chunk, i, feed2, log }) {
-          console.log('trying to send', i, chunk, chunks, chunks[i])
           if (chunk) { // got chunk in onencoder
             if (!chunks[i]) { 
               chunks[i] = { chunk } 
@@ -393,13 +394,23 @@ module.exports = APIS => {
               chunks[i] = { send_to_hoster: (chunk) => { feed2.append(chunk) } } 
             }
           }
-          console.log({try_send: chunks})
           if (sentCount === expectedChunkCount) {
             log({ type: 'attestor', data: { text: 'all sent', sentCount, expectedChunkCount }})
-            clearTimeout(tid)
-            resolve()
+            done()
           }
-        }    
+        } 
+        
+        function done (proof) {
+          // called 2x: when all sentCount === expectedChunkCount and when hoster sends proof of contact
+          log({ type: 'attestor', data: { text: 'done called', proof, sentCount, expectedChunkCount }})
+          if (proof) proof_of_contact = proof
+          if (!proof_of_contact) return
+          if ((sentCount !== expectedChunkCount)) return
+          log({ type: 'attestor', data: { text: 'have proof and all data sent', proof, sentCount, expectedChunkCount }})
+          clearTimeout(tid)
+          resolve(proof_of_contact)
+        }
+
       } catch(err) {
         log({ type: 'fail', data: { text: 'Error: connect_compare_send', err }})
         clearTimeout(tid)

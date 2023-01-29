@@ -10,12 +10,12 @@ const { toPromises } = require('hypercore-promisifier')
 const hosterStorage = require('_datdot-service-helpers/hoster-storage.js')
 const sub = require('subleveldown')
 const done_task_cleanup = require('_datdot-service-helpers/done-task-cleanup')
+const b4a = require('b4a')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
 
 const getRangesCount = require('getRangesCount')
-const get_max_index = require('_datdot-service-helpers/get-max-index')
 
 const DEFAULT_TIMEOUT = 10000
 
@@ -239,7 +239,8 @@ module.exports = APIS => {
   async function getEncodedDataFromAttestor(opts) {
     const { account, store, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log } = opts
     const log2attestor = log.sub(`hoster to attestor, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attestorKey.toString('hex').substring(0,5)} amendment ${amendmentID}`)
-    // log2attestor({ type: 'hoster', data: { text: `getEncodedDataFromAttestor` } })
+    
+    const remotestringkey = attestorKey.toString('hex')
     
     const unique_el = `${amendmentID}/${encoder_pos}`
     const all = []
@@ -250,14 +251,13 @@ module.exports = APIS => {
       try {
         // hoster to attestor in hosting setup
         await store.load_feed({ make: false, topic, log: log2attestor })
-        log2attestor({ type: 'hoster', data: { text: `load feed`, attestor: attestorKey.toString('hex') } })
+        log2attestor({ type: 'hoster', data: { text: `load feed`, attestor: remotestringkey } })
         
         await store.connect({
           swarm_opts: { role: 'hoster2attestor', topic, mode: { server: false, client: true } },
-          targets: { targetList: [attestorKey.toString('hex')], ontarget: onattestor, msg: { receive: { type: 'feedkey' }} },
+          targets: { targetList: [remotestringkey], ontarget: onattestor, msg: { receive: { type: 'feedkey' }}, done },
           log: log2attestor
         })
-        // log2attestor({ type: 'hoster', data: { text: `waiting for ontarget`,topic: topic.toString('hex') } })
 
         async function onattestor ({ feed }) {
           const all = []
@@ -271,9 +271,31 @@ module.exports = APIS => {
           if (!results) throw new Error({ type: 'fail', data: 'Error storing data' })
           log2attestor({ type: 'hoster', data: { text: `All chunks hosted`, len: results.length, expectedChunkCount } })
           if (results.length !== expectedChunkCount) throw new Error({ type: 'error', data: 'Not enought resolved results' })
+          await send_proof_of_contact()
+        }
+        
+        async function send_proof_of_contact () {
+          try {
+            const data = b4a.from(unique_el, 'binary')
+            const proof_of_contact = account.sign(data)
+            const channel = account.cache.sockets[remotestringkey].channel
+            const stringtopic = topic.toString('hex')
+            const string_msg = channel.messages[0]
+            console.log('string msg - proof of contact', string_msg, stringtopic)
+            string_msg.send(JSON.stringify({ type: 'proof-of-contact', stringtopic, proof_of_contact: proof_of_contact.toString('hex') }))
+          } catch (err) {
+            log({ type: 'Error', data: {  text: 'Error: send_proof_of_contact', err } })
+            reject('sending proof of contact failed')
+          }
+          
+        }
+        
+        async function done () {
+          console.log('hoster done and proof of contact sent')
           await done_task_cleanup({ role: 'hoster2attestor', topic, cache: account.cache, log: log2attestor })
           resolve()
-        }  
+        }
+
       } catch (err) {
         reject(err)
       }
@@ -287,7 +309,6 @@ module.exports = APIS => {
       
       return new Promise(async (resolve, reject) => {
         let { index, encoded_data, encoded_data_signature, p } = data
-        
         counter++
         
         // TODO: Fix up the JSON serialization by converting things to buffers
@@ -334,8 +355,6 @@ module.exports = APIS => {
     }
   }
 
-  
-
   async function removeFeed(account, key, log) {
     log({ type: 'hoster', data: { text: `Removing the feed` } })
     const stringKey = key.toString('hex')
@@ -343,7 +362,6 @@ module.exports = APIS => {
     if (storage) account.storages.delete(stringKey)
     await removeKey(key)
   }
-
 
   async function watchFeed(account, feed) {
     warn('Watching is not supported since we cannot ask the chain for attestors')
