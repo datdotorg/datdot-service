@@ -33,7 +33,7 @@ module.exports = APIS => {
 
   async function hoster(vaultAPI) {
     const account = vaultAPI
-    const { identity, log, store } = account
+    const { identity, log, hyper } = account
     const { chainAPI } = APIS
 
     const { myAddress, noiseKey: hosterKey } = identity
@@ -59,7 +59,7 @@ module.exports = APIS => {
         const encoderSigningKey = await chainAPI.getSigningKey(encoders[pos])
         const { feedKey, attestorKey, plan, ranges, signatures } = await getAmendmentData(attestors, amendment)
         const data = {
-          store,
+          hyper,
           amendmentID,
           chainAPI,
           account,
@@ -178,27 +178,27 @@ module.exports = APIS => {
 
   async function receive_data_and_start_hosting (data) {
     return new Promise (async (resolve,reject) => {
-      const { store, account, amendmentID, feedKey, hosterKey, encoderSigningKey, encoder_pos, attestorKey, plan, signatures, ranges, log } = data
+      const { hyper, account, amendmentID, feedKey, hosterKey, encoderSigningKey, encoder_pos, attestorKey, plan, signatures, ranges, log } = data
       const expectedChunkCount = getRangesCount(ranges)
       await addKey(account, feedKey, plan)
       const log2Author = log.sub(`Hoster to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)} `)
       log({ type: 'hoster', data: { text: 'load feed', amendment: amendmentID } })
-      const { feed } = await loadFeedData({ account, store, ranges, feedKey, log: log2Author })
-      const opts = { account, store, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log }
+      const { feed } = await loadFeedData({ account, hyper, ranges, feedKey, log: log2Author })
+      const opts = { account, hyper, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log }
       await getEncodedDataFromAttestor(opts)
       // log({ type: 'hoster', data: { text: 'Encoded data received and stored', amendment: amendmentID } })
       resolve({ feed })
     })
   }
 
-  async function loadFeedData({ account, store, ranges, feedKey, log }) {
+  async function loadFeedData({ account, hyper, ranges, feedKey, log }) {
     try {
       const topic = datdot_crypto.get_discoverykey(feedKey)
       
       // replicate feed from author
-      const { feed } = await store.load_feed({ feedkey: feedKey, topic, log })
+      const { feed } = await hyper.load_feed({ feedkey: feedKey, topic, log })
   
-      await store.connect({ 
+      await hyper.connect({ 
         swarm_opts: { role: 'hoster2author', topic, mode: { server: true, client: true } }, 
         log
       })
@@ -237,7 +237,7 @@ module.exports = APIS => {
   }
 
   async function getEncodedDataFromAttestor(opts) {
-    const { account, store, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log } = opts
+    const { account, hyper, amendmentID, hosterKey, attestorKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log } = opts
     const log2attestor = log.sub(`hoster to attestor, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attestorKey.toString('hex').substring(0,5)} amendment ${amendmentID}`)
     
     const remotestringkey = attestorKey.toString('hex')
@@ -250,23 +250,24 @@ module.exports = APIS => {
     return new Promise(async (resolve, reject) => {
       try {
         // hoster to attestor in hosting setup
-        await store.load_feed({ make: false, topic, log: log2attestor })
+        await hyper.load_feed({ make: false, topic, log: log2attestor })
         log2attestor({ type: 'hoster', data: { text: `load feed`, attestor: remotestringkey } })
         
-        await store.connect({
+        await hyper.connect({
           swarm_opts: { role: 'hoster2attestor', topic, mode: { server: false, client: true } },
           targets: { targetList: [remotestringkey], ontarget: onattestor, msg: { receive: { type: 'feedkey' }}, done },
           log: log2attestor
         })
 
         async function onattestor ({ feed }) {
+          log2attestor({ type: 'hoster', data: { text: `Connected to the attestor` } })
           const all = []
           for (var i = 0; i < expectedChunkCount; i++) {
             // log2attestor({ type: 'hoster', data: { text: `Getting data: counter ${i}` } })
             all.push(store_data(feed.get(i)))
           }
           const results = await Promise.all(all).catch(err => {
-            log2attestor({ type: 'error', data: { text: `Error getting results ${err}` } })
+            console.log({ type: 'error', data: { text: `Error getting results ${err}` } })
           })
           if (!results) throw new Error({ type: 'fail', data: 'Error storing data' })
           log2attestor({ type: 'hoster', data: { text: `All chunks hosted`, len: results.length, expectedChunkCount } })
@@ -281,7 +282,7 @@ module.exports = APIS => {
             const channel = account.cache.sockets[remotestringkey].channel
             const stringtopic = topic.toString('hex')
             const string_msg = channel.messages[0]
-            console.log('string msg - proof of contact', string_msg, stringtopic)
+            console.log('string msg - proof of contact', data, unique_el, proof_of_contact)
             string_msg.send(JSON.stringify({ type: 'proof-of-contact', stringtopic, proof_of_contact: proof_of_contact.toString('hex') }))
           } catch (err) {
             log({ type: 'Error', data: {  text: 'Error: send_proof_of_contact', err } })

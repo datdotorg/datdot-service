@@ -23,7 +23,7 @@ module.exports = APIS => {
 
   async function encoder (vaultAPI) {
     const account = vaultAPI
-    const { identity, log, store } = account
+    const { identity, log, hyper } = account
     const { chainAPI } = APIS
     const { myAddress, noiseKey: encoderKey } = identity
     // log({ type: 'encoder', data: [`Listening to events for encoder role`] })
@@ -69,7 +69,7 @@ module.exports = APIS => {
     const log2Author= log.sub(`->Encoder to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
     // log2Attestor({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
     const expectedChunkCount = getRangesCount(ranges)
-    const { store } = account
+    const { hyper } = account
 
     return new Promise(async (resolve, reject) => {
       if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
@@ -80,11 +80,11 @@ module.exports = APIS => {
       
       try {
         // replicate feed from author
-        const { feed } = await store.load_feed({ feedkey, log: log2Author })
+        const { feed } = await hyper.load_feed({ feedkey, log: log2Author })
         await feed.update()
         log2Author({ type: 'encoder', data: { text: `load feed` } })
 
-        await store.connect({ 
+        await hyper.connect({ 
           swarm_opts: { role: 'encoder2author', topic: topic1, mode: { server: false, client: true } },
           log: log2Author
         })
@@ -95,9 +95,9 @@ module.exports = APIS => {
         log2Attestor({ type: 'encoder', data: { text: `Loading feed`, attestor: attestorKey.toString('hex'), topic: topic2.toString('hex') } })
        
         // feed for attestor
-        const { feed: temp} = await store.load_feed({  topic: topic2, log: log2Attestor })
+        const { feed: temp} = await hyper.load_feed({  topic: topic2, log: log2Attestor })
 
-        await store.connect({ 
+        await hyper.connect({ 
           swarm_opts: { role: 'encoder2attestor', topic: topic2, mode: { server: true, client: false } },
           targets: { feed: temp, targetList: [ attestorKey.toString('hex') ], ontarget: onattestor, msg: { send: { type: 'feedkey' } } },
           log: log2Attestor

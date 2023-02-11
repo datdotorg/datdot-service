@@ -32,7 +32,7 @@ module.exports = APIS => {
   async function attester (vaultAPI) {
     const { chainAPI } = APIS
     const account = vaultAPI
-    const { identity, log, store } = account
+    const { identity, log, hyper } = account
     const { myAddress, signer, noiseKey: attestorKey } = identity
     // log({ type: 'attestor', data: [`I am an attestor`] })
     const jobsDB = await tempDB(attestorKey)
@@ -82,9 +82,9 @@ module.exports = APIS => {
         // log({ type: 'attestor', data: { text: `Failed key user IDs`, amendmentID, failed } })  
         const signatures = {}
         for (var i = 0, len = sigs.length; i < len; i++) {
-          const { unique_el_signature, hosterKey } = sigs[i]
+          const { proof_of_contact, hosterKey } = sigs[i]
           const hoster_id = await chainAPI.getUserIDByNoiseKey(Buffer.from(hosterKey, 'hex'))
-          signatures[hoster_id] = unique_el_signature
+          signatures[hoster_id] = proof_of_contact
         }
         const report = { id: amendmentID, failed, signatures }
         // log({ type: 'attestor', data: { text: `Report ready`, amendmentID } })  
@@ -161,7 +161,7 @@ module.exports = APIS => {
         const role = 'attestor-challenge'
         const targetList = await Promise.all(all_hosterIDs.map(id => chainAPI.getHosterKey(id).toString('hex')))
 
-        const { feed } = await store.load_feed({ // feed for challenge
+        const { feed } = await hyper.load_feed({ // feed for challenge
           config: { intercept: false, fresh: true, persist: false },
           extension: { ext_cbs: { onmessage, onerror }, name: `datdot-hoster-${stringkey}` },
           swarm_opts: { role: 'perf_attestor', mode: { server: false, client: true } },
@@ -201,8 +201,8 @@ module.exports = APIS => {
             const resolved_reports = await Promise.all(reports).catch(err => log({ type: 'error', data: { text: 'Performance challenge error', err } }))
             resolved_reports.forEach(async report => report.hoster = await chainAPI.getUserIDByNoiseKey(report.hoster))
             log({ type: 'challenge', data: { text: 'Got all reports', resolved_reports } })
-            // remove task from feed-store
-            // await done_task_cleanup({ store, topic: feed.discoveryKey, cache_type: account.cache['fresh'][next], log })
+            // remove task from account
+            // await done_task_cleanup({ hyper, topic: feed.discoveryKey, cache_type: account.cache['fresh'][next], log })
             // TODO: send just a summary to the chain, not the whole array
             const nonce = await vaultAPI.getNonce()
             log({ type: 'attestor', data: `Submitting performance challenge` })
@@ -249,15 +249,15 @@ module.exports = APIS => {
         const failed = []
         const sigs = []
         resolved_responses.forEach(res => {
-          const { failedKeys, proof_of_contact: unique_el_signature, hosterKey } = res
+          const { failedKeys, proof_of_contact, hosterKey } = res
           failed.push(failedKeys)
-          sigs.push({ unique_el_signature, hosterKey })
+          sigs.push({ proof_of_contact, hosterKey })
         })
         // log({ type: 'attestor', data: { text: 'resolved responses', amendmentID, failed, sigs_len: sigs.length } })
         const failed_set =  [...new Set(failed.flat())]  
         const report = { failedKeys: failed_set, sigs }
         
-        topics_1.forEach(topic => done_task_cleanup({ role: 'attestor2encoder', topic, cache: account.cache, log }) )                 
+        // topics_1.forEach(topic => done_task_cleanup({ role: 'attestor2encoder', topic, cache: account.cache, log }) )                 
         // topics_2.forEach(topic => done_task_cleanup({ role: 'attestor2hoster', topic, cache: account.cache, log }) )                 
         resolve(report)
       } catch(err) {
@@ -286,7 +286,7 @@ module.exports = APIS => {
           ranges,
           log
         })
-        log({ type: 'attester', data: { text: 'All compared and sent, resolving now', encoderKey.toString('hex') }})
+        log({ type: 'attester', data: { text: 'All compared and sent, resolving now', encoderKey: encoderKey.toString('hex') }})
         if (!proof_of_contact) failedKeys.push(hosterKey)
         clearTimeout(tid)
         resolve({ failedKeys, proof_of_contact, hosterKey })
@@ -299,7 +299,7 @@ module.exports = APIS => {
   
   async function connect_compare_send (opts) {
     const { account, topic1, topic2, key1, key2, compare_CB, ranges, log } = opts
-    const { store } = account
+    const { hyper } = account
     const expectedChunkCount = getRangesCount(ranges)
     const log2encoder = log.sub(`<-Attestor to encoder, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${key1.toString('hex').substring(0,5)}`)
     const log2hoster = log.sub(`<-Attestor to hoster, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${key2.toString('hex').substring(0,5)}`)
@@ -318,10 +318,10 @@ module.exports = APIS => {
       try {
         // CONNECT TO ENCODER
         log2encoder({ type: 'attester', data: { text: 'load feed', encoder: key1.toString('hex'), topic: topic1.toString('hex') }})
-        await store.load_feed({  make: false, topic: topic1, log: log2encoder })
+        await hyper.load_feed({  make: false, topic: topic1, log: log2encoder })
         
         log2encoder({ type: 'attester', data: { text: 'connect', encoder: key1.toString('hex') }})
-        await store.connect({ 
+        await hyper.connect({ 
           swarm_opts: { role: 'attestor2encoder', topic: topic1, mode: { server: false, client: true } }, 
           targets: { targetList: [key1.toString('hex')], ontarget: onencoder,  msg: { receive: { type: 'feedkey' } } },
           log: log2encoder
@@ -353,11 +353,11 @@ module.exports = APIS => {
 
 
         // CONNECT TO HOSTER
-        const { feed } = await store.load_feed({ topic: topic2, log: log2hoster })
+        const { feed } = await hyper.load_feed({ topic: topic2, log: log2hoster })
         feed2 = feed
         log2hoster({ type: 'attestor', data: { text: 'load feed', hoster: key2.toString('hex'), topic: topic2.toString('hex') }})
 
-        await store.connect({ 
+        await hyper.connect({ 
           swarm_opts: { role: 'attestor2hoster', topic: topic2, mode: { server: true, client: false } }, 
           targets: { feed: feed2, targetList: [ key2.toString('hex') ], ontarget: onhoster, msg: { send: { type: 'feedkey' } }, done } ,
           log: log2hoster
@@ -408,6 +408,7 @@ module.exports = APIS => {
           if ((sentCount !== expectedChunkCount)) return
           log({ type: 'attestor', data: { text: 'have proof and all data sent', proof, sentCount, expectedChunkCount }})
           clearTimeout(tid)
+          done_task_cleanup({ role: 'attestor2encoder', topic: topic1, cache: account.cache, log })
           resolve(proof_of_contact)
         }
 
