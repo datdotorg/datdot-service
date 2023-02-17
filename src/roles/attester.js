@@ -286,7 +286,7 @@ module.exports = APIS => {
           ranges,
           log
         })
-        log({ type: 'attester', data: { text: 'All compared and sent, resolving now', encoderKey: encoderKey.toString('hex') }})
+        log({ type: 'attester', data: { text: 'All compared and sent, resolving now', encoderKey: encoderKey.toString('hex'), proof_of_contact }})
         if (!proof_of_contact) failedKeys.push(hosterKey)
         clearTimeout(tid)
         resolve({ failedKeys, proof_of_contact, hosterKey })
@@ -359,7 +359,7 @@ module.exports = APIS => {
 
         await hyper.connect({ 
           swarm_opts: { role: 'attestor2hoster', topic: topic2, mode: { server: true, client: false } }, 
-          targets: { feed: feed2, targetList: [ key2.toString('hex') ], ontarget: onhoster, msg: { send: { type: 'feedkey' } }, done } ,
+          targets: { feed: feed2, targetList: [key2.toString('hex')], ontarget: onhoster, msg: { send: { type: 'feedkey' } }, done } ,
           log: log2hoster
         })
         

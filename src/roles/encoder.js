@@ -65,8 +65,8 @@ module.exports = APIS => {
   
   async function encode_hosting_setup (data) {
     const{ account, amendmentID, chainAPI, attestorKey, encoderKey, ranges, encoder_pos, feedKey: feedkey, log } = data
-    const log2Attestor = log.sub(`Encoder to attestor, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attestorKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
-    const log2Author= log.sub(`->Encoder to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
+    const log2Attestor = log.sub(`Encoder to attestor, me:${account.noisePublicKey.toString('hex').substring(0,5)}, peer:${attestorKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
+    const log2Author= log.sub(`->Encoder to author, me:${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
     // log2Attestor({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
     const expectedChunkCount = getRangesCount(ranges)
     const { hyper } = account
@@ -156,6 +156,7 @@ module.exports = APIS => {
         log({ type: 'encoder', data: {  text: 'Get data for index', index } })
         const data_promise = feed.get(index)
         const data = await data_promise
+        log({ type: 'encoder', data: {  text: 'Got data', index } })
         
         // encode and sign the encoded data
         const unique_el = `${amendmentID}/${encoder_pos}`
