@@ -161,7 +161,7 @@ module.exports = APIS => {
         const role = 'attestor-challenge'
         const targetList = await Promise.all(all_hosterIDs.map(id => chainAPI.getHosterKey(id).toString('hex')))
 
-        const { feed } = await hyper.load_feed({ // feed for challenge
+        const { feed } = await hyper.new_task({ // feed for challenge
           config: { intercept: false, fresh: true, persist: false },
           extension: { ext_cbs: { onmessage, onerror }, name: `datdot-hoster-${stringkey}` },
           swarm_opts: { role: 'perf_attestor', mode: { server: false, client: true } },
@@ -318,7 +318,7 @@ module.exports = APIS => {
       try {
         // CONNECT TO ENCODER
         log2encoder({ type: 'attester', data: { text: 'load feed', encoder: key1.toString('hex'), topic: topic1.toString('hex') }})
-        await hyper.load_feed({  make: false, topic: topic1, log: log2encoder })
+        await hyper.new_task({  newfeed: false, topic: topic1, log: log2encoder })
         
         log2encoder({ type: 'attester', data: { text: 'connect', encoder: key1.toString('hex') }})
         await hyper.connect({ 
@@ -353,7 +353,7 @@ module.exports = APIS => {
 
 
         // CONNECT TO HOSTER
-        const { feed } = await hyper.load_feed({ topic: topic2, log: log2hoster })
+        const { feed } = await hyper.new_task({ topic: topic2, log: log2hoster })
         feed2 = feed
         log2hoster({ type: 'attestor', data: { text: 'load feed', hoster: key2.toString('hex'), topic: topic2.toString('hex') }})
 

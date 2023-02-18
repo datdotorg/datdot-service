@@ -196,7 +196,7 @@ module.exports = APIS => {
       const topic = datdot_crypto.get_discoverykey(feedKey)
       
       // replicate feed from author
-      const { feed } = await hyper.load_feed({ feedkey: feedKey, topic, log })
+      const { feed } = await hyper.new_task({ feedkey: feedKey, topic, log })
   
       await hyper.connect({ 
         swarm_opts: { role: 'hoster2author', topic, mode: { server: true, client: true } }, 
@@ -250,7 +250,7 @@ module.exports = APIS => {
     return new Promise(async (resolve, reject) => {
       try {
         // hoster to attestor in hosting setup
-        await hyper.load_feed({ make: false, topic, log: log2attestor })
+        await hyper.new_task({ newfeed: false, topic, log: log2attestor })
         log2attestor({ type: 'hoster', data: { text: `load feed`, attestor: remotestringkey } })
         
         await hyper.connect({

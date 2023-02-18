@@ -80,7 +80,7 @@ module.exports = APIS => {
       
       try {
         // replicate feed from author
-        const { feed } = await hyper.load_feed({ feedkey, log: log2Author })
+        const { feed } = await hyper.new_task({ feedkey, log: log2Author })
         await feed.update()
         log2Author({ type: 'encoder', data: { text: `load feed` } })
 
@@ -95,7 +95,7 @@ module.exports = APIS => {
         log2Attestor({ type: 'encoder', data: { text: `Loading feed`, attestor: attestorKey.toString('hex'), topic: topic2.toString('hex') } })
        
         // feed for attestor
-        const { feed: temp} = await hyper.load_feed({  topic: topic2, log: log2Attestor })
+        const { feed: temp} = await hyper.new_task({  topic: topic2, log: log2Attestor })
 
         await hyper.connect({ 
           swarm_opts: { role: 'encoder2attestor', topic: topic2, mode: { server: true, client: false } },
