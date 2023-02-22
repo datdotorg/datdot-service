@@ -9,7 +9,7 @@ const varint = require('varint')
 const { toPromises } = require('hypercore-promisifier')
 const hosterStorage = require('_datdot-service-helpers/hoster-storage.js')
 const sub = require('subleveldown')
-const done_task_cleanup = require('_datdot-service-helpers/done-task-cleanup')
+const {done_task_cleanup} = require('_datdot-service-helpers/done-task-cleanup')
 const b4a = require('b4a')
 
 const datdot_crypto = require('datdot-crypto')

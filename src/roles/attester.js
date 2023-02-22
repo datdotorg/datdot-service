@@ -9,7 +9,7 @@ const { performance } = require('perf_hooks')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
-const done_task_cleanup = require('_datdot-service-helpers/done-task-cleanup')
+const {done_task_cleanup} = require('_datdot-service-helpers/done-task-cleanup')
 
 const tempDB = require('_tempdb')
 const getRangesCount = require('getRangesCount')
@@ -172,7 +172,7 @@ module.exports = APIS => {
 
         log({ type: 'challenge', data: { text: 'Got challenge feed', fedkey: feed.key.toString('hex') } })
         
-        async function ontarget ({ remotekey: hosterkey }) {
+        async function ontarget ({ remotestringkey: hosterkey }) {
           const hosterID = await chainAPI.getHosterKey(hosterkey)
           await feed.update()
           log({ type: 'challenge', data: { text: 'Got hosterkey from ', hosterID, hosterkey: hosterkey.toString('hex') } })
@@ -328,8 +328,8 @@ module.exports = APIS => {
         })
         // log2encoder({ type: 'attester', data: { text: 'waiting for onencoder', key1: key1.toString('hex') }})
         
-        async function onencoder ({ feed, remotekey }) {
-          log2encoder({ type: 'attestor', data: { text: 'Connected to the encoder', encoder: remotekey, expectedChunkCount }})
+        async function onencoder ({ feed, remotestringkey }) {
+          log2encoder({ type: 'attestor', data: { text: 'Connected to the encoder', encoder: remotestringkey, expectedChunkCount }})
           feed1 = feed
           for (var i = 0; i < expectedChunkCount; i++) {
             get_and_compare(feed1, i)
@@ -346,7 +346,7 @@ module.exports = APIS => {
             if (res.type !== 'verified') return reject('error: chunk not valid')
             try_send({ chunk, i, log: log2encoder })
           } catch(err) {
-            log2encoder({ type: 'attester', data: { text: 'Error: get_and_compare_chunk', remotekey }})
+            log2encoder({ type: 'attester', data: { text: 'Error: get_and_compare_chunk' }})
             reject()
           }
         }
@@ -363,8 +363,8 @@ module.exports = APIS => {
           log: log2hoster
         })
         
-        async function onhoster ({ feed, remotekey }) {
-          log2hoster({ type: 'attestor', data: { text: 'connected to the hoster', hoster: remotekey, topic: topic2.toString('hex'), chunks }})
+        async function onhoster ({ feed, remotestringkey }) {
+          log2hoster({ type: 'attestor', data: { text: 'connected to the hoster', hoster: remotestringkey, topic: topic2.toString('hex'), chunks }})
           for (var i = 0; i < expectedChunkCount; i++ ) {
             try_send({ i, feed2, log: log2hoster })
           }
