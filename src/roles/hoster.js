@@ -222,7 +222,7 @@ module.exports = APIS => {
       }
       await Promise.all(all)
       log({ type: 'hoster', data: {  text: 'all ranges downloaded', ranges } }) 
-      await done_task_cleanup({ role: 'hoster2author', topic: feed.discoveryKey, cache: account.cache, log })                   
+      await done_task_cleanup({ role: 'hoster2author', topic: feed.discoveryKey, state: account.state, log })                   
       return { feed }
     } catch (err) {
       log({ type: 'Error', data: {  text: 'Error: loading feed data', err } })
@@ -279,7 +279,7 @@ module.exports = APIS => {
           try {
             const data = b4a.from(unique_el, 'binary')
             const proof_of_contact = account.sign(data)
-            const channel = account.cache.sockets[remotestringkey].channel
+            const channel = account.state.sockets[remotestringkey].channel
             const stringtopic = topic.toString('hex')
             const string_msg = channel.messages[0]
             console.log('string msg - proof of contact', data, unique_el, proof_of_contact)
@@ -293,7 +293,7 @@ module.exports = APIS => {
         
         async function done () {
           console.log('hoster done and proof of contact sent')
-          await done_task_cleanup({ role: 'hoster2attestor', topic, cache: account.cache, log: log2attestor })
+          await done_task_cleanup({ role: 'hoster2attestor', topic, state: account.state, log: log2attestor })
           resolve()
         }
 

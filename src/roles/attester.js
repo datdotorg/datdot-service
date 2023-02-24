@@ -69,24 +69,23 @@ module.exports = APIS => {
         if (attestorAddress !== myAddress) return
 
         log({ type: 'attestor', data: { text: `Attestor ${attestorID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment)} })
-        const { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges } = await getAmendmentData({chainAPI, amendment, contract,log})
+        const { feedKey, encoderKeys, hosterKeys, ranges } = await getAmendmentData({chainAPI, amendment, contract,log})
         
-        const data = { account, amendmentID, feedKey, hosterKeys, hosterSigningKeys, attestorKey, encoderKeys, ranges, log }
-        const { failedKeys, sigs } = await attest_hosting_setup(data).catch((error) => {
-          log({ type: 'error', data: { text: 'Caught error from hosting setup (attester)', error } })
-          throw new Error('hosting setup (attester) error')
-        })
+        const data = { account, amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges, log }
+        const { failedKeys, sigs } = await attest_hosting_setup(data).catch(
+          err => { return log({ type: 'attestor', data: { text: `Error: hosting setup`, amendmentID, err } }) }
+        )
         log({ type: 'attestor', data: { text: `Hosting setup done`, amendmentID, failedKeys, sigs } })
         
-        const failed = await Promise.all(failedKeys.map(async (id) => await chainAPI.getUserIDByNoiseKey(Buffer.from(id, 'hex'))))
+        // const failed = await Promise.all(failedKeys.map(async (id) => await chainAPI.getUserIDByNoiseKey(Buffer.from(id, 'hex'))))
         // log({ type: 'attestor', data: { text: `Failed key user IDs`, amendmentID, failed } })  
         const signatures = {}
-        for (var i = 0, len = sigs.length; i < len; i++) {
-          const { proof_of_contact, hosterKey } = sigs[i]
+        for (const sig of sigs) {
+          const { proof_of_contact, hosterKey } = sig
           const hoster_id = await chainAPI.getUserIDByNoiseKey(Buffer.from(hosterKey, 'hex'))
           signatures[hoster_id] = proof_of_contact
         }
-        const report = { id: amendmentID, failed, signatures }
+        const report = { id: amendmentID, failed: failedKeys, signatures }
         // log({ type: 'attestor', data: { text: `Report ready`, amendmentID } })  
         const nonce = await vaultAPI.getNonce()
         await chainAPI.amendmentReport({ report, signer, nonce })
@@ -180,7 +179,7 @@ module.exports = APIS => {
           reports[hosterID] = { stats, hoster: hosterkey }
         }
         
-        const ext = account.cache.topics[feed.discoveryKey.toString('hex')].ext
+        const ext = account.state.topics[feed.discoveryKey.toString('hex')].ext
         function onerror (err/* peerSocket???*/) {
             // TODO: disconnect from peer
             log({ type: 'attestor', data: 'error extension message' })   
@@ -202,7 +201,7 @@ module.exports = APIS => {
             resolved_reports.forEach(async report => report.hoster = await chainAPI.getUserIDByNoiseKey(report.hoster))
             log({ type: 'challenge', data: { text: 'Got all reports', resolved_reports } })
             // remove task from account
-            // await done_task_cleanup({ hyper, topic: feed.discoveryKey, cache_type: account.cache['fresh'][next], log })
+            // await done_task_cleanup({ hyper, topic: feed.discoveryKey, state_type: account.state['fresh'][next], log })
             // TODO: send just a summary to the chain, not the whole array
             const nonce = await vaultAPI.getNonce()
             log({ type: 'attestor', data: `Submitting performance challenge` })
@@ -222,7 +221,7 @@ module.exports = APIS => {
 
   async function attest_hosting_setup (data) {
     return new Promise(async (resolve, reject) => {
-      const { account, amendmentID, feedKey, hosterKeys, hosterSigningKeys, attestorKey, encoderKeys, ranges, log } = data
+      const { account, amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges, log } = data
       try {
         const messages = {}
         const topics_1 = []
@@ -233,8 +232,6 @@ module.exports = APIS => {
         for (var i = 0, len = encoders_len; i < len; i++) {
           const encoderKey = await encoderKeys[i]
           const hosterKey = await hosterKeys[i]
-          const hosterSigningKey = await hosterSigningKeys[i]
-          const unique_el = `${amendmentID}/${i}`
           const topic1 = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID, log })
           topics_1.push(topic1)
           const topic2 = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID, log }) 
@@ -245,24 +242,26 @@ module.exports = APIS => {
         }
         
         const resolved_responses = await Promise.all(responses) // can be 0 to 6 pubKeys of failed providers
-        // log({ type: 'attestor', data: { text: `Resolved responses!`, resolved_responses } })
-        const failed = []
+        const failedKeys = []
         const sigs = []
-        resolved_responses.forEach(res => {
-          const { failedKeys, proof_of_contact, hosterKey } = res
-          failed.push(failedKeys)
+        // log({ type: 'attestor', data: { text: `Resolved responses!`, resolved_responses } })
+        for (const res of resolved_responses) {
+          const { failedKeys: failed, proof_of_contact, hosterKey } = res
+          failedKeys.push(failed)
           sigs.push({ proof_of_contact, hosterKey })
-        })
+        }
         // log({ type: 'attestor', data: { text: 'resolved responses', amendmentID, failed, sigs_len: sigs.length } })
-        const failed_set =  [...new Set(failed.flat())]  
-        const report = { failedKeys: failed_set, sigs }
-        
-        // topics_1.forEach(topic => done_task_cleanup({ role: 'attestor2encoder', topic, cache: account.cache, log }) )                 
-        // topics_2.forEach(topic => done_task_cleanup({ role: 'attestor2hoster', topic, cache: account.cache, log }) )                 
+        const report = { failedKeys: [...new Set(failedKeys.flat())], sigs }        
         resolve(report)
       } catch(err) {
         log({ type: 'fail', data: { text: 'Error: attest_hosting_setup', err }})
-        reject(err)
+        const failedKeys = []
+        for (const key of encoderKeys) failedKeys.push(key.toString('hex'))
+        for (const key of hosterKeys) failedKeys.push(key.toString('hex'))
+        reject({ failedKeys, sigs: [] })
+        // TODO: see if we close task or we reuse connections for new amendment
+        // for (const topic of topics_1) done_task_cleanup({ role: 'attestor2encoder', topic, state: account.state, log })                 
+        // for (const topic of topics_2) done_task_cleanup({ role: 'attestor2hoster', topic, state: account.state, log }) )                 
       }
     })
   }
@@ -272,7 +271,9 @@ module.exports = APIS => {
     const failedKeys = []
     return new Promise(async (resolve, reject) => {
       const tid = setTimeout(() => {
-        reject({ type: `verify_and_forward_encodings timeout` })
+        log({ type: 'attester', data: { text: 'verify_and_forward_encodings timeout', hosterKey: hosterKey.toString('hex') }})
+        failedKeys.push(encoderKey.toString('hex'), hosterKey.toString('hex'))
+        reject({ failedKeys })
       }, DEFAULT_TIMEOUT)
       try {
         // log({ type: 'attester', data: { text: 'calling connect_compare_send', encoderKey: encoderKey.toString('hex') }})
@@ -292,7 +293,8 @@ module.exports = APIS => {
         resolve({ failedKeys, proof_of_contact, hosterKey })
       } catch (err) {
         log({ type: 'attester', data: { text: 'Error: verify_and_forward_encodings', hosterKey: hosterKey.toString('hex') }})
-        reject()
+        failedKeys.push(encoderKey.toString('hex'), hosterKey.toString('hex'))
+        reject({ failedKeys })
       }
     })
   }
@@ -408,7 +410,7 @@ module.exports = APIS => {
           if ((sentCount !== expectedChunkCount)) return
           log({ type: 'attestor', data: { text: 'have proof and all data sent', proof, sentCount, expectedChunkCount }})
           clearTimeout(tid)
-          done_task_cleanup({ role: 'attestor2encoder', topic: topic1, cache: account.cache, log })
+          done_task_cleanup({ role: 'attestor2encoder', topic: topic1, state: account.state, log })
           resolve(proof_of_contact)
         }
 
@@ -671,20 +673,17 @@ module.exports = APIS => {
 
   async function getAmendmentData ({ chainAPI, amendment, contract, log }) {
     const { encoders, hosters } = amendment.providers
-    const signingKeyPromises = []
     const hosterKeysPromises = []
     hosters.forEach(id => {
-      signingKeyPromises.push(chainAPI.getSigningKey(id))
       hosterKeysPromises.push(chainAPI.getHosterKey(id))
     })
     const encoderKeys = await Promise.all(encoders.map((id) => chainAPI.getEncoderKey(id)))
-    const hosterSigningKeys =  await Promise.all(signingKeyPromises)
     const hosterKeys = await Promise.all(hosterKeysPromises)
     const feedID = contract.feed
     const feedKey = await chainAPI.getFeedKey(feedID)
     const ranges = contract.ranges
-    log({ type: 'attestor', data: { text: `Got keys for hosting setup`, data: feedKey, providers: amendment.providers, encoderKeys, hosterKeys, hosterSigningKeys, ranges } })
-    return { feedKey, encoderKeys, hosterKeys, hosterSigningKeys, ranges }
+    log({ type: 'attestor', data: { text: `Got keys for hosting setup`, data: feedKey, providers: amendment.providers, encoderKeys, hosterKeys, ranges } })
+    return { feedKey, encoderKeys, hosterKeys, ranges }
   }
 
   function getRandomInt (min, max) {

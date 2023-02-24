@@ -44,8 +44,10 @@ module.exports = APIS => {
         const [attestorID] = attestors
         const attestorKey = await chainAPI.getAttestorKey(attestorID)
         const data = { account, amendmentID, chainAPI, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, feedKey, log }
-        await encode_hosting_setup(data).catch((error) => log({ type: 'error', data: [`error: ${JSON.stringify(error)}`] }))
-        log({ type: 'encoder', data: { type: `Encoding done` } })
+        await encode_hosting_setup(data).catch((error) => {
+          return log({ type: 'error', data: [`error: ${JSON.stringify(error)}`] })
+        })
+          log({ type: 'encoder', data: { type: `Encoding done` } })
       }
     }
     // HELPERS
@@ -107,10 +109,10 @@ module.exports = APIS => {
           log2Attestor({ type: 'encoder', data: { text: `Connected to the attestor` } })
           const all = []
           for (const range of ranges) all.push(encodeAndSendRange({ account, temp_feed: temp, range, feed, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor }))
-          const result = await Promise.all(all)
+          const result = await Promise.all(all).catch(err => { log2Attestor({ type: 'encoder', data: { text: 'Error in result', err } }) })
           log2Attestor({ type: 'encoder', data: { text: `All encoded & sent`, result } })
           clearTimeout(tid)
-          await done_task_cleanup({ role: 'encoder2author', topic: topic1, cache: account.cache, log })                  
+          await done_task_cleanup({ role: 'encoder2author', topic: topic1, state: account.state, log })                  
           resolve()
         }  
       } catch(err) {
@@ -131,7 +133,7 @@ module.exports = APIS => {
             sent.push(send({ account, feedkey: feed.key, task_id: amendmentID, proof_promise, temp_feed, log }))
           }
           const resolved = await Promise.all(sent)
-          resolve('range encoded and sent')
+          resolve(range)
         } catch (err) {
           log({ type: 'encoder', data: {  text: 'Error in encodeAndSendRange', err } })
           reject('err', err)
