@@ -9,7 +9,7 @@ const getRangesCount = require('getRangesCount')
 const serialize_before_compress = require('serialize-before-compress')
 const datdot_crypto = require('datdot-crypto')
 const cloneDeep = require('clone-deep')
-const DEFAULT_TIMEOUT = 10000
+const DEFAULT_TIMEOUT = 5000
 
 /******************************************************************************
   ROLE: Encoder
