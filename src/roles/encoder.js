@@ -3,11 +3,9 @@ const derive_topic = require('derive-topic')
 const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
 const {done_task_cleanup} = require('_datdot-service-helpers/done-task-cleanup')
-const { toPromises } = require('hypercore-promisifier')
 const proof_codec = require('datdot-codec/proof')
 const brotli = require('_datdot-service-helpers/brotli')
 const getRangesCount = require('getRangesCount')
-const get_max_index = require('_datdot-service-helpers/get-max-index')
 const serialize_before_compress = require('serialize-before-compress')
 const datdot_crypto = require('datdot-crypto')
 const cloneDeep = require('clone-deep')
@@ -45,9 +43,10 @@ module.exports = APIS => {
         const attestorKey = await chainAPI.getAttestorKey(attestorID)
         const data = { account, amendmentID, chainAPI, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, feedKey, log }
         await encode_hosting_setup(data).catch((error) => {
-          return log({ type: 'error', data: [`error: ${JSON.stringify(error)}`] })
+          log({ type: 'error', data: [`error: ${JSON.stringify(error)}`] })
+          return 
         })
-          log({ type: 'encoder', data: { type: `Encoding done` } })
+        log({ type: 'encoder', data: { type: `Encoding done` } })
       }
     }
     // HELPERS

@@ -60,7 +60,7 @@ module.exports = APIS => {
           if (job) { /* TODO: ... */ }
         })
       }
-      if (event.method === 'NewAmendment') {
+      else if (event.method === 'NewAmendment') {
         const [amendmentID] = event.data
         const amendment = await chainAPI.getAmendmentByID(amendmentID)
         const contract = await chainAPI.getContractByID(amendment.contract)
@@ -72,9 +72,7 @@ module.exports = APIS => {
         const { feedKey, encoderKeys, hosterKeys, ranges } = await getAmendmentData({chainAPI, amendment, contract,log})
         
         const data = { account, amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges, log }
-        const { failedKeys, sigs } = await attest_hosting_setup(data).catch(
-          err => { return log({ type: 'attestor', data: { text: `Error: hosting setup`, amendmentID, err } }) }
-        )
+        const { failedKeys, sigs } = await attest_hosting_setup(data)
         log({ type: 'attestor', data: { text: `Hosting setup done`, amendmentID, failedKeys, sigs } })
         
         // const failed = await Promise.all(failedKeys.map(async (id) => await chainAPI.getUserIDByNoiseKey(Buffer.from(id, 'hex'))))
@@ -91,8 +89,7 @@ module.exports = APIS => {
         await chainAPI.amendmentReport({ report, signer, nonce })
         // log({ type: 'attester', data: { text: 'Report sent', amendmentID } })
       }
-
-      if (event.method === 'NewStorageChallenge') {
+      else if (event.method === 'NewStorageChallenge') {
         const [storageChallengeID] = event.data
         const storageChallenge = await chainAPI.getStorageChallengeByID(storageChallengeID)
         const { attestor: attestorID, checks } = storageChallenge
@@ -116,7 +113,7 @@ module.exports = APIS => {
           await chainAPI.submitStorageChallenge(opts)
         }
       }
-      if (event.method === 'NewPerformanceChallenge') {
+      else if (event.method === 'NewPerformanceChallenge') {
         const [performanceChallengeID] = event.data
         const performanceChallenge = await chainAPI.getPerformanceChallengeByID(performanceChallengeID)
         const { attestors, feed: feedID } = performanceChallenge

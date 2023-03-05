@@ -51,7 +51,7 @@ module.exports = APIS => {
           log({ type: 'hoster', data: { text: `Event received: ${event.method} ${event.data.toString()}` } })
         }
       }
-      if (event.method === 'NewAmendment') {
+      else if (event.method === 'NewAmendment') {
         const [amendmentID] = event.data
         const amendment = await chainAPI.getAmendmentByID(amendmentID)
         const { hosters, attestors, encoders } = amendment.providers
@@ -85,7 +85,7 @@ module.exports = APIS => {
           log({ type: 'error', data: { text: 'Caught error from hosting setup (hoster)', error }})
         }
       }
-      if (event.method === 'DropHosting') {
+      else if (event.method === 'DropHosting') {
         const [feedID, hosterID] = event.data
         const hosterAddress = await chainAPI.getUserAddress(hosterID)
         if (hosterAddress === myAddress) {
@@ -97,7 +97,7 @@ module.exports = APIS => {
           // TODO: cancel hosting = remove feed, get out of swarm...
         }
       }
-      if (event.method === 'NewStorageChallenge') {
+      else if (event.method === 'NewStorageChallenge') {
         const [id] = event.data
         const storageChallenge = await chainAPI.getStorageChallengeByID(id)
         const hosterID = storageChallenge.hoster
@@ -114,7 +114,7 @@ module.exports = APIS => {
           log({ type: 'hoster', data: { text: `sendStorageChallengeToAttestor completed` } })
         }
       }
-      if (event.method === 'NewPerformanceChallenge') {
+      else if (event.method === 'NewPerformanceChallenge') {
         const [performance_challenge_id] = event.data
         const performanceChallenge = await chainAPI.getPerformanceChallengeByID(performance_challenge_id)
         const feed = await chainAPI.getFeedByID(performanceChallenge.feed)
