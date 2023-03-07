@@ -17,7 +17,7 @@ const proof_codec = require('datdot-codec/proof')
 
 const getRangesCount = require('getRangesCount')
 
-const DEFAULT_TIMEOUT = 5000
+const DEFAULT_TIMEOUT = 10000 // has to be high
 
 // global variables (later local DB)
 const organizer = {

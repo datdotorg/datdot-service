@@ -1,7 +1,5 @@
 const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
-const hypercore = require('hypercore')
-const Hyperbeam = require('hyperbeam')
 const {done_task_cleanup} = require('_datdot-service-helpers/done-task-cleanup')
 const proof_codec = require('datdot-codec/proof')
 const brotli = require('_datdot-service-helpers/brotli')
@@ -9,7 +7,7 @@ const getRangesCount = require('getRangesCount')
 const serialize_before_compress = require('serialize-before-compress')
 const datdot_crypto = require('datdot-crypto')
 const cloneDeep = require('clone-deep')
-const DEFAULT_TIMEOUT = 5000
+const DEFAULT_TIMEOUT = 10000
 
 /******************************************************************************
   ROLE: Encoder

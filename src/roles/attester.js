@@ -16,11 +16,8 @@ const getRangesCount = require('getRangesCount')
 const compare_encodings = require('compare-encodings')
 const get_max_index = require('_datdot-service-helpers/get-max-index')
 const get_index = require('_datdot-service-helpers/get-index')
-const DEFAULT_TIMEOUT = 5000
+const DEFAULT_TIMEOUT = 10000
 
-// global variables
-const organizer = {
-}
 /******************************************************************************
   ROLE: Attestor
 ******************************************************************************/
