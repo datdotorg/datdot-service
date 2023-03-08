@@ -34,7 +34,8 @@ module.exports = APIS => {
         const contract = await chainAPI.getContractByID(amendment.contract)
         const { encoders, attestors } = amendment.providers
         const encoder_pos = await isForMe(encoders, event)
-        if (encoder_pos === undefined) return
+        if (encoder_pos === undefined) return // pos can be 0
+
         log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })
         const { feedkey: feedKey } = await chainAPI.getFeedByID(contract.feed)
         const [attestorID] = attestors

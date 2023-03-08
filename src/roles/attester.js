@@ -218,8 +218,6 @@ module.exports = APIS => {
       const { account, amendmentID, feedKey, hosterKeys, attestorKey, encoderKeys, ranges, log } = data
       try {
         const messages = {}
-        const topics_1 = []
-        const topics_2 = []
         const responses = []
         const encoders_len = encoderKeys.length
         // log({ type: 'attestor', data: { text: `Attest hosting setup`, amendmentID, encoderKeys } })
@@ -227,9 +225,7 @@ module.exports = APIS => {
           const encoderKey = await encoderKeys[i]
           const hosterKey = await hosterKeys[i]
           const topic1 = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attestorKey, id: amendmentID, log })
-          topics_1.push(topic1)
           const topic2 = derive_topic({ senderKey: attestorKey, feedKey, receiverKey: hosterKey, id: amendmentID, log }) 
-          topics_2.push(topic2)
           const opts = { account, topic1, topic2, encoderKey, hosterKey, ranges, log }
           opts.compare_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
           responses.push(verify_and_forward_encodings(opts))

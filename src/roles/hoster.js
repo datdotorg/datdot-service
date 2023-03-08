@@ -55,7 +55,10 @@ module.exports = APIS => {
         const [amendmentID] = event.data
         const amendment = await chainAPI.getAmendmentByID(amendmentID)
         const { hosters, attestors, encoders } = amendment.providers
-        const pos = await isForMe(hosters, event).catch(err => { return })
+        const pos = await isForMe(hosters)
+        if (pos === undefined) return // pos can be 0
+
+        log({ type: 'hoster', data: { text: `Event received: ${event.method} ${event.data.toString()}` } })
         const encoderSigningKey = await chainAPI.getSigningKey(encoders[pos])
         const { feedKey, attestorKey, plan, ranges, signatures } = await getAmendmentData(attestors, amendment)
         const data = {
@@ -123,17 +126,12 @@ module.exports = APIS => {
       }
     }
     // HELPERS
-    async function isForMe(hosters, event) {
-      return new Promise(async (resolve, reject) => {
-        for (var i = 0, len = hosters.length; i < len; i++) {
-          const id = hosters[i]
-          const peerAddress = await chainAPI.getUserAddress(id)
-          if (peerAddress === myAddress) {
-            log({ type: 'hoster', data: { text: `Hoster ${id}:  Event received: ${event.method} ${event.data.toString()}` } })
-            resolve(i)
-          }
-        }
-      })
+    async function isForMe(hosters) {
+      for (var i = 0, len = hosters.length; i < len; i++) {
+        const id = hosters[i]
+        const peerAddress = await chainAPI.getUserAddress(id)
+        if (peerAddress === myAddress) return i
+      }
     }
     async function getAmendmentData(attestors, amendment) {
       const contract = await chainAPI.getContractByID(amendment.contract)
