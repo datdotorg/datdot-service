@@ -40,11 +40,12 @@ module.exports = APIS => {
         const [attestorID] = attestors
         const attestorKey = await chainAPI.getAttestorKey(attestorID)
         const data = { account, amendmentID, chainAPI, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, feedKey, log }
-        await encode_hosting_setup(data).catch((error) => {
-          log({ type: 'error', data: [`error: ${JSON.stringify(error)}`] })
-          return 
-        })
-        log({ type: 'encoder', data: { type: `Encoding done` } })
+        try {
+          await encode_hosting_setup(data)
+          log({ type: 'encoder', data: { type: `Encoding done` } })
+        } catch (err) {
+          return log({ type: 'error', data: [`error: ${JSON.stringify(err)}`] })
+        }
       }
     }
     // HELPERS
@@ -106,11 +107,17 @@ module.exports = APIS => {
           log2Attestor({ type: 'encoder', data: { text: `Connected to the attestor` } })
           const all = []
           for (const range of ranges) all.push(encodeAndSendRange({ account, temp_feed: temp, range, feed, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor }))
-          const result = await Promise.all(all).catch(err => { log2Attestor({ type: 'encoder', data: { text: 'Error in result', err } }) })
-          log2Attestor({ type: 'encoder', data: { text: `All encoded & sent`, result } })
-          clearTimeout(tid)
-          await done_task_cleanup({ role: 'encoder2author', topic: topic1, state: account.state, log })                  
-          resolve()
+          try {
+            const result = await Promise.all(all)
+            log2Attestor({ type: 'encoder', data: { text: `All encoded & sent`, result } })
+            clearTimeout(tid)
+            await done_task_cleanup({ role: 'encoder2author', topic: topic1, state: account.state, log })                  
+            return resolve()
+          } catch (err) {
+            clearTimeout(tid)
+            log2Attestor({ type: 'encoder', data: { text: 'Error in result', err } })
+            return reject()
+          }
         }  
       } catch(err) {
         log2Attestor({ type: 'encoder', data: { text: 'Error in hosting setup', err } })

@@ -545,7 +545,11 @@ module.exports = APIS => {
           if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
           const unique_el = `${amendmentID}/${encoder_pos}`
           const decompressed = await brotli.decompress(encoded_data)
-          await datdot_crypto.verify_chunk_hash(index, decompressed, unique_el).catch(err => reject('not valid chunk hash', err))
+          try {
+            await datdot_crypto.verify_chunk_hash(index, decompressed, unique_el)
+          } catch (err) {
+            reject('not valid chunk hash')
+          }
           const keys = Object.keys(signatures)
           const indexes = keys.map(key => Number(key))
           const max = get_max_index(ranges)

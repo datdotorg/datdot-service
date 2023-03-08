@@ -262,17 +262,15 @@ module.exports = APIS => {
         async function onattestor ({ feed }) {
           log2attestor({ type: 'hoster', data: { text: `Connected to the attestor` } })
           const all = []
-          for (var i = 0; i < expectedChunkCount; i++) {
-            // log2attestor({ type: 'hoster', data: { text: `Getting data: counter ${i}` } })
-            all.push(store_data(feed.get(i)))
+          for (var i = 0; i < expectedChunkCount; i++) all.push(store_data(feed.get(i)))
+          try {
+            const results = await Promise.all(all)
+            log2attestor({ type: 'hoster', data: { text: `All chunks hosted`, len: results.length, expectedChunkCount } })
+            await send_proof_of_contact()
+          } catch (err) {
+            log({ type: 'error', data: { text: `Error getting results` } })
+            return reject(new Error({ type: 'fail', data: 'Error storing data' }))
           }
-          const results = await Promise.all(all).catch(err => {
-            console.log({ type: 'error', data: { text: `Error getting results ${err}` } })
-          })
-          if (!results) throw new Error({ type: 'fail', data: 'Error storing data' })
-          log2attestor({ type: 'hoster', data: { text: `All chunks hosted`, len: results.length, expectedChunkCount } })
-          if (results.length !== expectedChunkCount) throw new Error({ type: 'error', data: 'Not enought resolved results' })
-          await send_proof_of_contact()
         }
         
         async function send_proof_of_contact () {
@@ -286,19 +284,18 @@ module.exports = APIS => {
             string_msg.send(JSON.stringify({ type: 'proof-of-contact', stringtopic, proof_of_contact: proof_of_contact.toString('hex') }))
           } catch (err) {
             log({ type: 'Error', data: {  text: 'Error: send_proof_of_contact', err } })
-            reject('sending proof of contact failed')
+            return reject('sending proof of contact failed')
           }
           
         }
         
         async function done () {
-          console.log('hoster done and proof of contact sent')
           await done_task_cleanup({ role: 'hoster2attestor', topic, state: account.state, log: log2attestor })
-          resolve()
+          return resolve()
         }
 
       } catch (err) {
-        reject(err)
+        return reject(err)
       }
     })
 
@@ -345,7 +342,7 @@ module.exports = APIS => {
             log: log2attestor
           })
           log2attestor({ type: 'hoster', data: { text: `stored index: ${index} (${counter}/${expectedChunkCount}` } })
-          resolve({ type: 'encoded:stored', ok: true, index: data.index })
+          return resolve({ type: 'encoded:stored', ok: true, index: data.index })
         } catch (e) {
           // Uncomment for better stack traces
           const error = { type: 'encoded:error', error: `ERROR_STORING: ${e}`, data }
