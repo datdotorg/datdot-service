@@ -32,21 +32,24 @@ module.exports = APIS => {
         const [amendmentID] = event.data
         const amendment = await chainAPI.getAmendmentByID(amendmentID)
         const contract = await chainAPI.getContractByID(amendment.contract)
-        const { encoders, attestors } = amendment.providers
+        const { encoders, attesters } = amendment.providers
         const encoder_pos = await isForMe(encoders, event)
         if (encoder_pos === undefined) return // pos can be 0
 
         log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })
         const { feedkey: feedKey } = await chainAPI.getFeedByID(contract.feed)
-        const [attestorID] = attestors
-        const attestorKey = await chainAPI.getAttestorKey(attestorID)
-        const data = { account, amendmentID, chainAPI, attestorKey, encoderKey, ranges: contract.ranges, encoder_pos, feedKey, log }
+        const [attesterID] = attesters
+        const attesterKey = await chainAPI.getAttesterKey(attesterID)
+        const data = { account, amendmentID, chainAPI, attesterKey, encoderKey, ranges: contract.ranges, encoder_pos, feedKey, log }
         try {
           await encode_hosting_setup(data)
           log({ type: 'encoder', data: { type: `Encoding done` } })
         } catch (err) {
           return log({ type: 'error', data: [`error: ${JSON.stringify(err)}`] })
         }
+      }
+      else if (event.method === 'HostingStarted') {
+        const [amendmentID] = event.data
       }
     }
     // HELPERS
@@ -65,10 +68,10 @@ module.exports = APIS => {
   ----------------------------------------- */
   
   async function encode_hosting_setup (data) {
-    const{ account, amendmentID, chainAPI, attestorKey, encoderKey, ranges, encoder_pos, feedKey: feedkey, log } = data
-    const log2Attestor = log.sub(`Encoder to attestor, me:${account.noisePublicKey.toString('hex').substring(0,5)}, peer:${attestorKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
+    const{ account, amendmentID, chainAPI, attesterKey, encoderKey, ranges, encoder_pos, feedKey: feedkey, log } = data
+    const log2Attester = log.sub(`Encoder to attester, me:${account.noisePublicKey.toString('hex').substring(0,5)}, peer:${attesterKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
     const log2Author= log.sub(`->Encoder to author, me:${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
-    // log2Attestor({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
+    // log2Attester({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
     const expectedChunkCount = getRangesCount(ranges)
     const { hyper } = account
 
@@ -91,37 +94,37 @@ module.exports = APIS => {
         })
     
         
-        // create temp feed for sending compressed and signed data to the attestor
-        const topic2 = derive_topic({ senderKey: encoderKey, feedKey: feedkey, receiverKey: attestorKey, id: amendmentID, log })
-        log2Attestor({ type: 'encoder', data: { text: `Loading feed`, attestor: attestorKey.toString('hex'), topic: topic2.toString('hex') } })
+        // create temp feed for sending compressed and signed data to the attester
+        const topic2 = derive_topic({ senderKey: encoderKey, feedKey: feedkey, receiverKey: attesterKey, id: amendmentID, log })
+        log2Attester({ type: 'encoder', data: { text: `Loading feed`, attester: attesterKey.toString('hex'), topic: topic2.toString('hex') } })
        
-        // feed for attestor
-        const { feed: temp} = await hyper.new_task({  topic: topic2, log: log2Attestor })
+        // feed for attester
+        const { feed: temp} = await hyper.new_task({  topic: topic2, log: log2Attester })
 
         await hyper.connect({ 
-          swarm_opts: { role: 'encoder2attestor', topic: topic2, mode: { server: true, client: false } },
-          targets: { feed: temp, targetList: [ attestorKey.toString('hex') ], ontarget: onattestor, msg: { send: { type: 'feedkey' } } },
-          log: log2Attestor
+          swarm_opts: { role: 'encoder2attester', topic: topic2, mode: { server: true, client: false } },
+          targets: { feed: temp, targetList: [ attesterKey.toString('hex') ], ontarget: onattester, msg: { send: { type: 'feedkey' } } },
+          log: log2Attester
         })
   
-        async function onattestor () {
-          log2Attestor({ type: 'encoder', data: { text: `Connected to the attestor` } })
+        async function onattester () {
+          log2Attester({ type: 'encoder', data: { text: `Connected to the attester` } })
           const all = []
-          for (const range of ranges) all.push(encodeAndSendRange({ account, temp_feed: temp, range, feed, amendmentID, encoder_pos, expectedChunkCount, log: log2Attestor }))
+          for (const range of ranges) all.push(encodeAndSendRange({ account, temp_feed: temp, range, feed, amendmentID, encoder_pos, expectedChunkCount, log: log2Attester }))
           try {
             const result = await Promise.all(all)
-            log2Attestor({ type: 'encoder', data: { text: `All encoded & sent`, result } })
+            log2Attester({ type: 'encoder', data: { text: `All encoded & sent`, result } })
             clearTimeout(tid)
-            await done_task_cleanup({ role: 'encoder2author', topic: topic1, state: account.state, log })                  
+            // await done_task_cleanup({ role: 'encoder2author', topic: topic1, state: account.state, log })                  
             return resolve()
           } catch (err) {
             clearTimeout(tid)
-            log2Attestor({ type: 'encoder', data: { text: 'Error in result', err } })
+            log2Attester({ type: 'encoder', data: { text: 'Error in result', err } })
             return reject()
           }
         }  
       } catch(err) {
-        log2Attestor({ type: 'encoder', data: { text: 'Error in hosting setup', err } })
+        log2Attester({ type: 'encoder', data: { text: 'Error in hosting setup', err } })
         clearTimeout(tid)
         reject()
       }
