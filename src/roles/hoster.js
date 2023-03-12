@@ -6,7 +6,6 @@ const Hyperbeam = require('hyperbeam')
 const brotli = require('_datdot-service-helpers/brotli')
 const parse_decompressed = require('_datdot-service-helpers/parse-decompressed')
 const varint = require('varint')
-const { toPromises } = require('hypercore-promisifier')
 const hosterStorage = require('_datdot-service-helpers/hoster-storage.js')
 const sub = require('subleveldown')
 const {done_task_cleanup} = require('_datdot-service-helpers/done-task-cleanup')
@@ -19,12 +18,7 @@ const getRangesCount = require('getRangesCount')
 
 const DEFAULT_TIMEOUT = 10000 // has to be high
 
-// global variables (later local DB)
-const organizer = {
-  amendments: {},
-  feeds: {},
-}
-  /******************************************************************************
+/******************************************************************************
   ROLE: Hoster
 ******************************************************************************/
 module.exports = APIS => {
@@ -76,10 +70,6 @@ module.exports = APIS => {
           encoder_pos: pos,
           log
         }
-        // organizer stuff
-        const stringkey = feedKey.toString('hex')
-        organizer.amendments[amendmentID] = data
-        if (!organizer.feeds[stringkey]) organizer.feeds[stringkey] = { counter: 0 } // TODO: check the last counter on chain and set it to that or else zero
 
         try {
           const { feed } = await receive_data_and_start_hosting(data)
@@ -95,7 +85,6 @@ module.exports = APIS => {
         const [feedID, hosterID] = event.data
         const hosterAddress = await chainAPI.getUserAddress(hosterID)
         if (hosterAddress === myAddress) {
-          // TODO: close all the connections related to this feed
           log({ type: 'hoster', data: {  text: `Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}` } })
           // const feedKey = await chainAPI.getFeedKey(feedID)
           // const hasKey = await account.storages.has(feedKey.toString('hex'))
@@ -108,16 +97,14 @@ module.exports = APIS => {
         const storageChallenge = await chainAPI.getStorageChallengeByID(id)
         const hosterID = storageChallenge.hoster
         const hosterAddress = await chainAPI.getUserAddress(hosterID)
-        if (hosterAddress === myAddress) {
-          log('NewStorageChallenge')
-          log({ type: 'hoster', data: { text: `Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}` } })
-          
+        if (hosterAddress !== myAddress) return
+        log({ type: 'hoster', data: { text: `Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}` } })
+        try {
           const data = await get_storage_challenge_data(storageChallenge)
-          data.account = account
-          data.log = log
-          // log({ type: 'hoster', data: { text: `sendStorageChallengeToAttester - ${data}` } })
-          await send_storage_proofs_to_attester(data).catch((error) => log({ type: 'error', data: { text: `Error: ${JSON.stringify(error)}` } }))
+          await send_storage_proofs_to_attester({ data, account, log })
           log({ type: 'hoster', data: { text: `sendStorageChallengeToAttester completed` } })
+        } catch (err) {
+          log({ type: 'error', data: { text: `Error: ${JSON.stringify(err)}` } })
         }
       }
       else if (event.method === 'NewPerformanceChallenge') {
@@ -125,7 +112,6 @@ module.exports = APIS => {
         const performanceChallenge = await chainAPI.getPerformanceChallengeByID(performance_challenge_id)
         const feed = await chainAPI.getFeedByID(performanceChallenge.feed)
         const stringkey = feed.feedkey.toString('hex')
-        if (organizer.feeds[stringkey]) organizer.performance_challenge_id = performance_challenge_id
       }
     }
     // HELPERS
@@ -148,20 +134,20 @@ module.exports = APIS => {
     }
 
     async function get_storage_challenge_data (storageChallenge) {
-      const { id, checks, hoster: hosterID, attester: attesterID } = storageChallenge
-      const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
+      const { id: challenge_id, checks, hoster: hosterID, attester: attesterID } = storageChallenge
+      const contract_ids = Object.keys(checks).map(string_id => Number(string_id))
       const hosterKey = await chainAPI.getHosterKey(hosterID)
       const attesterKey = await chainAPI.getAttesterKey(attesterID)
-      for (var i = 0, len = contract_ids.length; i < len; i++) {
-        const contract_id = contract_ids[i]
-        const { feed: feedID, ranges, amendments } = await chainAPI.getContractByID(contract_id)
+      var feedkey_1
+      for (const id of contract_ids) {
+        const { feed: feedID, ranges, amendments } = await chainAPI.getContractByID(id)
         const [encoderID, pos] = await getEncoderID(amendments, hosterID)
-
         const { feedkey, signatures }  = await chainAPI.getFeedByID(feedID)
-        checks[contract_id].feedKey = feedkey
-        // checks[contract_id] = { index, feedKey }
+        if (!feedkey_1) feedkey_1 = feedkey
+        checks[id].feedKey = feedkey
+        // checks[id] = { index, feedKey }
       }
-      return { storageChallengeID: id, attesterKey, hosterKey, checks }
+      return { challenge_id, attesterKey, hosterKey, checks, feedkey_1 }
     }
 
     async function getEncoderID (amendments, hosterID) {
@@ -174,7 +160,7 @@ module.exports = APIS => {
 
 
   /* ------------------------------------------- 
-        1. GET ENCODED AND START HOSTING
+        1. HOSTING SETUP / GET ENCODED AND START HOSTING
   -------------------------------------------- */
 
   async function receive_data_and_start_hosting (data) {
@@ -187,7 +173,6 @@ module.exports = APIS => {
       const { feed } = await loadFeedData({ account, hyper, ranges, feedKey, log: log2Author })
       const opts = { account, hyper, amendmentID, hosterKey, attesterKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log }
       await getEncodedDataFromAttester(opts)
-      // log({ type: 'hoster', data: { text: 'Encoded data received and stored', amendment: amendmentID } })
       resolve({ feed })
     })
   }
@@ -195,10 +180,9 @@ module.exports = APIS => {
   async function loadFeedData({ account, hyper, ranges, feedKey, log }) {
     try {
       const topic = datdot_crypto.get_discoverykey(feedKey)
-      
-      // replicate feed from author
       const { feed } = await hyper.new_task({ feedkey: feedKey, topic, log })
-  
+
+      // replicate feed from author
       await hyper.connect({ 
         swarm_opts: { role: 'hoster2author', topic, mode: { server: true, client: true } }, 
         log
@@ -214,14 +198,10 @@ module.exports = APIS => {
         account.storages.set(stringkey, storage)
       } else storage = await getStorage({account, key: feed.key, log})
      
-  
       // make hoster storage for feed
-      let all = []
-      for (const range of ranges) {
-        // log({ type: 'hoster', data: {  text: 'Downloading range', ranges, range } })
-        all.push(download_range(feed, range))
-      }
-      await Promise.all(all)
+      let downloaded = []
+      for (const range of ranges) { downloaded.push(download_range(feed, range)) }
+      await Promise.all(downloaded)
       log({ type: 'hoster', data: {  text: 'all ranges downloaded', ranges } }) 
       await done_task_cleanup({ role: 'hoster2author', topic: feed.discoveryKey, state: account.state, log })                   
       return { feed }
@@ -240,26 +220,20 @@ module.exports = APIS => {
   async function getEncodedDataFromAttester(opts) {
     const { account, hyper, amendmentID, hosterKey, attesterKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log } = opts
     const log2attester = log.sub(`hoster to attester, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attesterKey.toString('hex').substring(0,5)} amendment ${amendmentID}`)
-    
     const remotestringkey = attesterKey.toString('hex')
-    
     const unique_el = `${amendmentID}/${encoder_pos}`
-    const all = []
-    let counter = 0
     const topic = derive_topic({ senderKey: attesterKey, feedKey, receiverKey: hosterKey, id: amendmentID, log })
-    
+    let counter = 0
     return new Promise(async (resolve, reject) => {
       try {
         // hoster to attester in hosting setup
         await hyper.new_task({ newfeed: false, topic, log: log2attester })
         log2attester({ type: 'hoster', data: { text: `load feed`, attester: remotestringkey } })
-        
         await hyper.connect({
           swarm_opts: { role: 'hoster2attester', topic, mode: { server: false, client: true } },
           targets: { targetList: [remotestringkey], ontarget: onattester, msg: { receive: { type: 'feedkey' }}, done },
           log: log2attester
         })
-
         async function onattester ({ feed }) {
           log2attester({ type: 'hoster', data: { text: `Connected to the attester` } })
           const all = []
@@ -273,7 +247,6 @@ module.exports = APIS => {
             return reject(new Error({ type: 'fail', data: 'Error storing data' }))
           }
         }
-        
         async function send_proof_of_contact () {
           try {
             const data = b4a.from(unique_el, 'binary')
@@ -287,51 +260,39 @@ module.exports = APIS => {
             log({ type: 'Error', data: {  text: 'Error: send_proof_of_contact', err } })
             return reject('sending proof of contact failed')
           }
-          
         }
-        
         async function done () {
           await done_task_cleanup({ role: 'hoster2attester', topic, state: account.state, log: log2attester })
           return resolve()
         }
-
       } catch (err) {
         return reject(err)
       }
     })
 
     async function store_data(chunk_promise) {
-      const chunk = await chunk_promise
-      const json = chunk.toString()
-      const data = proof_codec.decode(json)
-      log2attester({ type: 'hoster', data: { text: `Got index: ${data.index}` } })
-      
       return new Promise(async (resolve, reject) => {
+        const chunk = await chunk_promise
+        const json = chunk.toString()
+        const data = proof_codec.decode(json)
+        log2attester({ type: 'hoster', data: { text: `Got index: ${data.index}` } })
         let { index, encoded_data, encoded_data_signature, p } = data
         counter++
-        
-        // TODO: Fix up the JSON serialization by converting things to buffers
-        const hasStorage = await account.storages.has(feedKey.toString('hex'))
-        if (!hasStorage) { return reject({ type: 'Error', error: 'UNKNOWN_FEED', ...{ key: feedKey.toString('hex') } }) }
-        // log2attester({ type: 'hoster', data: { text:`Storage for feedkey exists` } })
         try { 
+          // TODO: Fix up the JSON serialization by converting things to buffers
+          const hasStorage = await account.storages.has(feedKey.toString('hex'))
+          if (!hasStorage) { return reject({ type: 'Error', error: 'UNKNOWN_FEED', ...{ key: feedKey.toString('hex') } }) }
           // 1. verify encoder signature
           if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
-          log2attester({ type: 'hoster', data: { text:`Encoder signature verified`, encoded_data } })
-          
           // 2. verify proof
           p = proof_codec.to_buffer(p)
-          log({ type: 'encoder', data: {  text: `Proof ready`, nodes: p.block.nodes.map(node => [ node.index, node.hash]), sig: p.upgrade.signature, val: p.block.value }})
           const proof_verified = await datdot_crypto.verify_proof(p, feedKey)
           if (!proof_verified) return reject('not a valid proof')
-          log2attester({ type: 'hoster', data: { text: `Proof verified`, index } })
-          
           // 3. verify chunk (see if hash matches the proof node hash)
           const decompressed = await brotli.decompress(encoded_data)
           const decoded = parse_decompressed(decompressed, unique_el)
           const block_verified = await datdot_crypto.verify_block(p, decoded)
           if (!block_verified) return reject('not a valid chunk hash')
-          log2attester({ type: 'hoster', data: { text: `Chunk verified`, block_verified } })
 
           await store_in_hoster_storage({
             account,
@@ -345,32 +306,12 @@ module.exports = APIS => {
           log2attester({ type: 'hoster', data: { text: `stored index: ${index} (${counter}/${expectedChunkCount}` } })
           return resolve({ type: 'encoded:stored', ok: true, index: data.index })
         } catch (e) {
-          // Uncomment for better stack traces
           const error = { type: 'encoded:error', error: `ERROR_STORING: ${e}`, data }
           log2attester({ type: 'error', data: { text: `Error: ${JSON.stringify(error)}` } })
           return reject(error)
         }
       })
     }
-  }
-
-  async function removeFeed(account, key, log) {
-    log({ type: 'hoster', data: { text: `Removing the feed` } })
-    const stringKey = key.toString('hex')
-    const storage = await getStorage({account, key, log})
-    if (storage) account.storages.delete(stringKey)
-    await removeKey(key)
-  }
-
-  async function watchFeed(account, feed) {
-    warn('Watching is not supported since we cannot ask the chain for attesters')
-    /* const stringKey = feed.key.toString('hex')
-    if (account.watchingFeeds.has(stringKey)) return
-    account.watchingFeeds.add(stringKey)
-    feed.on('update', onUpdate)
-    async function onUpdate () {
-      await loadFeedData(feed.key, ...)
-    } */
   }
 
   async function store_in_hoster_storage({ account, feedKey, index, encoded_data_signature, encoded_data, unique_el, log }) {
@@ -410,7 +351,23 @@ module.exports = APIS => {
     await saveKeys(account, final)
     log({ type: 'hoster', data: { text: `Key removed` } })
   }
-
+  async function removeFeed(account, key, log) {
+    log({ type: 'hoster', data: { text: `Removing the feed` } })
+    const stringKey = key.toString('hex')
+    const storage = await getStorage({account, key, log})
+    if (storage) account.storages.delete(stringKey)
+    await removeKey(key)
+  }
+  async function watchFeed(account, feed) {
+    warn('Watching is not supported since we cannot ask the chain for attesters')
+    /* const stringKey = feed.key.toString('hex')
+    if (account.watchingFeeds.has(stringKey)) return
+    account.watchingFeeds.add(stringKey)
+    feed.on('update', onUpdate)
+    async function onUpdate () {
+      await loadFeedData(feed.key, ...)
+    } */
+  }
   async function close() {
     // Close the DB and hypercores
     for (const storage of account.storages.values()) {
@@ -422,103 +379,81 @@ module.exports = APIS => {
       2. CHALLENGES
   -------------------------------------------- */
 
-  async function send_storage_proofs_to_attester(data) {
-    const { storageChallengeID: id, attesterKey, hosterKey, checks, account, log } = data
-    const sent_chunks = {}
+  async function send_storage_proofs_to_attester({ data, account, log: parent_log }) {
     return new Promise(async (resolve, reject) => {
-      const log2attester4Challenge = log.sub(`<-Attester4challenge ${attesterKey.toString('hex').substring(0, 5)}/id`)
-      const topic = [hosterKey, attesterKey, id].join('')
       const tid = setTimeout(() => {
-        // beam.destroy()
-        reject({ type: `attester_timeout` })
+        return reject({ type: `attester_timeout` })
       }, DEFAULT_TIMEOUT)
-
-      const beam = new Hyperbeam(topic)
-      beam.on('error', err => {
-        log({ type: 'fail', data: err })
-        clearTimeout(tid)
-        // beam.destroy()
-        if (beam_once) {
-          // beam_once.destroy()
-          reject({ type: `attester_connection_fail`, data: err })
-        }
-      })
-      const core = toPromises(new hypercore(RAM, { valueEncoding: 'binary' }))
-      await core.ready()
-      core.on('error', err => {
-        Object.keys(checks).forEach(({ reject }) => reject(err))
-      })
-      const coreStream = core.replicate(false, { live: true, ack: true })
-      coreStream.pipe(beam).pipe(coreStream)
-      coreStream.on('ack', ack => {
-        const index = ack.start
-        const resolve = sent_chunks[index].resolve
-        delete sent_chunks[index]
-        resolve('attester received storage proofs')
-      })
-
-      const once_topic = topic + 'once'
-      var beam_once = new Hyperbeam(once_topic)
-      beam_once.on('error', err => {
-        clearTimeout(tid)
-        // beam_once.destroy()
-        // beam.destroy()
-        reject({ type: `hoster_connection_fail`, data: err })
-      })
-      beam_once.write(JSON.stringify({ type: 'feedkey', feedkey: core.key.toString('hex') }))
-
-      const all = []
-      const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
-      for (var i = 0; i < contract_ids.length; i++) {
-        const contractID = contract_ids[i]
-        const { index, feedKey } = checks[contractID]
-        log2attester4Challenge({ type: 'hoster', data: { text: 'Next check', check: checks[contractID], contractID, checks} })
-        const message = await getDataFromStorage(account, feedKey, index, log2attester4Challenge)
-        if (!message) return
-        message.type = 'proof'
-        message.contractID = contractID
-        log2attester4Challenge({ type: 'hoster', data: { text: `Storage proof: appending chunk ${i} for index ${index}` } })
-        all.push(send(message, i))
-      }
-
-      try {
-        const results = await Promise.all(all).catch((error) => {
-          log2attester4Challenge({ type: 'fail', data: error })
-          clearTimeout(tid)
-          // beam_once.destroy()
-          // beam.destroy()
-          reject({ type: `hoster_proof_fail`, data: error })
-        })
-        if (!results) {
-          log2attester4Challenge.log({ type: 'fail', data: 'storage challenge failed (hoster)' })
-          log2attester4Challenge({ type: 'error', data: { text: `No results` } })
-        }
-        // send signed storageChallengeID as an extension message
-        var ext = core.registerExtension(`datdot-storage-challenge`, { encoding: 'binary ' })
-        const messageBuf = Buffer.alloc(varint.encodingLength(id))
-        varint.encode(id, messageBuf, 0)
-        const dataBuf = account.sign(messageBuf)
-        ext.broadcast(dataBuf)
-
-        log2attester4Challenge({ type: 'hoster', data: { text: `${all.length} responses received from the attester` } })
-        clearTimeout(tid)
-        // beam_once.destroy()
-        // beam.destroy()
-        resolve({ type: `DONE`, data: results })
-      } catch (err) {
-        log2attester4Challenge({ type: 'error', data: { text: `Error: ${err}` } })
-        clearTimeout(tid)
-        // beam_once.destroy()
-        // beam.destroy()
-        reject({ type: `hoster_proof_fail`, data: err })
-      }
       
-      function send (message, i) {
-        return new Promise(async (resolve, reject) => {
-          await core.append(JSON.stringify(message))
-          sent_chunks[i] = { resolve, reject }
-        })
+      const { hyper } = account
+      const sent_chunks = {}
+      const { challenge_id: id, attesterKey, hosterKey, checks, feedkey_1 } = data
+        
+      const log = parent_log.sub(`<-hoster2attester storage challenge, me: ${hosterKey.toString('hex').substring(0,5)}, peer: ${attesterKey.toString('hex').substring(0, 5)} `)
+      
+      const topic = derive_topic({ senderKey: hosterKey, feedKey: feedkey_1, receiverKey: attesterKey, id, log })
+      const { feed } = await hyper.new_task({ topic, log })
+
+      await hyper.connect({ 
+        swarm_opts: { role: 'storage_hoster', topic, mode: { server: true, client: false } },
+        targets: { feed, targetList: [ attesterKey.toString('hex') ], ontarget: onattester, msg: { send: { type: 'feedkey' } } },
+        log
+      })
+
+      async function onattester () {
+        log({ type: 'hoster', data: { text: `Connected to the storage chalenge attester` } })
+
+        // coreStream.on('ack', ack => {
+        //   const index = ack.start
+        //   const resolve = sent_chunks[index].resolve
+        //   delete sent_chunks[index]
+        //   resolve('attester received storage proofs')
+        // })
+  
+        // const all = []
+        // const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
+        // for (var i = 0; i < contract_ids.length; i++) {
+        //   const contractID = contract_ids[i]
+        //   const { index, feedKey } = checks[contractID]
+        //   log2attester4Challenge({ type: 'hoster', data: { text: 'Next check', check: checks[contractID], contractID, checks} })
+        //   const message = await getDataFromStorage(account, feedKey, index, log2attester4Challenge)
+        //   if (!message) return
+        //   message.type = 'proof'
+        //   message.contractID = contractID
+        //   log2attester4Challenge({ type: 'hoster', data: { text: `Storage proof: appending chunk ${i} for index ${index}` } })
+        //   all.push(send(message, i))
+        // }
+  
+        // try {
+        //   const results = await Promise.all(all)
+        //   if (!results) {
+        //     log2attester4Challenge.log({ type: 'fail', data: 'storage challenge failed (hoster)' })
+        //     log2attester4Challenge({ type: 'error', data: { text: `No results` } })
+        //   }
+        //   // send signed storageChallengeID as an extension message
+        //   var ext = core.registerExtension(`datdot-storage-challenge`, { encoding: 'binary ' })
+        //   const messageBuf = Buffer.alloc(varint.encodingLength(id))
+        //   varint.encode(id, messageBuf, 0)
+        //   const dataBuf = account.sign(messageBuf)
+        //   ext.broadcast(dataBuf)
+  
+        //   log2attester4Challenge({ type: 'hoster', data: { text: `${all.length} responses received from the attester` } })
+        //   clearTimeout(tid)
+        //   return resolve({ type: `DONE`, data: results })
+        // } catch (err) {
+        //   log2attester4Challenge({ type: 'error', data: { text: `Error: ${err}` } })
+        //   clearTimeout(tid)
+        //   return reject({ type: `hoster_proof_fail`, data: err })
+        // }
+        
+        // function send (message, i) {
+        //   return new Promise(async (resolve, reject) => {
+        //     await core.append(JSON.stringify(message))
+        //     sent_chunks[i] = { resolve, reject }
+        //   })
+        // }
       }
     })
+
   }
 }

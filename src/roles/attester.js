@@ -66,14 +66,11 @@ module.exports = APIS => {
         if (attesterAddress !== myAddress) return
 
         log({ type: 'attester', data: { text: `Attester ${attesterID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment)} })
-        const { feedKey, encoderKeys, hosterKeys, ranges } = await getAmendmentData({chainAPI, amendment, contract,log})
+        const { feedKey, encoderKeys, hosterKeys, ranges } = await getAmendmentData({amendment, contract,log})
         
         const data = { account, amendmentID, feedKey, hosterKeys, attesterKey, encoderKeys, ranges, log }
         const { failedKeys, sigs } = await attest_hosting_setup(data)
         log({ type: 'attester', data: { text: `Hosting setup done`, amendmentID, failedKeys, sigs } })
-        
-        // const failed = await Promise.all(failedKeys.map(async (id) => await chainAPI.getUserIDByNoiseKey(Buffer.from(id, 'hex'))))
-        // log({ type: 'attester', data: { text: `Failed key user IDs`, amendmentID, failed } })  
         const signatures = {}
         for (const sig of sigs) {
           const { proof_of_contact, hosterKey } = sig
@@ -81,10 +78,8 @@ module.exports = APIS => {
           signatures[hoster_id] = proof_of_contact
         }
         const report = { id: amendmentID, failed: failedKeys, signatures }
-        // log({ type: 'attester', data: { text: `Report ready`, amendmentID } })  
         const nonce = await vaultAPI.getNonce()
         await chainAPI.amendmentReport({ report, signer, nonce })
-        // log({ type: 'attester', data: { text: 'Report sent', amendmentID } })
       }
       else if (event.method === 'HostingStarted') {
         const [amendmentID] = event.data
@@ -95,22 +90,21 @@ module.exports = APIS => {
         const { attester: attesterID, checks } = storageChallenge
         const attesterAddress = await chainAPI.getUserAddress(attesterID)
         if (attesterAddress !== myAddress) return
-        log({ type: 'chainEvent', data: `Attester ${attesterID}:  Event received: ${event.method} ${event.data.toString()}` })
-        
-        const data = await get_storage_challenge_data(storageChallenge, chainAPI)
-        data.log = log
-        
-        const res = await attest_storage_challenge(data).catch((error) => {
-          const error_msg = { type: 'fail', data: error }
-          log(error_msg)
-        })
-        if (res) {
-          const response = { storageChallengeID, storage_challenge_signature: res.storage_challenge_signature, reports: res.reports }
-          const nonce = await vaultAPI.getNonce()
-          const opts = { response, signer, nonce }
-          const info_msg = { type: 'attester', data: { text: `storage challenge report`, storageChallengeID,  contractIDs: [res.reports.map(x => x.contractID)] } }
-          log(info_msg)
-          await chainAPI.submitStorageChallenge(opts)
+        log({ type: 'chainEvent', data: `Attester ${attesterID}:  Event received: ${event.method} ${event.data.toString()}` })      
+        try {
+          const data = await get_storage_challenge_data(storageChallenge)
+          const res = await attest_storage_challenge({ data, account, log })
+          if (res) {
+            const { storage_challenge_signature, reports } = res
+            const attestation = { 
+              response: { storageChallengeID, storage_challenge_signature, reports }, 
+              signer, 
+              nonce: await vaultAPI.getNonce() 
+            }
+            await chainAPI.submitStorageChallenge(attestation)
+          }
+        } catch (err) {
+          log({ type: 'error', data: { text: `Error: ${JSON.stringify(err)}` } })
         }
       }
       else if (event.method === 'NewPerformanceChallenge') {
@@ -204,8 +198,55 @@ module.exports = APIS => {
           }
           
         }
-
       }
+    }
+
+    async function get_storage_challenge_data (storageChallenge) {
+      const { id, checks, hoster: hosterID, attester: attesterID } = storageChallenge
+      const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
+      const hosterSigningKey = await chainAPI.getSigningKey(hosterID)
+      const hosterKey = await chainAPI.getHosterKey(hosterID)
+      const attesterKey = await chainAPI.getAttesterKey(attesterID)
+      var feedkey_1
+      for (var i = 0, len = contract_ids.length; i < len; i++) {
+        const contract_id = contract_ids[i]
+        const contract = await chainAPI.getItemByID(contract_id)
+        const { feed: feedID, ranges, amendments } = await chainAPI.getContractByID(contract_id)
+        const [encoderID, pos] = await getEncoderID(amendments, hosterID)
+        const { feedkey, signatures } = await chainAPI.getFeedByID(feedID)
+        if (!feedkey_1) feedkey_1 = feedkey
+  
+        checks[contract_id].feedKey = feedkey
+        checks[contract_id].signatures = signatures
+        checks[contract_id].ranges = ranges
+        checks[contract_id].encoderSigningKey = await chainAPI.getSigningKey(encoderID)
+        checks[contract_id].encoder_pos = pos
+        checks[contract_id].amendmentID = amendments[amendments.length - 1]
+        // checks[contract_id] = { index, feedKey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey }
+      }
+      return { id, attesterKey, hosterKey, hosterSigningKey, checks, feedkey_1 }
+    }
+  
+    async function getEncoderID (amendments, hosterID) {
+      const active_amendment = await chainAPI.getAmendmentByID(amendments[amendments.length-1])
+      const pos =  active_amendment.providers.hosters.indexOf(hosterID)
+      const encoderID = active_amendment.providers.encoders[pos]
+      return [encoderID, pos]
+    }
+  
+    async function getAmendmentData ({ amendment, contract, log }) {
+      const { encoders, hosters } = amendment.providers
+      const hosterKeysPromises = []
+      hosters.forEach(id => {
+        hosterKeysPromises.push(chainAPI.getHosterKey(id))
+      })
+      const encoderKeys = await Promise.all(encoders.map((id) => chainAPI.getEncoderKey(id)))
+      const hosterKeys = await Promise.all(hosterKeysPromises)
+      const feedID = contract.feed
+      const feedKey = await chainAPI.getFeedKey(feedID)
+      const ranges = contract.ranges
+      log({ type: 'attester', data: { text: `Got keys for hosting setup`, data: feedKey, providers: amendment.providers, encoderKeys, hosterKeys, ranges } })
+      return { feedKey, encoderKeys, hosterKeys, ranges }
     }
   
   }
@@ -419,62 +460,36 @@ module.exports = APIS => {
   /* ----------------------------------------------------------------------
                           VERIFY STORAGE CHALLENGE
   ---------------------------------------------------------------------- */
-  async function attest_storage_challenge (data) {
-
-    // connect to the hoster (get the feedkey, then start getting data)
-    // make a list of all checks (all feedkeys, amendmentIDs...)
-    // for each check, get data, verify and make a report
-    // push report from each check into report_all
-    // when all checks are done, report to chain
-    
+  // connect to the hoster (get the feedkey, then start getting data)
+  // make a list of all checks (all feedkeys, amendmentIDs...)
+  // for each check, get data, verify and make a report => push report from each check into report_all
+  // when all checks are done, report to chain
+  async function attest_storage_challenge ({ data, account, log: parent_log }) {
     return new Promise(async (resolve, reject) => {
-      const { storageChallengeID, attesterKey, hosterKey, hosterSigningKey, checks, log } = data
-
-      const log2hosterChallenge = log.sub(`<-HosterChallenge ${hosterKey.toString('hex').substring(0,5)}`)
-      log2hosterChallenge({ type: 'attester', data: [`Starting attest_storage_challenge}`] })
-      
-      const topic = [hosterKey, attesterKey, storageChallengeID].join('')
       const tid = setTimeout(() => {
-        // beam.destroy()
-        log('timeout')
-        reject({ type: `attester_timeout` })
+        return reject({ type: `attester_timeout` })
       }, DEFAULT_TIMEOUT)
 
-      const beam = new Hyperbeam(topic)
-      beam.on('error', err => { 
-        clearTimeout(tid)
-        // beam.destroy()
-        if (beam_once) {
-          // beam_once.destroy()
-          log({ type: 'fail', data: { text: 'beam error', err } })
-          reject({ type: `attester_connection_fail`, data: err })
-        }
+      const { hyper } = account
+      const { id, attesterKey, hosterKey, hosterSigningKey, checks, feedkey_1 } = data
+      const log = parent_log.sub(`<-attester2hoster storage challenge, me: ${attesterKey.toString('hex').substring(0,5)}, peer: ${hosterKey.toString('hex').substring(0,5)}`)
+      
+      const topic = derive_topic({ senderKey: hosterKey, feedKey: feedkey_1, receiverKey: attesterKey, id, log })
+      const { feed } = await hyper.new_task({ topic, log })
+
+      await hyper.connect({ 
+        swarm_opts: { role: 'storage_attester', topic, mode: { server: false, client: true } },
+        targets: { feed, targetList: [ attesterKey.toString('hex') ], ontarget: onhoster, msg: { receive: { type: 'feedkey' } } },
+        log
       })
-      const once_topic = topic + 'once'
-      var beam_once = new Hyperbeam(once_topic)
-      beam_once.on('error', err => { 
-        clearTimeout(tid)
-        // beam_once.destroy()
-        // beam.destroy()
-        log({ type: 'fail', data: { text: 'beam once error', err } })
-        reject({ type: `${role}_connection_fail`, data: err })
-      })
+
+      function onhoster () {
+        log({ type: 'attestor', data: { text: `Connected to the storage chalenge hoster` } })
+        // get_data(feed)
+      }
+
       const all = []
-      var core
-      beam_once.once('data', async (data) => {
-        const message = JSON.parse(data)
-        if (message.type === 'feedkey') {
-          const feedKey = Buffer.from(message.feedkey, 'hex')
-          const clone = new hypercore(RAM, feedKey, { valueEncoding: 'binary', sparse: true })
-          await clone.ready()
-          core = clone
-          const cloneStream = clone.replicate(true, { live: true })
-          cloneStream.pipe(beam).pipe(cloneStream)
-          // beam_once.destroy()
-          // beam_once = undefined
-          get_data(core)
-        }
-      })
+      
 
       async function get_data (core) {
         // get chunks from hoster for all the checks
@@ -499,7 +514,6 @@ module.exports = APIS => {
               const reports = await Promise.all(all).catch(err => { log({ type: 'fail', data: err }) })
               if (!reports) log2hosterChallenge({ type: 'error', data: [`No reports`] })
               const res = {reports, storage_challenge_signature}
-              // beam.destroy()
               resolve(res)
             },
             onerror (err) {
@@ -632,52 +646,6 @@ module.exports = APIS => {
   }
 
   // HELPERS
-
-  async function get_storage_challenge_data (storageChallenge, chainAPI) {
-    const { id, checks, hoster: hosterID, attester: attesterID } = storageChallenge
-    const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
-    const hosterSigningKey = await chainAPI.getSigningKey(hosterID)
-    const hosterKey = await chainAPI.getHosterKey(hosterID)
-    const attesterKey = await chainAPI.getAttesterKey(attesterID)
-    for (var i = 0, len = contract_ids.length; i < len; i++) {
-      const contract_id = contract_ids[i]
-      const contract = await chainAPI.getItemByID(contract_id)
-      const { feed: feedID, ranges, amendments } = await chainAPI.getContractByID(contract_id)
-      const [encoderID, pos] = await getEncoderID(amendments, hosterID, chainAPI)
-      const { feedkey, signatures } = await chainAPI.getFeedByID(feedID)
-
-      checks[contract_id].feedKey = feedkey
-      checks[contract_id].signatures = signatures
-      checks[contract_id].ranges = ranges
-      checks[contract_id].encoderSigningKey = await chainAPI.getSigningKey(encoderID)
-      checks[contract_id].encoder_pos = pos
-      checks[contract_id].amendmentID = amendments[amendments.length - 1]
-      // checks[contract_id] = { index, feedKey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey }
-    }
-    return { storageChallengeID: id, attesterKey, hosterKey, hosterSigningKey, checks }
-  }
-
-  async function getEncoderID (amendments, hosterID, chainAPI) {
-    const active_amendment = await chainAPI.getAmendmentByID(amendments[amendments.length-1])
-    const pos =  active_amendment.providers.hosters.indexOf(hosterID)
-    const encoderID = active_amendment.providers.encoders[pos]
-    return [encoderID, pos]
-  }
-
-  async function getAmendmentData ({ chainAPI, amendment, contract, log }) {
-    const { encoders, hosters } = amendment.providers
-    const hosterKeysPromises = []
-    hosters.forEach(id => {
-      hosterKeysPromises.push(chainAPI.getHosterKey(id))
-    })
-    const encoderKeys = await Promise.all(encoders.map((id) => chainAPI.getEncoderKey(id)))
-    const hosterKeys = await Promise.all(hosterKeysPromises)
-    const feedID = contract.feed
-    const feedKey = await chainAPI.getFeedKey(feedID)
-    const ranges = contract.ranges
-    log({ type: 'attester', data: { text: `Got keys for hosting setup`, data: feedKey, providers: amendment.providers, encoderKeys, hosterKeys, ranges } })
-    return { feedKey, encoderKeys, hosterKeys, ranges }
-  }
 
   function getRandomInt (min, max) {
     min = Math.ceil(min)

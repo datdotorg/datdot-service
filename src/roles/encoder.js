@@ -115,7 +115,7 @@ module.exports = APIS => {
             const result = await Promise.all(all)
             log2Attester({ type: 'encoder', data: { text: `All encoded & sent`, result } })
             clearTimeout(tid)
-            // await done_task_cleanup({ role: 'encoder2author', topic: topic1, state: account.state, log })                  
+            await done_task_cleanup({ role: 'encoder2author', topic: topic1, state: account.state, log })                  
             return resolve()
           } catch (err) {
             clearTimeout(tid)
