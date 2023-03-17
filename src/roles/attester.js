@@ -440,7 +440,7 @@ module.exports = APIS => {
           if ((sentCount !== expectedChunkCount)) return
           log({ type: 'attester', data: { text: 'have proof and all data sent', proof, sentCount, expectedChunkCount }})
           clearTimeout(tid)
-          done_task_cleanup({ role: 'attester2encoder', topic: topic1, state: account.state, log })
+          done_task_cleanup({ role: 'attester2encoder', topic: topic1, remotestringkey: key1.toString('hex'), state: account.state, log })
           resolve(proof_of_contact)
         }
 

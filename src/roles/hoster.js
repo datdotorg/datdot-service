@@ -262,7 +262,7 @@ module.exports = APIS => {
           }
         }
         async function done () {
-          await done_task_cleanup({ role: 'hoster2attester', topic, state: account.state, log: log2attester })
+          await done_task_cleanup({ role: 'hoster2attester', topic, remotestringkey, state: account.state, log: log2attester })
           return resolve()
         }
       } catch (err) {
