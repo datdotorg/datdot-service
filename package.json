@@ -11,7 +11,7 @@
   "author": "@ninabreznik",
   "license": "MIT",
   "dependencies": {
-    "@hyperswarm/dht": "github:hyperswarm/dht",
+    "@hyperswarm/dht": "github:holepunchto/hyperdht",
     "@hyperswarm/secret-stream": "^6.1.0",
     "@polkadot/keyring": "^10.1.11",
     "@polkadot/util": "^10.1.10",
