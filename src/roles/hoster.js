@@ -241,24 +241,10 @@ module.exports = APIS => {
           try {
             const results = await Promise.all(all)
             log2attester({ type: 'hoster', data: { text: `All chunks hosted`, len: results.length, expectedChunkCount } })
-            await send_proof_of_contact()
+            await send_proof_of_contact({ account, unique_el, remotestringkey, topic, log })
           } catch (err) {
             log({ type: 'error', data: { text: `Error getting results` } })
             return reject(new Error({ type: 'fail', data: 'Error storing data' }))
-          }
-        }
-        async function send_proof_of_contact () {
-          try {
-            const data = b4a.from(unique_el, 'binary')
-            const proof_of_contact = account.sign(data)
-            const channel = account.state.sockets[remotestringkey].channel
-            const stringtopic = topic.toString('hex')
-            const string_msg = channel.messages[0]
-            console.log('string msg - proof of contact', data, unique_el, proof_of_contact)
-            string_msg.send(JSON.stringify({ type: 'proof-of-contact', stringtopic, proof_of_contact: proof_of_contact.toString('hex') }))
-          } catch (err) {
-            log({ type: 'Error', data: {  text: 'Error: send_proof_of_contact', err } })
-            return reject('sending proof of contact failed')
           }
         }
         async function done () {
@@ -275,8 +261,8 @@ module.exports = APIS => {
         const chunk = await chunk_promise
         const json = chunk.toString()
         const data = proof_codec.decode(json)
-        log2attester({ type: 'hoster', data: { text: `Got index: ${data.index}` } })
         let { index, encoded_data, encoded_data_signature, p } = data
+        log2attester({ type: 'hoster', data: { text: `Got index: ${data.index}`, p } })
         counter++
         try { 
           // TODO: Fix up the JSON serialization by converting things to buffers
@@ -301,6 +287,7 @@ module.exports = APIS => {
             encoded_data_signature,
             encoded_data,
             unique_el,  // need to store unique_el, to be able to decompress and serve chunks as hosters
+            p,
             log: log2attester
           })
           log2attester({ type: 'hoster', data: { text: `stored index: ${index} (${counter}/${expectedChunkCount}` } })
@@ -314,13 +301,14 @@ module.exports = APIS => {
     }
   }
 
-  async function store_in_hoster_storage({ account, feedKey, index, encoded_data_signature, encoded_data, unique_el, log }) {
+  async function store_in_hoster_storage({ account, feedKey, index, encoded_data_signature, encoded_data, unique_el, p, log }) {
     const storage = await getStorage({account, key: feedKey, log})
     return storage.storeEncoded({
       index,
       encoded_data_signature,
       encoded_data,
       unique_el,
+      p
     })
   }
 
@@ -378,7 +366,7 @@ module.exports = APIS => {
   /* ------------------------------------------- 
       2. CHALLENGES
   -------------------------------------------- */
-
+  
   async function send_storage_proofs_to_attester({ data, account, log: parent_log }) {
     return new Promise(async (resolve, reject) => {
       const tid = setTimeout(() => {
@@ -387,73 +375,89 @@ module.exports = APIS => {
       
       const { hyper } = account
       const sent_chunks = {}
-      const { challenge_id: id, attesterKey, hosterKey, checks, feedkey_1 } = data
-        
+      const { challenge_id, attesterKey, hosterKey, checks, feedkey_1 } = data
+      
       const log = parent_log.sub(`<-hoster2attester storage challenge, me: ${hosterKey.toString('hex').substring(0,5)}, peer: ${attesterKey.toString('hex').substring(0, 5)} `)
       
-      const topic = derive_topic({ senderKey: hosterKey, feedKey: feedkey_1, receiverKey: attesterKey, id, log })
+      const topic = derive_topic({ senderKey: hosterKey, feedKey: feedkey_1, receiverKey: attesterKey, id: challenge_id, log })
       const { feed } = await hyper.new_task({ topic, log })
-
+      log({ type: 'hoster', data: { text: `New task added (storage hoster)` } })
+      
+      
       await hyper.connect({ 
         swarm_opts: { role: 'storage_hoster', topic, mode: { server: true, client: false } },
-        targets: { feed, targetList: [ attesterKey.toString('hex') ], ontarget: onattester, msg: { send: { type: 'feedkey' } } },
+        targets: { feed, targetList: [ attesterKey.toString('hex') ], ontarget: onattester, msg: { send: { type: 'feedkey' }, done } },
         log
       })
-
-      async function onattester () {
+      
+      async function onattester ({ feed, remotestringkey }) {
         log({ type: 'hoster', data: { text: `Connected to the storage chalenge attester` } })
+        const logStorageChallenge = parent_log.sub(`<-hoster2attester storage challenge, me: ${hosterKey.toString('hex').substring(0,5)}, peer: ${attesterKey.toString('hex').substring(0,5)}`)
+          
+        try {
+          const appended = []
+          const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
+          for (var i = 0; i < contract_ids.length; i++) {
+            const contractID = contract_ids[i]
+            const { index, feedKey } = checks[contractID]
+            logStorageChallenge({ type: 'hoster', data: { text: 'Next check', check: checks[contractID], contractID, checks} })
+            const message = await getDataFromStorage(account, feedKey, index, logStorageChallenge)
+            if (!message) return
+            message.type = 'proof'
+            message.contractID = contractID
+            message.p = message.p.toString()
+            message.p = message.p.toString('binary')
+            logStorageChallenge({ type: 'hoster', data: { text: `Storage proof: appending chunk ${i} for index ${index}` } })
+            appended.push(send(message, i))
+          }
+          await Promise.all(appended)
+          send_proof_of_contact({ 
+            account, 
+            unique_el: `${challenge_id}`, 
+            remotestringkey: attesterKey.toString('hex'), 
+            topic, 
+            log 
+          })
+      
+          logStorageChallenge({ type: 'hoster', data: { text: `${appended.length} appended to the attester` } })
+        } catch (err) {
+          logStorageChallenge({ type: 'error', data: { text: `Error: ${err}` } })
+          clearTimeout(tid)
+          return reject({ type: `hoster_proof_fail`, data: err })
+        }
+            
+          function send (message, i) {
+            return new Promise(async (resolve, reject) => {
+              await feed.append(proof_codec.encode(message))
+              resolve()
+            })
+          }
+      }
 
-        // coreStream.on('ack', ack => {
-        //   const index = ack.start
-        //   const resolve = sent_chunks[index].resolve
-        //   delete sent_chunks[index]
-        //   resolve('attester received storage proofs')
-        // })
-  
-        // const all = []
-        // const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
-        // for (var i = 0; i < contract_ids.length; i++) {
-        //   const contractID = contract_ids[i]
-        //   const { index, feedKey } = checks[contractID]
-        //   log2attester4Challenge({ type: 'hoster', data: { text: 'Next check', check: checks[contractID], contractID, checks} })
-        //   const message = await getDataFromStorage(account, feedKey, index, log2attester4Challenge)
-        //   if (!message) return
-        //   message.type = 'proof'
-        //   message.contractID = contractID
-        //   log2attester4Challenge({ type: 'hoster', data: { text: `Storage proof: appending chunk ${i} for index ${index}` } })
-        //   all.push(send(message, i))
-        // }
-  
-        // try {
-        //   const results = await Promise.all(all)
-        //   if (!results) {
-        //     log2attester4Challenge.log({ type: 'fail', data: 'storage challenge failed (hoster)' })
-        //     log2attester4Challenge({ type: 'error', data: { text: `No results` } })
-        //   }
-        //   // send signed storageChallengeID as an extension message
-        //   var ext = core.registerExtension(`datdot-storage-challenge`, { encoding: 'binary ' })
-        //   const messageBuf = Buffer.alloc(varint.encodingLength(id))
-        //   varint.encode(id, messageBuf, 0)
-        //   const dataBuf = account.sign(messageBuf)
-        //   ext.broadcast(dataBuf)
-  
-        //   log2attester4Challenge({ type: 'hoster', data: { text: `${all.length} responses received from the attester` } })
-        //   clearTimeout(tid)
-        //   return resolve({ type: `DONE`, data: results })
-        // } catch (err) {
-        //   log2attester4Challenge({ type: 'error', data: { text: `Error: ${err}` } })
-        //   clearTimeout(tid)
-        //   return reject({ type: `hoster_proof_fail`, data: err })
-        // }
-        
-        // function send (message, i) {
-        //   return new Promise(async (resolve, reject) => {
-        //     await core.append(JSON.stringify(message))
-        //     sent_chunks[i] = { resolve, reject }
-        //   })
-        // }
+      function done () {
+        clearTimeout(tid)
+        return resolve({ type: `DONE` })
       }
     })
-
+    
   }
 }
+
+  /* ------------------------------------------- 
+      3. HELPERS
+  -------------------------------------------- */
+
+  async function send_proof_of_contact ({ account, unique_el, remotestringkey, topic, log }) {
+    try {
+      const data = b4a.from(unique_el, 'binary')
+      const proof_of_contact = account.sign(data)
+      const channel = account.state.sockets[remotestringkey].channel
+      const stringtopic = topic.toString('hex')
+      const string_msg = channel.messages[0]
+      console.log('string msg - proof of contact', data, unique_el, proof_of_contact)
+      string_msg.send(JSON.stringify({ type: 'proof-of-contact', stringtopic, proof_of_contact: proof_of_contact.toString('hex') }))
+    } catch (err) {
+      log({ type: 'Error', data: {  text: 'Error: send_proof_of_contact', err } })
+      return reject('sending proof of contact failed')
+    }
+  }

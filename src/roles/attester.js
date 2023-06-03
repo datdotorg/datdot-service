@@ -4,12 +4,14 @@ const hypercore = require('hypercore')
 const Hyperbeam = require('hyperbeam')
 const brotli = require('_datdot-service-helpers/brotli')
 const varint = require('varint')
+const b4a = require('b4a')
 
 const { performance } = require('perf_hooks')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
 const {done_task_cleanup} = require('_datdot-service-helpers/done-task-cleanup')
+const parse_decompressed = require('_datdot-service-helpers/parse-decompressed')
 
 const tempDB = require('_tempdb')
 const getRangesCount = require('getRangesCount')
@@ -66,9 +68,9 @@ module.exports = APIS => {
         if (attesterAddress !== myAddress) return
 
         log({ type: 'attester', data: { text: `Attester ${attesterID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment)} })
-        const { feedKey, encoderKeys, hosterKeys, ranges } = await getAmendmentData({amendment, contract,log})
+        const { feedKey, encoderKeys, hosterSigningKeys, hosterKeys, ranges } = await getAmendmentData({amendment, contract,log})
         
-        const data = { account, amendmentID, feedKey, hosterKeys, attesterKey, encoderKeys, ranges, log }
+        const data = { account, amendmentID, feedKey, hosterKeys, attesterKey, encoderKeys, hosterSigningKeys, ranges, log }
         const { failedKeys, sigs } = await attest_hosting_setup(data)
         log({ type: 'attester', data: { text: `Hosting setup done`, amendmentID, failedKeys, sigs } })
         const signatures = {}
@@ -95,9 +97,9 @@ module.exports = APIS => {
           const data = await get_storage_challenge_data(storageChallenge)
           const res = await attest_storage_challenge({ data, account, log })
           if (res) {
-            const { storage_challenge_signature, reports } = res
+            const { proof_of_contact, reports } = res
             const attestation = { 
-              response: { storageChallengeID, storage_challenge_signature, reports }, 
+              response: { storageChallengeID, proof_of_contact, reports }, 
               signer, 
               nonce: await vaultAPI.getNonce() 
             }
@@ -211,9 +213,9 @@ module.exports = APIS => {
       for (var i = 0, len = contract_ids.length; i < len; i++) {
         const contract_id = contract_ids[i]
         const contract = await chainAPI.getItemByID(contract_id)
-        const { feed: feedID, ranges, amendments } = await chainAPI.getContractByID(contract_id)
+        const { feed: feed_id, ranges, amendments } = await chainAPI.getContractByID(contract_id)
         const [encoderID, pos] = await getEncoderID(amendments, hosterID)
-        const { feedkey, signatures } = await chainAPI.getFeedByID(feedID)
+        const { feedkey, signatures } = await chainAPI.getFeedByID(feed_id)
         if (!feedkey_1) feedkey_1 = feedkey
   
         checks[contract_id].feedKey = feedkey
@@ -237,16 +239,19 @@ module.exports = APIS => {
     async function getAmendmentData ({ amendment, contract, log }) {
       const { encoders, hosters } = amendment.providers
       const hosterKeysPromises = []
+      const hosterSigningKeysPromises = []
       hosters.forEach(id => {
         hosterKeysPromises.push(chainAPI.getHosterKey(id))
+        hosterSigningKeysPromises.push(chainAPI.getSigningKey(id))
       })
       const encoderKeys = await Promise.all(encoders.map((id) => chainAPI.getEncoderKey(id)))
       const hosterKeys = await Promise.all(hosterKeysPromises)
+      const hosterSigningKeys = await Promise.all(hosterSigningKeysPromises)
       const feedID = contract.feed
       const feedKey = await chainAPI.getFeedKey(feedID)
       const ranges = contract.ranges
       log({ type: 'attester', data: { text: `Got keys for hosting setup`, data: feedKey, providers: amendment.providers, encoderKeys, hosterKeys, ranges } })
-      return { feedKey, encoderKeys, hosterKeys, ranges }
+      return { feedKey, encoderKeys, hosterSigningKeys, hosterKeys, ranges }
     }
   
   }
@@ -257,7 +262,7 @@ module.exports = APIS => {
 
   async function attest_hosting_setup (data) {
     return new Promise(async (resolve, reject) => {
-      const { account, amendmentID, feedKey, hosterKeys, attesterKey, encoderKeys, ranges, log } = data
+      const { account, amendmentID, feedKey, hosterKeys, attesterKey, encoderKeys, hosterSigningKeys, ranges, log } = data
       try {
         const messages = {}
         const responses = []
@@ -269,7 +274,10 @@ module.exports = APIS => {
           const topic1 = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attesterKey, id: amendmentID, log })
           const topic2 = derive_topic({ senderKey: attesterKey, feedKey, receiverKey: hosterKey, id: amendmentID, log }) 
 
-          const opts = { account, topic1, topic2, encoderKey, hosterKey, ranges, log }
+          const unique_el = `${amendmentID}/${i}`
+          const hosterSigningKey = hosterSigningKeys[i]
+
+          const opts = { account, topic1, topic2, encoderKey, hosterSigningKey, hosterKey, unique_el, ranges, log }
           opts.compare_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
           responses.push(verify_and_forward_encodings(opts))
         }
@@ -297,7 +305,7 @@ module.exports = APIS => {
   }
     
   async function verify_and_forward_encodings (opts) {
-    const { account, topic1, topic2, encoderKey, hosterKey, ranges, compare_CB, log } = opts
+    const { account, topic1, topic2, encoderKey, hosterSigningKey, hosterKey, unique_el, ranges, compare_CB, log } = opts
     const failedKeys = []
     return new Promise(async (resolve, reject) => {
       const tid = setTimeout(() => {
@@ -312,8 +320,10 @@ module.exports = APIS => {
           topic1, 
           topic2, 
           compare_CB, 
-          key2: hosterKey, 
           key1: encoderKey, 
+          key2: hosterKey, 
+          hosterSigningKey,
+          unique_el,
           ranges,
           log
         })
@@ -330,7 +340,7 @@ module.exports = APIS => {
   }
   
   async function connect_compare_send (opts) {
-    const { account, topic1, topic2, key1, key2, compare_CB, ranges, log } = opts
+    const { account, topic1, topic2, key1, key2, hosterSigningKey, unique_el, compare_CB, ranges, log } = opts
     const { hyper } = account
     const expectedChunkCount = getRangesCount(ranges)
     const log2encoder = log.sub(`<-Attester to encoder, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${key1.toString('hex').substring(0,5)}`)
@@ -435,7 +445,13 @@ module.exports = APIS => {
         function done (proof) {
           // called 2x: when all sentCount === expectedChunkCount and when hoster sends proof of contact
           log({ type: 'attester', data: { text: 'done called', proof, sentCount, expectedChunkCount }})
-          if (proof) proof_of_contact = proof
+          if (proof) {
+            const proof_buff = b4a.from(proof, 'hex')
+            const data = b4a.from(unique_el, 'binary')
+            if (!datdot_crypto.verify_signature(proof_buff, data, hosterSigningKey)) reject('not valid proof of contact')
+            proof_of_contact = proof
+          }          
+          // if (proof) proof_of_contact = proof
           if (!proof_of_contact) return
           if ((sentCount !== expectedChunkCount)) return
           log({ type: 'attester', data: { text: 'have proof and all data sent', proof, sentCount, expectedChunkCount }})
@@ -472,61 +488,63 @@ module.exports = APIS => {
 
       const { hyper } = account
       const { id, attesterKey, hosterKey, hosterSigningKey, checks, feedkey_1 } = data
-      const log = parent_log.sub(`<-attester2hoster storage challenge, me: ${attesterKey.toString('hex').substring(0,5)}, peer: ${hosterKey.toString('hex').substring(0,5)}`)
+      const logStorageChallenge = parent_log.sub(`<-attester2hoster storage challenge, me: ${attesterKey.toString('hex').substring(0,5)}, peer: ${hosterKey.toString('hex').substring(0,5)}`)
+      var reports
+      var proof_of_contact
+      const verified = [] 
       
-      const topic = derive_topic({ senderKey: hosterKey, feedKey: feedkey_1, receiverKey: attesterKey, id, log })
-      const { feed } = await hyper.new_task({ topic, log })
+      const topic = derive_topic({ senderKey: hosterKey, feedKey: feedkey_1, receiverKey: attesterKey, id, log: logStorageChallenge })
+      await hyper.new_task({ newfeed: false, topic, log: logStorageChallenge })
+      logStorageChallenge({ type: 'attestor', data: { text: `New task (storage challenge) added` } })
 
       await hyper.connect({ 
         swarm_opts: { role: 'storage_attester', topic, mode: { server: false, client: true } },
-        targets: { feed, targetList: [ attesterKey.toString('hex') ], ontarget: onhoster, msg: { receive: { type: 'feedkey' } } },
-        log
+        targets: { targetList: [ hosterKey.toString('hex') ], ontarget: onhoster, msg: { receive: { type: 'feedkey' } }, done },
+        log: logStorageChallenge
       })
 
-      function onhoster () {
-        log({ type: 'attestor', data: { text: `Connected to the storage chalenge hoster` } })
-        // get_data(feed)
+      function onhoster ({ feed, remotestringkey }) {
+        logStorageChallenge({ type: 'attestor', data: { text: `Connected to the storage chalenge hoster`, remotestringkey } })
+        get_data(feed)
       }
 
-      const all = []
-      
-
-      async function get_data (core) {
-        // get chunks from hoster for all the checks
-        const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
-        for (var i = 0, len = contract_ids.length; i < len; i++) {
-          const data_promise = get_index(core, i, log2hosterChallenge)
-          all.push(verify_chunk(data_promise))
-        }
+      async function get_data (feed) {
         try {
-          var ext = core.registerExtension(`datdot-storage-challenge`, { 
-            encoding: 'binary',
-            async onmessage (storage_challenge_signature) {
-              clearTimeout(tid)
-              const info_msg = { type: 'attester', data: [`Got datdot-storage-challenge signature`] }
-              log2hosterChallenge(info_msg)
-              const messageBuf = Buffer.alloc(varint.encodingLength(storageChallengeID))
-              varint.encode(storageChallengeID, messageBuf, 0)
-              if (!datdot_crypto.verify_signature(storage_challenge_signature, messageBuf, hosterSigningKey)) {
-                log({ type: 'fail', data: 'not a valid event' })
-                reject(storage_challenge_signature)
-              }
-              const reports = await Promise.all(all).catch(err => { log({ type: 'fail', data: err }) })
-              if (!reports) log2hosterChallenge({ type: 'error', data: [`No reports`] })
-              const res = {reports, storage_challenge_signature}
-              resolve(res)
-            },
-            onerror (err) {
-              reject(err)
-            }
-          })
+          // get chunks from hoster for all the checks
+          const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
+          for (var i = 0, len = contract_ids.length; i < len; i++) {
+            const data_promise = feed.get(i)
+            verified.push(verify_chunk(data_promise))
+          }
+          
+          reports = await Promise.all(verified).catch(err => { logStorageChallenge({ type: 'fail', data: err }) })
+          if (!reports) logStorageChallenge({ type: 'error', data: [`No reports`] })
+          done()
         } catch (err) {
-          log({ type: 'fail', data: { text: 'results error', err } })
-          log2hosterChallenge({ type: 'error', data: [`Error: ${err}`] })
+          logStorageChallenge({ type: 'fail', data: { text: 'results error', err } })
+          logStorageChallenge({ type: 'error', data: [`Error: ${err}`] })
           clearTimeout(tid)
           // beam.destroy()
           reject({ type: `hoster_proof_fail`, data: err })
         }
+      }
+
+      function done (proof) {
+        // called 2x: when reports are ready and when hoster sends proof of contact
+        logStorageChallenge({ type: 'attester', data: { text: 'done called for storage challenge', proof, reports, proof_of_contact }})
+        if (proof) {
+          const proof_buff = b4a.from(proof, 'hex')
+          const unique_el = `${id}`
+          const data = b4a.from(unique_el, 'binary')
+          if (!datdot_crypto.verify_signature(proof_buff, data, hosterSigningKey)) reject('not valid proof of contact')
+          proof_of_contact = proof
+        }
+        if (!proof_of_contact) return
+        if ((!reports || reports.length !== Object.keys(checks).length)) return
+        logStorageChallenge({ type: 'attester', data: { text: 'have proof and all reports', proof_of_contact, reports_len: reports.length, checks_len: Object.keys(checks).length }})
+        clearTimeout(tid)
+        // done_task_cleanup({ role: 'storage_attester', topic, remotestringkey: hosterKey.toString('hex'), state: account.state, log: logStorageChallenge })
+        resolve({ proof_of_contact, reports })
       }
 
       // @NOTE:
@@ -539,34 +557,43 @@ module.exports = APIS => {
 
       function verify_chunk (chunk_promise) {
         return new Promise(async (resolve, reject) => {
-          const chunk = await chunk_promise
-          log2hosterChallenge({ type: 'attester', data: { text: `Getting chunk`, chunk } })
-          const json = chunk.toString('binary')
-          log2hosterChallenge({ type: 'attester', data: { text: `Getting json`, json } })
-          const data = proof_codec.decode(json)
-          const { contractID, index, encoded_data, encoded_data_signature, p } = data
-          log2hosterChallenge({ type: 'attester', data: { text: `Storage proof received, ${index}`, encoded_data } })
-
-          const check = checks[contractID] // { index, feedKey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey }
-          const { index: check_index, feedKey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey } = check
-
-          if (index !== check_index) reject(index)
-          if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
-          const unique_el = `${amendmentID}/${encoder_pos}`
-          const decompressed = await brotli.decompress(encoded_data)
           try {
-            await datdot_crypto.verify_chunk_hash(index, decompressed, unique_el)
+            const chunk = await chunk_promise
+            logStorageChallenge({ type: 'attester', data: { text: `Getting chunk`, chunk } })
+            const json = chunk.toString()
+            // logStorageChallenge({ type: 'attester', data: { text: `Getting json`, json } })
+            const data = proof_codec.decode(json)
+            let { contractID, index, encoded_data, encoded_data_signature, p } = data
+            logStorageChallenge({ type: 'attester', data: { text: `Storage proof received`, index, encoded_data, checks, contractID, p } })
+
+            const check = checks[`${contractID}`] // { index, feedKey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey }
+            const { index: check_index, feedKey, signatures, ranges, encoderSigningKey, encoder_pos, amendmentID  } = check
+            const unique_el = `${amendmentID}/${encoder_pos}`
+
+            if (index !== check_index) reject(index)
+            // 1. verify encoder signature
+            if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
+            logStorageChallenge({ type: 'attester', data: { text: `Encoder sig verified`, index, contractID } })
+
+            // 2. verify proof
+            p = proof_codec.to_buffer(p)
+            const proof_verified = await datdot_crypto.verify_proof(p, feedKey)
+            if (!proof_verified) return reject('not a valid proof')
+            logStorageChallenge({ type: 'attester', data: { text: `Proof verified`, index, contractID } })
+
+            // 3. verify chunk (see if hash matches the proof node hash)
+            const decompressed = await brotli.decompress(encoded_data)
+            const decoded = parse_decompressed(decompressed, unique_el)
+            if (!decoded) return reject('parsing decompressed unsuccessful')
+            const block_verified = await datdot_crypto.verify_block(p, decoded)
+            if (!block_verified) return reject('chunk hash not valid' )
+            logStorageChallenge({ type: 'attester', data: { text: `Chunk hash verified`, index, contractID } })
+            
+            logStorageChallenge({ type: 'attester', data: `Storage verified for ${index}` })
+            resolve({ contractID, p: proof_codec.to_string(p) })
           } catch (err) {
-            reject('not valid chunk hash')
+            reject('verify chunk failed')
           }
-          const keys = Object.keys(signatures)
-          const indexes = keys.map(key => Number(key))
-          const max = get_max_index(ranges)
-          const version = indexes.find(v => v >= max)
-          const not_verified = datdot_crypto.merkle_verify({feedKey, hash_index: index * 2, version, signature: Buffer.from(signatures[version], 'binary'), nodes})
-          if (not_verified) reject(not_verified)
-          log2hosterChallenge({ type: 'attester', data: `Storage verified for ${index}` })
-          resolve({ contractID, version, nodes })
         })
       }
 

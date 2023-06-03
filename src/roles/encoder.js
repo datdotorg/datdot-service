@@ -69,8 +69,8 @@ module.exports = APIS => {
   
   async function encode_hosting_setup (data) {
     const{ account, amendmentID, chainAPI, attesterKey, encoderKey, ranges, encoder_pos, feedKey: feedkey, log } = data
-    const log2Attester = log.sub(`Encoder to attester, me:${account.noisePublicKey.toString('hex').substring(0,5)}, peer:${attesterKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
-    const log2Author= log.sub(`->Encoder to author, me:${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
+    const log2Attester = log.sub(`Encoder to attester, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attesterKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
+    const log2Author= log.sub(`->Encoder to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
     // log2Attester({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
     const expectedChunkCount = getRangesCount(ranges)
     const { hyper } = account
@@ -103,7 +103,7 @@ module.exports = APIS => {
 
         await hyper.connect({ 
           swarm_opts: { role: 'encoder2attester', topic: topic2, mode: { server: true, client: false } },
-          targets: { feed: temp, targetList: [ attesterKey.toString('hex') ], ontarget: onattester, msg: { send: { type: 'feedkey' } } },
+          targets: { feed: temp, targetList: [attesterKey.toString('hex')], ontarget: onattester, msg: { send: { type: 'feedkey' } } },
           log: log2Attester
         })
   
