@@ -98,10 +98,11 @@ module.exports = APIS => {
           const res = await attest_storage_challenge({ data, account, log })
           if (res) {
             const { proof_of_contact, reports } = res
+            const nonce = await vaultAPI.getNonce()
             const attestation = { 
               response: { storageChallengeID, proof_of_contact, reports }, 
               signer, 
-              nonce: await vaultAPI.getNonce() 
+              nonce
             }
             await chainAPI.submitStorageChallenge(attestation)
           }
@@ -531,7 +532,7 @@ module.exports = APIS => {
 
       function done (proof) {
         // called 2x: when reports are ready and when hoster sends proof of contact
-        logStorageChallenge({ type: 'attester', data: { text: 'done called for storage challenge', proof, reports, proof_of_contact }})
+        // logStorageChallenge({ type: 'attester', data: { text: 'done called for storage challenge', proof, reports, proof_of_contact }})
         if (proof) {
           const proof_buff = b4a.from(proof, 'hex')
           const unique_el = `${id}`
@@ -543,7 +544,7 @@ module.exports = APIS => {
         if ((!reports || reports.length !== Object.keys(checks).length)) return
         logStorageChallenge({ type: 'attester', data: { text: 'have proof and all reports', proof_of_contact, reports_len: reports.length, checks_len: Object.keys(checks).length }})
         clearTimeout(tid)
-        // done_task_cleanup({ role: 'storage_attester', topic, remotestringkey: hosterKey.toString('hex'), state: account.state, log: logStorageChallenge })
+        done_task_cleanup({ role: 'storage_attester', topic, remotestringkey: hosterKey.toString('hex'), state: account.state, log: logStorageChallenge })
         resolve({ proof_of_contact, reports })
       }
 
@@ -564,7 +565,7 @@ module.exports = APIS => {
             // logStorageChallenge({ type: 'attester', data: { text: `Getting json`, json } })
             const data = proof_codec.decode(json)
             let { contractID, index, encoded_data, encoded_data_signature, p } = data
-            logStorageChallenge({ type: 'attester', data: { text: `Storage proof received`, index, encoded_data, checks, contractID, p } })
+            logStorageChallenge({ type: 'attester', data: { text: `Storage proof received`, index, contractID, p } })
 
             const check = checks[`${contractID}`] // { index, feedKey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey }
             const { index: check_index, feedKey, signatures, ranges, encoderSigningKey, encoder_pos, amendmentID  } = check

@@ -418,7 +418,7 @@ module.exports = APIS => {
             topic, 
             log 
           })
-      
+          clearTimeout(tid)
           logStorageChallenge({ type: 'hoster', data: { text: `${appended.length} appended to the attester` } })
         } catch (err) {
           logStorageChallenge({ type: 'error', data: { text: `Error: ${err}` } })
