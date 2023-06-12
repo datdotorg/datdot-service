@@ -76,7 +76,7 @@ module.exports = APIS => {
         const signatures = {}
         for (const sig of sigs) {
           const { proof_of_contact, hosterKey } = sig
-          const hoster_id = await chainAPI.getUserIDByNoiseKey(Buffer.from(hosterKey, 'hex'))
+          const hoster_id = await chainAPI.getUserIDByNoiseKey(b4a.from(hosterKey, 'hex'))
           signatures[hoster_id] = proof_of_contact
         }
         const report = { id: amendmentID, failed: failedKeys, signatures }
@@ -113,7 +113,7 @@ module.exports = APIS => {
       else if (event.method === 'NewPerformanceChallenge') {
         const [performanceChallengeID] = event.data
         const performanceChallenge = await chainAPI.getPerformanceChallengeByID(performanceChallengeID)
-        const { attesters, feed: feedID } = performanceChallenge
+        const { hosters, attesters, feed: feedID } = performanceChallenge
         const [attesterID] = attesters
         const attesterAddress = await chainAPI.getUserAddress(attesterID)
         if (attesterAddress !== myAddress) return
@@ -121,85 +121,103 @@ module.exports = APIS => {
         const feedObj = await chainAPI.getFeedByID(feedID)
         const { feedkey, contracts: contractIDs } = feedObj
         log({ type: 'challenge', data: { text: 'Performance challenge for feed', feedObj } })
-        const reports = []
-        const { chunks, all_hosterIDs } = await get_hosters_and_challenge_chunks(contractIDs)
+        var reports = {}
+        var expected_chunks_len
+        var proof_of_contact
+        const { chunks, targetList } = await get_hosters_and_challenge_chunks(contractIDs)
         // get all hosters and select random chunks to check for each hoster
+        
         async function get_hosters_and_challenge_chunks (contractIDs) {
-          const chunks = {}
-          const all_ids = []
-          for (var i = 0, len1 = contractIDs.length; i < len1; i++) {
-            const contract = await chainAPI.getContractByID(contractIDs[i])
-            const { amendments, ranges } = contract
-            const active_amendment = await chainAPI.getAmendmentByID(amendments[amendments.length-1])
-            const { providers: { hosters: hosterIDs } } = active_amendment
-            log({ type: 'challenge', data: { text: 'Getting hosters and chunks for contract', contract, active_amendment, hosterIDs } })
-            for (var j = 0, len2 = hosterIDs.length; j < len2; j++) {
-              const id = hosterIDs[j]
-              all_ids.push(id)
-              const x = getRandomInt(0, ranges.length)
-              log({ type: 'attester', data: { text: 'Selecting random range', ranges, x } })
-              const random_range = ranges[x]
-              chunks[id] = { indexes: [] } // chain doesn't emit WHICH chunks attester should check
-              chunks[id].indexes.push(getRandomInt(random_range[0], random_range[1]))
+          return new Promise (async(resolve, reject) => {
+            try {
+              const chunks = {}
+              const all_ids = []
+              for (var i = 0, len1 = contractIDs.length; i < len1; i++) {
+                const contract = await chainAPI.getContractByID(contractIDs[i])
+                const { amendments, ranges } = contract
+                const active_amendment = await chainAPI.getAmendmentByID(amendments[amendments.length-1])
+                var { providers: { hosters: hoster_ids } } = active_amendment
+                log({ type: 'challenge', data: { text: 'Getting hosters and chunks for contract', hoster_ids } })
+                for (var j = 0, len2 = hoster_ids.length; j < len2; j++) {
+                  const id = hoster_ids[j]
+                  all_ids.push(id)
+                  const x = getRandomInt(0, ranges.length)
+                  log({ type: 'attester', data: { text: 'Selecting random range', ranges, x } })
+                  const random_range = ranges[x]
+                  chunks[id] = { indexes: [] } // chain doesn't emit WHICH chunks attester should check
+                  chunks[id].indexes.push(getRandomInt(random_range[0], random_range[1]))
+                }
+              }
+              // when we have 2x same hoster - we check chunks from all contracts at once
+              hoster_ids = [...new Set(all_ids)]
+              expected_chunks_len = hoster_ids.length
+              const targetListPromise = hoster_ids.map(async id => (await chainAPI.getHosterKey(id)).toString('hex'))
+              const targetList = await Promise.all(targetListPromise)
+              log({ type: 'performance challenge', data: { text: 'targetList and chunks to test', all_ids, targetList, chunks: JSON.stringify(chunks) } })
+              resolve({ chunks, targetList })
+            } catch (err) {
+              log({ type: 'performance challenge', data: { text: 'Error in get_hosters_and_challenge_chunks', err: JSON.stringify(err) } })
+              reject()
             }
-          }
-          // hen we have 2x same hoster - we check chunks from all contracts at once
-          const all_hosterIDs = [...new Set(all_ids)]
-          log({ type: 'challenge', data: { text: 'Got all hoster Ids and chunks', contract: contractIDs[i], all_ids, all_hosterIDs, chunks: JSON.stringify(chunks) } })
-          return { chunks, all_hosterIDs }
+          })
         }
         
 
         // join swarm and check performance when you connect to any of the hosters
-        const role = 'attester-challenge'
-        const targetList = await Promise.all(all_hosterIDs.map(id => chainAPI.getHosterKey(id).toString('hex')))
 
-        const { feed } = await hyper.new_task({ // feed for challenge
-          config: { intercept: false, fresh: true, persist: false },
-          extension: { ext_cbs: { onmessage, onerror }, name: `datdot-hoster-${stringkey}` },
-          swarm_opts: { role: 'perf_attester', mode: { server: false, client: true } },
-          feedkey, 
-          targets: { targetList, ontarget },
+        const topic =  datdot_crypto.get_discoverykey(feedkey)
+        const { feed } = await hyper.new_task({ feedkey, topic, log })
+
+        await hyper.connect({ 
+          swarm_opts: { role: 'performance-attester', topic, mode: { server: false, client: true } }, 
+          targets: { targetList, feed, ontarget: onhoster_for_performance_challenge, done },
           log
         })
-
-        log({ type: 'challenge', data: { text: 'Got challenge feed', fedkey: feed.key.toString('hex') } })
-        
-        async function ontarget ({ remotestringkey: hosterkey }) {
-          const hosterID = await chainAPI.getHosterKey(hosterkey)
-          await feed.update()
-          log({ type: 'challenge', data: { text: 'Got hosterkey from ', hosterID, hosterkey: hosterkey.toString('hex') } })
-          const stats = (await check_performance(feed, chunks[hosterID], log).catch(err => log({ type: 'fail', data: err }))) || []
-          reports[hosterID] = { stats, hoster: hosterkey }
-        }
-        
-        const ext = account.state.topics[feed.discoveryKey.toString('hex')].ext
-        function onerror (err/* peerSocket???*/) {
-            // TODO: disconnect from peer
-            log({ type: 'attester', data: 'error extension message' })   
-        }
-        async function onmessage (event_sig, hosterkey) {
-          if (err) {
-            event_sig = undefined
-            log({ type: 'challenge', data: { text: 'No event signature', err } })
-          }
-          log({ type: 'challenge', data: { text: 'Got event signature and hosterkey', event_sig, hosterkey } })
-          const hosterID = await chainAPI.getUserIDByNoiseKey(hosterkey)
-          const data = Buffer.from(`${performanceChallengeID}`, 'binary')
-          if (!datdot_crypto.verify_signature(event_sig, data, hosterkey)) {
-          }
-          reports[hosterID].event.sig = event_sig
-
-          if (reports.length === all_hosterIDs.length) {
-            const resolved_reports = await Promise.all(reports).catch(err => log({ type: 'error', data: { text: 'Performance challenge error', err } }))
-            resolved_reports.forEach(async report => report.hoster = await chainAPI.getUserIDByNoiseKey(report.hoster))
-            log({ type: 'challenge', data: { text: 'Got all reports', resolved_reports } })
-            // TODO: send just a summary to the chain, not the whole array
-            const nonce = await vaultAPI.getNonce()
-            log({ type: 'attester', data: `Submitting performance challenge` })
-            await chainAPI.submitPerformanceChallenge({ performanceChallengeID, reports: resolved_reports, signer, nonce })
-          }
           
+        log({ type: 'challenge', data: { text: 'Got performance challenge feed', fedkey: feed.key.toString('hex') } })
+        
+        async function onhoster_for_performance_challenge ({ remotestringkey: hosterkey }) {
+          log({ type: 'attester', data: { text: 'connected to the host for performance challenge', hoster: hosterkey.toString('hex') }})
+          const hoster_id = await chainAPI.getUserIDByNoiseKey(hosterkey)
+          await feed.update()
+          log({ type: 'challenge', data: { text: 'Got hosterkey', hoster_id, hosterkey: hosterkey.toString('hex') } })
+
+          const opts = { account, performanceChallengeID, feed, chunks: chunks[hoster_id.toString()], hosterkey, topic, log }
+          const stats = await check_performance(opts).catch(err => log({ type: 'fail', data: err })) || []
+          reports[hoster_id] ? reports[hoster_id].stats = stats : reports[hoster_id] = { stats }
+          done()
+        }
+        
+        async function done (proof, hosterkey) { // performance challenge
+          // called 2x: when (reports_promises.length === expected_chunks_len) and when hoster sends proof of contact
+          if (proof) {
+            const proof_buff = b4a.from(proof, 'hex')
+            const hoster_id = await chainAPI.getUserIDByNoiseKey(hosterkey)
+            const hostersigningkey = await chainAPI.getSigningKey(hoster_id)
+            const data = b4a.from(performanceChallengeID.toString(), 'binary')
+            log({ type: 'attester', data: { text: 'done called', proof_buff, hostersigningkey, hosterkey }})
+            if (!datdot_crypto.verify_signature(proof_buff, data, hostersigningkey)) log({ text: 'error: not valid proof of contact', hosterkey, proof, data})
+            proof_of_contact = proof
+            reports[hoster_id] ? reports[hoster_id].proof_of_contact = proof_of_contact : reports[hoster_id] = { proof_of_contact }
+          }          
+          if (!proof_of_contact) return
+
+          const hoster_ids = Object.keys(reports)
+          if (hoster_ids.length !== expected_chunks_len) return
+
+          // verify reports
+          for (const id of hoster_ids) {
+            const { stats, proof_of_contact } = reports[id]
+            if (!stats || !proof_of_contact) return
+          }
+
+          log({ type: 'attester', data: { text: 'have proof and reports', proof, reports }})
+          done_task_cleanup({ role: 'performance-attester', topic, remotestringkey: hosterkey.toString('hex'), state: account.state, log })
+          
+          // TODO: send just a summary to the chain, not the whole array
+          const nonce = await vaultAPI.getNonce()
+          log({ type: 'attester', data: `Submitting performance challenge` })
+          await chainAPI.submitPerformanceChallenge({ performanceChallengeID, reports, signer, nonce })
         }
       }
     }
@@ -443,7 +461,7 @@ module.exports = APIS => {
           }
         } 
         
-        function done (proof) {
+        function done (proof) { // hosting setup
           // called 2x: when all sentCount === expectedChunkCount and when hoster sends proof of contact
           log({ type: 'attester', data: { text: 'done called', proof, sentCount, expectedChunkCount }})
           if (proof) {
@@ -530,7 +548,7 @@ module.exports = APIS => {
         }
       }
 
-      function done (proof) {
+      function done (proof) { // storage challenge
         // called 2x: when reports are ready and when hoster sends proof of contact
         // logStorageChallenge({ type: 'attester', data: { text: 'done called for storage challenge', proof, reports, proof_of_contact }})
         if (proof) {
@@ -605,7 +623,7 @@ module.exports = APIS => {
                           CHECK PERFORMANCE
   ---------------------------------------------------------------------- */
 
-  async function check_performance (core, chunks, log) {
+  async function check_performance ({ account, performanceChallengeID, feed, chunks, hosterkey, topic, log }) {
     log({ type: 'challenge', data: { text: 'checking performance' } })
     return new Promise(async (resolve, reject) => {
       const tid = setTimeout(() => {
@@ -614,34 +632,48 @@ module.exports = APIS => {
       }, DEFAULT_TIMEOUT)
     
       log({ type: 'challenge', data: { text: 'getting stats', data: chunks } })
-      const stats = await get_data_and_stats(core, chunks, log).catch(err => log({ type: 'fail', data: err }))
+      const stats = await get_data_and_stats(feed, chunks, log).catch(err => log({ type: 'fail', data: err }))
+      // get proof of contact
+      await request_proof_of_contact({ account, challenge_id: performanceChallengeID, hosterkey, topic, log })
       clearTimeout(tid)
-      log({ type: 'performance', data: { stats: JSON.stringify(stats) } })
+      log({ type: 'performance check finished', data: { stats: JSON.stringify(stats) } })
       resolve(stats)
     })
   }
 
+  async function request_proof_of_contact ({ account, challenge_id, hosterkey, topic, log }) {
+    // request proof
+    const remotestringkey = hosterkey.toString('hex')
+    const channel = account.state.sockets[remotestringkey].channel
+    const stringtopic = topic.toString('hex')
+    const string_msg = channel.messages[0]
+    log({ type: 'challenge', data: { text: 'requesting proof of contact', challenge_id, stringtopic, remotestringkey } })
+    string_msg.send(JSON.stringify({ type: 'requesting-proof-of-contact', challenge_id, stringtopic }))    
+    // receiving proof of contact through done cb
+  }
+
   async function get_data_and_stats (feed, chunks, log) {
     log({ type: 'challenge', data: { text: 'Getting data and stats', chunks } })
-    return new Promise(async (resolve, reject) => {
+    return new Promise (async(resolve, reject) => {
       try {
-        const stats = await getStats(feed)
+        // const stats = await getStats(feed)
+        const stats = {}
         const start = performance.now()
+
         // log({ type: 'challenge', data: { text: 'Downloading range', chunks: chunks.indexes } })
         // await download_range(feed, chunks.indexes)
         // log({ type: 'challenge', data: { text: 'Range downloaded', index } })
-        for (var i = 0, len = chunks.indexes.length; i < len; i++) {
-          const index = chunks.indexes[i]
+        for (const index of chunks.indexes) {
           log({ type: 'challenge', data: { text: 'Getting data for performance index', index } })
-          const data = await get_index(feed, index, log)
+          const data = await feed.get(index)
           log({ type: 'challenge', data: { text: 'Got data for performance check', index } })
           if (!is_verified(data)) return
           log({ type: 'challenge', data: { text: 'Data for performance check verified', index } })
           const end = performance.now()
           const latency = end - start
           stats.latency = stats.latency ? (stats.latency + latency)/2 /* get average latency for all the chunks*/ : latency
-          if (i === (len - 1)) resolve(stats)
         }
+        resolve(stats)
       } catch (e) {
         log(`Error: ${feed.key}@${index} ${e.message}`)
         reject(e)
@@ -651,7 +683,7 @@ module.exports = APIS => {
         return true
       }
 
-      function getStats () {
+      async function getStats () {
         if (!feed) return {}
         const stats = feed.stats
         const openedPeers = feed.peers.filter(p => p.remoteOpened)
