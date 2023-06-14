@@ -137,7 +137,7 @@ module.exports = APIS => {
                 const { amendments, ranges } = contract
                 const active_amendment = await chainAPI.getAmendmentByID(amendments[amendments.length-1])
                 var { providers: { hosters: hoster_ids } } = active_amendment
-                log({ type: 'challenge', data: { text: 'Getting hosters and chunks for contract', hoster_ids } })
+                log({ type: 'challenge', data: { text: 'Getting hosters and chunks for contract' } })
                 for (var j = 0, len2 = hoster_ids.length; j < len2; j++) {
                   const id = hoster_ids[j]
                   all_ids.push(id)
@@ -169,7 +169,7 @@ module.exports = APIS => {
         const { feed } = await hyper.new_task({ feedkey, topic, log })
 
         await hyper.connect({ 
-          swarm_opts: { role: 'performance-attester', topic, mode: { server: false, client: true } }, 
+          swarm_opts: { role: 'performance_attester', topic, mode: { server: false, client: true } }, 
           targets: { targetList, feed, ontarget: onhoster_for_performance_challenge, done },
           log
         })
@@ -180,8 +180,6 @@ module.exports = APIS => {
           log({ type: 'attester', data: { text: 'connected to the host for performance challenge', hoster: hosterkey.toString('hex') }})
           const hoster_id = await chainAPI.getUserIDByNoiseKey(hosterkey)
           await feed.update()
-          log({ type: 'challenge', data: { text: 'Got hosterkey', hoster_id, hosterkey: hosterkey.toString('hex') } })
-
           const opts = { account, performanceChallengeID, feed, chunks: chunks[hoster_id.toString()], hosterkey, topic, log }
           const stats = await check_performance(opts).catch(err => log({ type: 'fail', data: err })) || []
           reports[hoster_id] ? reports[hoster_id].stats = stats : reports[hoster_id] = { stats }
@@ -212,7 +210,7 @@ module.exports = APIS => {
           }
 
           log({ type: 'attester', data: { text: 'have proof and reports', proof, reports }})
-          done_task_cleanup({ role: 'performance-attester', topic, remotestringkey: hosterkey.toString('hex'), state: account.state, log })
+          done_task_cleanup({ role: 'performance_attester', topic, remotestringkey: hosterkey.toString('hex'), state: account.state, log })
           
           // TODO: send just a summary to the chain, not the whole array
           const nonce = await vaultAPI.getNonce()
