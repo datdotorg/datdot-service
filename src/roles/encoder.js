@@ -108,14 +108,15 @@ module.exports = APIS => {
         })
   
         async function onattester () {
-          log2Attester({ type: 'encoder', data: { text: `Connected to the attester` } })
+          log2Attester({ type: 'encoder', data: { text: `Connected to the attester`, feedkey: feed.key.toString('hex') } })
           const all = []
           for (const range of ranges) all.push(encodeAndSendRange({ account, temp_feed: temp, range, feed, amendmentID, encoder_pos, expectedChunkCount, log: log2Attester }))
           try {
             const result = await Promise.all(all)
             log2Attester({ type: 'encoder', data: { text: `All encoded & sent`, result } })
             clearTimeout(tid)
-            await done_task_cleanup({ role: 'encoder2author', topic: topic1, state: account.state, log })                  
+            await done_task_cleanup({ role: 'encoder2author', topic: topic1, state: account.state, log })                                  
+            // await done_task_cleanup({ role: 'encoder2attester', remotestringkey: attesterKey.toString('hex'), topic: topic2, state: account.state, log })  
             return resolve()
           } catch (err) {
             clearTimeout(tid)

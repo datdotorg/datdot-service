@@ -202,7 +202,7 @@ module.exports = APIS => {
       let downloaded = []
       for (const range of ranges) { downloaded.push(download_range(feed, range)) }
       await Promise.all(downloaded)
-      log({ type: 'hoster', data: {  text: 'all ranges downloaded', ranges } }) 
+      // log({ type: 'hoster', data: {  text: 'all ranges downloaded', ranges } }) 
       await done_task_cleanup({ role: 'hoster2author', topic: feed.discoveryKey, state: account.state, log })                   
       return { feed }
     } catch (err) {
@@ -213,7 +213,7 @@ module.exports = APIS => {
   async function getStorage ({account, key, log}) {
     const stringkey = key.toString('hex')
     storage = await account.storages.get(stringkey)
-    log({ type: 'hoster', data: { text: `Existing storage`, stringkey } })
+    // log({ type: 'hoster', data: { text: `Existing storage`, stringkey } })
     return storage
   }
 
@@ -262,8 +262,7 @@ module.exports = APIS => {
         const json = chunk.toString()
         const data = proof_codec.decode(json)
         let { index, encoded_data, encoded_data_signature, p } = data
-        log2attester({ type: 'hoster', data: { text: `Got index: ${data.index}`, p } })
-        counter++
+        log2attester({ type: 'hoster', data: { text: `Got index: ${data.index}` } })
         try { 
           // TODO: Fix up the JSON serialization by converting things to buffers
           const hasStorage = await account.storages.has(feedKey.toString('hex'))
@@ -279,7 +278,7 @@ module.exports = APIS => {
           const decoded = parse_decompressed(decompressed, unique_el)
           const block_verified = await datdot_crypto.verify_block(p, decoded)
           if (!block_verified) return reject('not a valid chunk hash')
-
+          
           await store_in_hoster_storage({
             account,
             feedKey,
@@ -290,6 +289,7 @@ module.exports = APIS => {
             p,
             log: log2attester
           })
+          counter++
           log2attester({ type: 'hoster', data: { text: `stored index: ${index} (${counter}/${expectedChunkCount}` } })
           return resolve({ type: 'encoded:stored', ok: true, index: data.index })
         } catch (e) {
@@ -391,8 +391,7 @@ module.exports = APIS => {
       })
       
       async function onattester ({ feed, remotestringkey }) {
-        log({ type: 'hoster', data: { text: `Connected to the storage chalenge attester` } })
-        const logStorageChallenge = parent_log.sub(`<-hoster2attester storage challenge, me: ${hosterKey.toString('hex').substring(0,5)}, peer: ${attesterKey.toString('hex').substring(0,5)}`)
+        log({ type: 'hoster', data: { text: `Connected to the storage chalenge attester`, feedkey: feed.key.toString('hex') } })
           
         try {
           const appended = []
@@ -400,14 +399,14 @@ module.exports = APIS => {
           for (var i = 0; i < contract_ids.length; i++) {
             const contractID = contract_ids[i]
             const { index, feedKey } = checks[contractID]
-            logStorageChallenge({ type: 'hoster', data: { text: 'Next check', check: checks[contractID], contractID, checks} })
-            const message = await getDataFromStorage(account, feedKey, index, logStorageChallenge)
+            log({ type: 'hoster', data: { text: 'Next check', check: checks[contractID], contractID, checks} })
+            const message = await getDataFromStorage(account, feedKey, index, log)
             if (!message) return
             message.type = 'proof'
             message.contractID = contractID
             message.p = message.p.toString()
             message.p = message.p.toString('binary')
-            logStorageChallenge({ type: 'hoster', data: { text: `Storage proof: appending chunk ${i} for index ${index}` } })
+            log({ type: 'hoster', data: { text: `Storage proof: appending chunk ${i} for index ${index}` } })
             appended.push(send(message, i))
           }
           await Promise.all(appended)
@@ -419,25 +418,27 @@ module.exports = APIS => {
             log 
           })
           clearTimeout(tid)
-          logStorageChallenge({ type: 'hoster', data: { text: `${appended.length} appended to the attester` } })
+          log({ type: 'hoster', data: { text: `${appended.length} appended to the attester` } })
         } catch (err) {
-          logStorageChallenge({ type: 'error', data: { text: `Error: ${err}` } })
+          log({ type: 'error', data: { text: `Error: ${err}` } })
           clearTimeout(tid)
           return reject({ type: `hoster_proof_fail`, data: err })
         }
             
-          function send (message, i) {
-            return new Promise(async (resolve, reject) => {
-              await feed.append(proof_codec.encode(message))
-              resolve()
-            })
-          }
+        function send (message, i) {
+          return new Promise(async (resolve, reject) => {
+            await feed.append(proof_codec.encode(message))
+            resolve()
+          })
+        }
       }
 
-      function done () {
+      async function done () {
         clearTimeout(tid)
+        // await done_task_cleanup({ role: 'storage_hoster', topic, remotestringkey: attesterKey.toString('hex'), state: account.state, log })
         return resolve({ type: `DONE` })
       }
+
     })
     
   }

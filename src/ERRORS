@@ -1,0 +1,5 @@
+- one peer not receiving channel onclose (hyper line 200)
+
+- one attester is sometimes too slow - all gets done, but time out kicks before
+
+- 'uncaughtException Error: connection reset by peer Error: connection reset by peer uncaughtException' (user line 82)

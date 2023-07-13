@@ -1,9 +1,5 @@
-const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
-const hypercore = require('hypercore')
-const Hyperbeam = require('hyperbeam')
 const brotli = require('_datdot-service-helpers/brotli')
-const varint = require('varint')
 const b4a = require('b4a')
 
 const { performance } = require('perf_hooks')
@@ -16,8 +12,6 @@ const parse_decompressed = require('_datdot-service-helpers/parse-decompressed')
 const tempDB = require('_tempdb')
 const getRangesCount = require('getRangesCount')
 const compare_encodings = require('compare-encodings')
-const get_max_index = require('_datdot-service-helpers/get-max-index')
-const get_index = require('_datdot-service-helpers/get-index')
 const DEFAULT_TIMEOUT = 10000
 
 /******************************************************************************
@@ -349,7 +343,7 @@ module.exports = APIS => {
         clearTimeout(tid)
         resolve({ failedKeys, proof_of_contact, hosterKey })
       } catch (err) {
-        log({ type: 'attester', data: { text: 'Error: verify_and_forward_encodings', hosterKey: hosterKey.toString('hex') }})
+        log({ type: 'attester', data: { text: 'Error: verify_and_forward_encodings', hosterKey: hosterKey.toString('hex'), err }})
         failedKeys.push(encoderKey.toString('hex'), hosterKey.toString('hex'))
         reject({ failedKeys })
       }
@@ -388,7 +382,7 @@ module.exports = APIS => {
         // log2encoder({ type: 'attester', data: { text: 'waiting for onencoder', key1: key1.toString('hex') }})
         
         async function onencoder ({ feed, remotestringkey }) {
-          log2encoder({ type: 'attester', data: { text: 'Connected to the encoder', encoder: remotestringkey, expectedChunkCount }})
+          log2encoder({ type: 'attester', data: { text: 'Connected to the encoder', encoder: remotestringkey, expectedChunkCount, feedkey: feed.key.toString('hex') }})
           feed1 = feed
           for (var i = 0; i < expectedChunkCount; i++) {
             get_and_compare(feed1, i)
@@ -401,7 +395,7 @@ module.exports = APIS => {
             const chunk_promise = feed1.get(i)
             const chunk = await chunk_promise
             const res = await compare_CB(chunk_promise, key1)
-            log2encoder({ type: 'attester', data: { text: 'chunk compare res', i, res: res.type, chunk } })
+            log2encoder({ type: 'attester', data: { text: 'chunk compare res', i, res: res.type, /*chunk*/ } })
             if (res.type !== 'verified') return reject('error: chunk not valid')
             try_send({ chunk, i, log: log2encoder })
           } catch(err) {
@@ -423,7 +417,7 @@ module.exports = APIS => {
         })
         
         async function onhoster ({ feed, remotestringkey }) {
-          log2hoster({ type: 'attester', data: { text: 'connected to the hoster', hoster: remotestringkey, topic: topic2.toString('hex'), chunks }})
+          log2hoster({ type: 'attester', data: { text: 'connected to the hoster', hoster: remotestringkey, topic: topic2.toString('hex'), chunks, feedkey: feed.key.toString('hex') }})
           for (var i = 0; i < expectedChunkCount; i++ ) {
             try_send({ i, feed2, log: log2hoster })
           }
@@ -433,11 +427,11 @@ module.exports = APIS => {
           if (chunk) { // got chunk in onencoder
             if (!chunks[i]) { 
               chunks[i] = { chunk } 
-              log({ type: 'attester', data: { text: 'add chunk to chunks', i }})
+              // log({ type: 'attester', data: { text: 'add chunk to chunks', i }})
             } 
             else {
               chunks[i].send_to_hoster(chunk)
-              log({ type: 'attester', data: { text: 'call send_to_hoster cb', i , chunk, cb: chunks[i]}})
+              // log({ type: 'attester', data: { text: 'call send_to_hoster cb', i , chunk, cb: chunks[i]}})
               sentCount++
               delete chunks[i]
             }
@@ -445,11 +439,11 @@ module.exports = APIS => {
           else { // onhoster
             if (chunks[i]) {
               feed2.append(chunks[i].chunk)
-              log({ type: 'attester', data: { text: 'chunk appended - onhoster', i, sentCount, expectedChunkCount }})
+              // log({ type: 'attester', data: { text: 'chunk appended - onhoster', i, sentCount, expectedChunkCount }})
               sentCount++
               delete chunks[i]
             } else { 
-              log({ type: 'attester', data: { text: 'add send_to_hoster cb to chunks', i }})
+              // log({ type: 'attester', data: { text: 'add send_to_hoster cb to chunks', i }})
               chunks[i] = { send_to_hoster: (chunk) => { feed2.append(chunk) } } 
             }
           }
@@ -474,6 +468,7 @@ module.exports = APIS => {
           log({ type: 'attester', data: { text: 'have proof and all data sent', proof, sentCount, expectedChunkCount }})
           clearTimeout(tid)
           done_task_cleanup({ role: 'attester2encoder', topic: topic1, remotestringkey: key1.toString('hex'), state: account.state, log })
+          // done_task_cleanup({ role: 'attester2hoster', topic: topic2, remotestringkey: key2.toString('hex'), state: account.state, log })
           resolve(proof_of_contact)
         }
 
