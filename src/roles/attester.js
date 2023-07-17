@@ -204,7 +204,9 @@ module.exports = APIS => {
           }
 
           log({ type: 'attester', data: { text: 'have proof and reports', proof, reports }})
-          done_task_cleanup({ role: 'performance_attester', topic, remotestringkey: hosterkey.toString('hex'), state: account.state, log })
+          for (const remotestringkey of targetList) {
+            done_task_cleanup({ role: 'performance_attester', topic, remotestringkey, state: account.state, log })
+          }
           
           // TODO: send just a summary to the chain, not the whole array
           const nonce = await vaultAPI.getNonce()
@@ -616,7 +618,8 @@ module.exports = APIS => {
                           CHECK PERFORMANCE
   ---------------------------------------------------------------------- */
 
-  async function check_performance ({ account, performanceChallengeID, feed, chunks, hosterkey, topic, log }) {
+  async function check_performance ({ account, performanceChallengeID, feed, chunks, hosterkey, topic, log: parent_log }) {
+    const log = parent_log.sub(`<-attester2hoster performance challenge, me: ${account.identity.myAddress.toString('hex').substring(0,5)}, peer: ${hosterkey.toString('hex').substring(0,5)}`)
     log({ type: 'challenge', data: { text: 'checking performance' } })
     return new Promise(async (resolve, reject) => {
       const tid = setTimeout(() => {

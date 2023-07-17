@@ -1,5 +1,3 @@
-- one peer not receiving channel onclose (hyper line 200)
-
-- one attester is sometimes too slow - all gets done, but time out kicks before
-
 - 'uncaughtException Error: connection reset by peer Error: connection reset by peer uncaughtException' (user line 82)
+
+- peers keep connection although task is already done (error in done task cleanup) => see when to leavePeer / leave topic
