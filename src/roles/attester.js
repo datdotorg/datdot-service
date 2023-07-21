@@ -119,8 +119,9 @@ module.exports = APIS => {
         var expected_chunks_len
         var proof_of_contact
         const { chunks, targetList } = await get_hosters_and_challenge_chunks(contractIDs)
+        const topic =  datdot_crypto.get_discoverykey(feedkey)
+
         // get all hosters and select random chunks to check for each hoster
-        
         async function get_hosters_and_challenge_chunks (contractIDs) {
           return new Promise (async(resolve, reject) => {
             try {
@@ -157,62 +158,62 @@ module.exports = APIS => {
         }
         
 
-        // join swarm and check performance when you connect to any of the hosters
+        for (const peerkey of targetList) {
+          const field = `${topic.toString('hex')}-${peerkey}`
+          const { feed } = await hyper.new_task({ feedkey, topic, field, log })
+          log({ type: 'challenge', data: { text: 'Got performance challenge feed', field, peerkey, fedkey: feed.key.toString('hex') } })
 
-        const topic =  datdot_crypto.get_discoverykey(feedkey)
-        const { feed } = await hyper.new_task({ feedkey, topic, log })
+          await hyper.connect({ 
+            swarm_opts: { role: 'performance_attester', topic, mode: { server: false, client: true } }, 
+            targets: { targetList: [peerkey], feed, ontarget: onhoster_for_performance_challenge, done },
+            log
+          })
 
-        await hyper.connect({ 
-          swarm_opts: { role: 'performance_attester', topic, mode: { server: false, client: true } }, 
-          targets: { targetList, feed, ontarget: onhoster_for_performance_challenge, done },
-          log
-        })
-          
-        log({ type: 'challenge', data: { text: 'Got performance challenge feed', fedkey: feed.key.toString('hex') } })
-        
-        async function onhoster_for_performance_challenge ({ remotestringkey: hosterkey }) {
-          log({ type: 'attester', data: { text: 'connected to the host for performance challenge', hoster: hosterkey.toString('hex') }})
-          const hoster_id = await chainAPI.getUserIDByNoiseKey(hosterkey)
-          await feed.update()
-          const opts = { account, performanceChallengeID, feed, chunks: chunks[hoster_id.toString()], hosterkey, topic, log }
-          const stats = await check_performance(opts).catch(err => log({ type: 'fail', data: err })) || []
-          reports[hoster_id] ? reports[hoster_id].stats = stats : reports[hoster_id] = { stats }
-          done()
-        }
-        
-        async function done (proof, hosterkey) { // performance challenge
-          // called 2x: when (reports_promises.length === expected_chunks_len) and when hoster sends proof of contact
-          if (proof) {
-            const proof_buff = b4a.from(proof, 'hex')
+          async function onhoster_for_performance_challenge ({ remotestringkey: hosterkey }) {
+            log({ type: 'attester', data: { text: 'connected to the host for performance challenge', hoster: hosterkey.toString('hex') }})
             const hoster_id = await chainAPI.getUserIDByNoiseKey(hosterkey)
-            const hostersigningkey = await chainAPI.getSigningKey(hoster_id)
-            const data = b4a.from(performanceChallengeID.toString(), 'binary')
-            log({ type: 'attester', data: { text: 'done called', proof_buff, hostersigningkey, hosterkey }})
-            if (!datdot_crypto.verify_signature(proof_buff, data, hostersigningkey)) log({ text: 'error: not valid proof of contact', hosterkey, proof, data})
-            proof_of_contact = proof
-            reports[hoster_id] ? reports[hoster_id].proof_of_contact = proof_of_contact : reports[hoster_id] = { proof_of_contact }
-          }          
-          if (!proof_of_contact) return
-
-          const hoster_ids = Object.keys(reports)
-          if (hoster_ids.length !== expected_chunks_len) return
-
-          // verify reports
-          for (const id of hoster_ids) {
-            const { stats, proof_of_contact } = reports[id]
-            if (!stats || !proof_of_contact) return
-          }
-
-          log({ type: 'attester', data: { text: 'have proof and reports', proof, reports }})
-          for (const remotestringkey of targetList) {
-            done_task_cleanup({ role: 'performance_attester', topic, remotestringkey, state: account.state, log })
+            await feed.update()
+            const opts = { account, performanceChallengeID, feed, chunks: chunks[hoster_id.toString()], hosterkey, topic, log }
+            const stats = await check_performance(opts).catch(err => log({ type: 'fail', data: err })) || []
+            reports[hoster_id] ? reports[hoster_id].stats = stats : reports[hoster_id] = { stats }
+            done()
           }
           
-          // TODO: send just a summary to the chain, not the whole array
-          const nonce = await vaultAPI.getNonce()
-          log({ type: 'attester', data: `Submitting performance challenge` })
-          await chainAPI.submitPerformanceChallenge({ performanceChallengeID, reports, signer, nonce })
+          async function done (proof, hosterkey) { // performance challenge
+            // called 2x: when (reports_promises.length === expected_chunks_len) and when hoster sends proof of contact
+            if (proof) {
+              const proof_buff = b4a.from(proof, 'hex')
+              const hoster_id = await chainAPI.getUserIDByNoiseKey(hosterkey)
+              const hostersigningkey = await chainAPI.getSigningKey(hoster_id)
+              const data = b4a.from(performanceChallengeID.toString(), 'binary')
+              log({ type: 'attester', data: { text: 'done called', proof_buff, hostersigningkey, hosterkey }})
+              if (!datdot_crypto.verify_signature(proof_buff, data, hostersigningkey)) log({ text: 'error: not valid proof of contact', hosterkey, proof, data})
+              proof_of_contact = proof
+              reports[hoster_id] ? reports[hoster_id].proof_of_contact = proof_of_contact : reports[hoster_id] = { proof_of_contact }
+            }          
+            if (!proof_of_contact) return
+  
+            const hoster_ids = Object.keys(reports)
+            if (hoster_ids.length !== expected_chunks_len) return
+  
+            // verify reports
+            for (const id of hoster_ids) {
+              const { stats, proof_of_contact } = reports[id]
+              if (!stats || !proof_of_contact) return
+            }
+  
+            log({ type: 'attester', data: { text: 'have proof and reports', proof, reports }})
+            for (const remotestringkey of targetList) {
+              done_task_cleanup({ role: 'performance_attester', topic, remotestringkey, state: account.state, log })
+            }
+            
+            // TODO: send just a summary to the chain, not the whole array
+            const nonce = await vaultAPI.getNonce()
+            log({ type: 'attester', data: `Submitting performance challenge` })
+            await chainAPI.submitPerformanceChallenge({ performanceChallengeID, reports, signer, nonce })
+          }
         }
+        
       }
     }
 

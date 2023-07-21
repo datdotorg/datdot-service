@@ -5,11 +5,7 @@ const createTestnet = require('@hyperswarm/testnet')
 
 run()
 
-async function run (){
-
-  const { bootstrap } = await createTestnet(20)
-  
-  await new Promise(resolve => setTimeout(resolve, 250))
+async function run () {
 
   const [scenarioName, flag] = process.argv.slice(2)
   process.env.REPORT = `*
@@ -51,20 +47,45 @@ async function run (){
   const all = [process]
   const url = 'ws://localhost'
 
-  const config = JSON.stringify({ chain: [url, 3399], chat: [url, 6697], bootstrap })
+  const config = { chain: [url, 3399], chat: [url, 6697], bootstrap: null }
 
- if (flag === '--production') {
-    throw new Error('"--production" is currently unsuported')
+   if (flag === 'production') {
+    const { bootstrap } = await createTestnet(20) 
+    config.bootstrap = bootstrap 
+    await new Promise(resolve => setTimeout(resolve, 250))
+
+    throw new Error('"--production" is currently unsuported (datdot-node-rust) in substrate is not ready')
     // const command1 = path.join(__dirname, '../datdot-substrate/target/release/datdot-node')
     // const child = spawn(command1, ['--dev'], { stdio: 'inherit' })
     // all.push(child)
+  
+  } else if (flag === 'testnet-private') {
+    const { bootstrap } = await createTestnet(20) 
+    config.bootstrap = bootstrap 
+
+    const [, port] = config.chain
+    const glitch_url = 'https://foo-bar-baz.glitch.com'
+    config.chain = [glitch_url, port]
+  } else if (flag === 'testnet-public') {
+    const [, port] = config.chain
+    const glitch_url = 'https://foo-bar-baz.glitch.com'
+    config.chain = [glitch_url, port]
+
+    throw new Error('glitch not yet running')
   } else {
-    const args1 = [path.join(__dirname, '../src/node_modules/datdot-node-javascript/chain.js'), config, /*logkeeper*/9001]
+    const { bootstrap } = await createTestnet(20) 
+    config.bootstrap = bootstrap 
+    await new Promise(resolve => setTimeout(resolve, 250))
+
+    const filename = require.resolve('datdot-node-javascript')
+    const args1 = [filename, JSON.stringify(config), /*logkeeper*/9001]
     const chain = spawn('node', args1, { stdio: 'inherit' })
-    all.push(chain)
+    all.push(chain)    
   }
 
-  const args2 = [path.join(__dirname, '../src/node_modules/_chat/server.js'), config, /*logkeeper*/ 9002]
+
+
+  const args2 = [path.join(__dirname, '../src/node_modules/_chat/server.js'), JSON.stringify(config), /*logkeeper*/ 9002]
   const chatserver = spawn('node', args2, { stdio: 'inherit' })
   all.push(chatserver)
 
@@ -75,7 +96,7 @@ async function run (){
     const scenario = JSON.stringify(users[i])
     const logkeeper_port = 9003 + i
     PORTS.push(logkeeper_port)
-    const args = [file, scenario, config, logkeeper_port]
+    const args = [file, scenario, JSON.stringify(config), logkeeper_port]
     const child = spawn('node', args, { stdio: 'inherit' })
     all.push(child)
   }

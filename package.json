@@ -22,6 +22,7 @@
     "compact-encoding": "^2.11.0",
     "cross-spawn": "^7.0.3",
     "csjs-inject": "^1.0.1",
+    "datdot-node-javascript": "github:datdotorg/datdot-node-javascript",
     "debug": "^4.3.2",
     "derive-key": "^1.0.1",
     "encoding-down": "^7.1.0",
