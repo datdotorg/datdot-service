@@ -8,7 +8,9 @@ const parse_decompressed = require('_datdot-service-helpers/parse-decompressed')
 const varint = require('varint')
 const hosterStorage = require('_datdot-service-helpers/hoster-storage.js')
 const sub = require('subleveldown')
-const {done_task_cleanup} = require('_datdot-service-helpers/done-task-cleanup')
+const {
+  done_task_cleanup,
+} = require('_datdot-service-helpers/done-task-cleanup')
 const b4a = require('b4a')
 
 const datdot_crypto = require('datdot-crypto')
@@ -181,12 +183,21 @@ module.exports = APIS => {
     try {
       const topic = datdot_crypto.get_discoverykey(feedKey)
       const { feed } = await hyper.new_task({ feedkey: feedKey, topic, log })
+      var remotestringkey
 
       // replicate feed from author
       await hyper.connect({ 
         swarm_opts: { role: 'hoster2author', topic, mode: { server: true, client: true } }, 
+        done,
+        onpeer,
         log
       })
+
+      function onpeer ({ peerkey }) {
+        const stringtopic = topic.toString('hex')
+        log({ type: 'hoster', data: { text: `onpeer callback`, stringtopic, peerkey } })
+        remotestringkey = peerkey.toString('hex')
+      }
       
       var stringkey = feed.key.toString('hex')
       var storage
@@ -203,8 +214,20 @@ module.exports = APIS => {
       for (const range of ranges) { downloaded.push(download_range(feed, range)) }
       await Promise.all(downloaded)
       // log({ type: 'hoster', data: {  text: 'all ranges downloaded', ranges } }) 
-      await done_task_cleanup({ role: 'hoster2author', topic: feed.discoveryKey, state: account.state, log })                   
       return { feed }
+
+      async function done ({ type, peerkey }) {
+        const { tasks } = account.state
+        var role
+        // if peer has h2a & hoster role, let's not call with h2a, because
+        // this will set h2a to hoster in remove_from_roles()
+        // & if task hasn't been done yet, h2a will stop to lookup
+        // TODO: find a solution for it
+				if (tasks[stringtopic].roles['hoster2author']) role = 'hoster2author'        
+        else if (tasks[stringtopic].roles['hoster']) role = 'hoster'
+        log({ type: 'hoster', data: { text: `calling done`, role, stringtopic, peerkey } })
+        await done_task_cleanup({ role, topic, remotestringkey: peerkey, state: account.state, log })                   
+      }
     } catch (err) {
       log({ type: 'Error', data: {  text: 'Error: loading feed data', err } })
     }
@@ -231,7 +254,9 @@ module.exports = APIS => {
         log2attester({ type: 'hoster', data: { text: `load feed`, attester: remotestringkey } })
         await hyper.connect({
           swarm_opts: { role: 'hoster2attester', topic, mode: { server: false, client: true } },
-          targets: { targetList: [remotestringkey], ontarget: onattester, msg: { receive: { type: 'feedkey' }}, done },
+          targets: { targetList: [remotestringkey], msg: { receive: { type: 'feedkey' }} },
+          onpeer: onattester,
+          done,
           log: log2attester
         })
         async function onattester ({ feed }) {
@@ -242,14 +267,14 @@ module.exports = APIS => {
             const results = await Promise.all(all)
             log2attester({ type: 'hoster', data: { text: `All chunks hosted`, len: results.length, expectedChunkCount } })
             await send_proof_of_contact({ account, unique_el, remotestringkey, topic, log })
+            return resolve()
           } catch (err) {
             log({ type: 'error', data: { text: `Error getting results` } })
             return reject(new Error({ type: 'fail', data: 'Error storing data' }))
           }
         }
-        async function done () {
+        async function done ({ type }) {
           await done_task_cleanup({ role: 'hoster2attester', topic, remotestringkey, state: account.state, log: log2attester })
-          return resolve()
         }
       } catch (err) {
         return reject(err)
@@ -386,7 +411,9 @@ module.exports = APIS => {
       
       await hyper.connect({ 
         swarm_opts: { role: 'storage_hoster', topic, mode: { server: true, client: false } },
-        targets: { feed, targetList: [ attesterKey.toString('hex') ], ontarget: onattester, msg: { send: { type: 'feedkey' }, done } },
+        targets: { feed, targetList: [ attesterKey.toString('hex') ], msg: { send: { type: 'feedkey' } } },
+        onpeer: onattester,
+        done,
         log
       })
       
@@ -419,6 +446,7 @@ module.exports = APIS => {
           })
           clearTimeout(tid)
           log({ type: 'hoster', data: { text: `${appended.length} appended to the attester` } })
+          resolve()
         } catch (err) {
           log({ type: 'error', data: { text: `Error: ${err}` } })
           clearTimeout(tid)
@@ -432,13 +460,11 @@ module.exports = APIS => {
           })
         }
       }
-
-      async function done () {
-        clearTimeout(tid)
-        // await done_task_cleanup({ role: 'storage_hoster', topic, remotestringkey: attesterKey.toString('hex'), state: account.state, log })
-        return resolve({ type: `DONE` })
+      async function done ({ type }) {
+        if (type !== 'done') return
+        const remotestringkey = attesterKey.toString('hex')
+        await done_task_cleanup({ role: 'storage_hoster', topic, remotestringkey, state: account.state, log })
       }
-
     })
     
   }

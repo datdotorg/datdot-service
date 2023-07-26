@@ -76,22 +76,35 @@ module.exports = APIS => {
     const { hyper } = account
 
     return new Promise(async (resolve, reject) => {
-      if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
-      const topic1 = datdot_crypto.get_discoverykey(feedkey)
-      const tid = setTimeout(() => {
-        reject({ type: `encode_hosting_setup timeout` })
-      }, DEFAULT_TIMEOUT)
-      
       try {
+        if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
+        const topic1 = datdot_crypto.get_discoverykey(feedkey)
+        var remotestringkey
+
+        const tid = setTimeout(() => {
+          reject({ type: `encode_hosting_setup timeout` })
+        }, DEFAULT_TIMEOUT)
+      
         // replicate feed from author
         const { feed } = await hyper.new_task({ feedkey, log: log2Author })
         await feed.update()
         log2Author({ type: 'encoder', data: { text: `load feed` } })
-
+        
         await hyper.connect({ 
           swarm_opts: { role: 'encoder2author', topic: topic1, mode: { server: false, client: true } },
+          onpeer,
           log: log2Author
         })
+        
+        function onpeer ({ peerkey, stringtopic }) {
+          log2Author({ type: 'encoder', data: { text: `onpeer callback`, stringtopic, peerkey } })
+          remotestringkey = peerkey.toString('hex')
+        }
+        
+        async function done_with_author () {
+          log2Author({ type: 'encoder', data: { text: `calling done`, remotestringkey } })
+          await done_task_cleanup({ role: 'encoder2author', remotestringkey, topic: topic1, state: account.state, log })                   
+        }
     
         
         // create temp feed for sending compressed and signed data to the attester
@@ -103,7 +116,9 @@ module.exports = APIS => {
 
         await hyper.connect({ 
           swarm_opts: { role: 'encoder2attester', topic: topic2, mode: { server: true, client: false } },
-          targets: { feed: temp, targetList: [attesterKey.toString('hex')], ontarget: onattester, msg: { send: { type: 'feedkey' } } },
+          targets: { feed: temp, targetList: [attesterKey.toString('hex')], msg: { send: { type: 'feedkey' } } },
+          onpeer: onattester,
+          done: done_with_attester,
           log: log2Attester
         })
   
@@ -115,7 +130,7 @@ module.exports = APIS => {
             const result = await Promise.all(all)
             log2Attester({ type: 'encoder', data: { text: `All encoded & sent`, result } })
             clearTimeout(tid)
-            await done_task_cleanup({ role: 'encoder2author', topic: topic1, state: account.state, log })                                  
+            done_with_author()
             // await done_task_cleanup({ role: 'encoder2attester', remotestringkey: attesterKey.toString('hex'), topic: topic2, state: account.state, log })  
             return resolve()
           } catch (err) {
@@ -124,6 +139,9 @@ module.exports = APIS => {
             return reject()
           }
         }  
+        async function done_with_attester ({ type }) {
+          await done_task_cleanup({ role: 'encoder2attester', topic: topic2, remotestringkey: attesterKey.toString('hex'), state: account.state, log })
+        }
       } catch(err) {
         log2Attester({ type: 'encoder', data: { text: 'Error in hosting setup', err } })
         clearTimeout(tid)

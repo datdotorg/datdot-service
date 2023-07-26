@@ -165,7 +165,9 @@ module.exports = APIS => {
 
           await hyper.connect({ 
             swarm_opts: { role: 'performance_attester', topic, mode: { server: false, client: true } }, 
-            targets: { targetList: [peerkey], feed, ontarget: onhoster_for_performance_challenge, done },
+            targets: { targetList: [peerkey], feed },
+            onpeer: onhoster_for_performance_challenge,
+            done,
             log
           })
 
@@ -176,10 +178,10 @@ module.exports = APIS => {
             const opts = { account, performanceChallengeID, feed, chunks: chunks[hoster_id.toString()], hosterkey, topic, log }
             const stats = await check_performance(opts).catch(err => log({ type: 'fail', data: err })) || []
             reports[hoster_id] ? reports[hoster_id].stats = stats : reports[hoster_id] = { stats }
-            done()
+            done({ type: 'have all reports' })
           }
           
-          async function done (proof, hosterkey) { // performance challenge
+          async function done ({ type = undefined, proof = undefined, hosterkey = undefined }) { // performance challenge
             // called 2x: when (reports_promises.length === expected_chunks_len) and when hoster sends proof of contact
             if (proof) {
               const proof_buff = b4a.from(proof, 'hex')
@@ -379,7 +381,8 @@ module.exports = APIS => {
         log2encoder({ type: 'attester', data: { text: 'connect', encoder: key1.toString('hex') }})
         await hyper.connect({ 
           swarm_opts: { role: 'attester2encoder', topic: topic1, mode: { server: false, client: true } }, 
-          targets: { targetList: [key1.toString('hex')], ontarget: onencoder,  msg: { receive: { type: 'feedkey' } } },
+          targets: { targetList: [key1.toString('hex')], msg: { receive: { type: 'feedkey' } } },
+          onpeer: onencoder,
           log: log2encoder
         })
         // log2encoder({ type: 'attester', data: { text: 'waiting for onencoder', key1: key1.toString('hex') }})
@@ -415,7 +418,9 @@ module.exports = APIS => {
 
         await hyper.connect({ 
           swarm_opts: { role: 'attester2hoster', topic: topic2, mode: { server: true, client: false } }, 
-          targets: { feed: feed2, targetList: [key2.toString('hex')], ontarget: onhoster, msg: { send: { type: 'feedkey' } }, done } ,
+          targets: { feed: feed2, targetList: [key2.toString('hex')], msg: { send: { type: 'feedkey' } } } ,
+          onpeer: onhoster,
+          done,
           log: log2hoster
         })
         
@@ -452,11 +457,11 @@ module.exports = APIS => {
           }
           if (sentCount === expectedChunkCount) {
             log({ type: 'attester', data: { text: 'all sent', sentCount, expectedChunkCount }})
-            done()
+            done({ type: 'all sent' })
           }
         } 
         
-        function done (proof) { // hosting setup
+        async function done ({  type = undefined, proof = undefined, hosterkey = undefined }) { // hosting setup
           // called 2x: when all sentCount === expectedChunkCount and when hoster sends proof of contact
           log({ type: 'attester', data: { text: 'done called', proof, sentCount, expectedChunkCount }})
           if (proof) {
@@ -470,8 +475,8 @@ module.exports = APIS => {
           if ((sentCount !== expectedChunkCount)) return
           log({ type: 'attester', data: { text: 'have proof and all data sent', proof, sentCount, expectedChunkCount }})
           clearTimeout(tid)
-          done_task_cleanup({ role: 'attester2encoder', topic: topic1, remotestringkey: key1.toString('hex'), state: account.state, log })
-          // done_task_cleanup({ role: 'attester2hoster', topic: topic2, remotestringkey: key2.toString('hex'), state: account.state, log })
+          await done_task_cleanup({ role: 'attester2encoder', topic: topic1, remotestringkey: key1.toString('hex'), state: account.state, log })
+          await done_task_cleanup({ role: 'attester2hoster', topic: topic2, remotestringkey: key2.toString('hex'), state: account.state, log })
           resolve(proof_of_contact)
         }
 
@@ -482,8 +487,6 @@ module.exports = APIS => {
       }
 
     })
-
-
   }
 
 
@@ -514,7 +517,9 @@ module.exports = APIS => {
 
       await hyper.connect({ 
         swarm_opts: { role: 'storage_attester', topic, mode: { server: false, client: true } },
-        targets: { targetList: [ hosterKey.toString('hex') ], ontarget: onhoster, msg: { receive: { type: 'feedkey' } }, done },
+        targets: { targetList: [ hosterKey.toString('hex') ], msg: { receive: { type: 'feedkey' } } },
+        onpeer: onhoster,
+        done,
         log: logStorageChallenge
       })
 
@@ -531,10 +536,9 @@ module.exports = APIS => {
             const data_promise = feed.get(i)
             verified.push(verify_chunk(data_promise))
           }
-          
           reports = await Promise.all(verified).catch(err => { logStorageChallenge({ type: 'fail', data: err }) })
           if (!reports) logStorageChallenge({ type: 'error', data: [`No reports`] })
-          done()
+          done({ type: 'got all data' })
         } catch (err) {
           logStorageChallenge({ type: 'fail', data: { text: 'results error', err } })
           logStorageChallenge({ type: 'error', data: [`Error: ${err}`] })
@@ -544,7 +548,7 @@ module.exports = APIS => {
         }
       }
 
-      function done (proof) { // storage challenge
+      function done ({ type = undefined, proof = undefined, hosterkey = undefined }) { // storage challenge
         // called 2x: when reports are ready and when hoster sends proof of contact
         // logStorageChallenge({ type: 'attester', data: { text: 'done called for storage challenge', proof, reports, proof_of_contact }})
         if (proof) {
@@ -559,6 +563,7 @@ module.exports = APIS => {
         logStorageChallenge({ type: 'attester', data: { text: 'have proof and all reports', proof_of_contact, reports_len: reports.length, checks_len: Object.keys(checks).length }})
         clearTimeout(tid)
         done_task_cleanup({ role: 'storage_attester', topic, remotestringkey: hosterKey.toString('hex'), state: account.state, log: logStorageChallenge })
+        // doesn't need to send msg with type done, because it already sent ack-proof-of-contact
         resolve({ proof_of_contact, reports })
       }
 
