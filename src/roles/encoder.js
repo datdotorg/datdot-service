@@ -79,7 +79,7 @@ module.exports = APIS => {
       try {
         if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
         const topic1 = datdot_crypto.get_discoverykey(feedkey)
-        var remotestringkey
+        var peers = []
 
         const tid = setTimeout(() => {
           reject({ type: `encode_hosting_setup timeout` })
@@ -98,12 +98,13 @@ module.exports = APIS => {
         
         function onpeer ({ peerkey, stringtopic }) {
           log2Author({ type: 'encoder', data: { text: `onpeer callback`, stringtopic, peerkey } })
-          remotestringkey = peerkey.toString('hex')
+          peers.push(peerkey.toString('hex'))
         }
         
         async function done_with_author () {
-          log2Author({ type: 'encoder', data: { text: `calling done`, remotestringkey } })
-          await done_task_cleanup({ role: 'encoder2author', remotestringkey, topic: topic1, state: account.state, log })                   
+          peers = [...new Set(peers)]
+          log2Author({ type: 'encoder', data: { text: `calling done`, peers } })
+          await done_task_cleanup({ role: 'encoder2author', peers, topic: topic1, state: account.state, log })                   
         }
     
         

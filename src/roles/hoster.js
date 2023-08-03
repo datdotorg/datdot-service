@@ -182,8 +182,9 @@ module.exports = APIS => {
   async function loadFeedData({ account, hyper, ranges, feedKey, log }) {
     try {
       const topic = datdot_crypto.get_discoverykey(feedKey)
+      const stringtopic = topic.toString('hex')
       const { feed } = await hyper.new_task({ feedkey: feedKey, topic, log })
-      var remotestringkey
+      var peers = []
 
       // replicate feed from author
       await hyper.connect({ 
@@ -194,9 +195,8 @@ module.exports = APIS => {
       })
 
       function onpeer ({ peerkey }) {
-        const stringtopic = topic.toString('hex')
         log({ type: 'hoster', data: { text: `onpeer callback`, stringtopic, peerkey } })
-        remotestringkey = peerkey.toString('hex')
+        peers.push(peerkey.toString('hex'))
       }
       
       var stringkey = feed.key.toString('hex')
@@ -214,17 +214,21 @@ module.exports = APIS => {
       for (const range of ranges) { downloaded.push(download_range(feed, range)) }
       await Promise.all(downloaded)
       // log({ type: 'hoster', data: {  text: 'all ranges downloaded', ranges } }) 
+      peers = [...new Set(peers)]
+      await done_task_cleanup({ role: 'hoster2author', topic, peers, state: account.state, log }) // done for hoster2author (client)
       return { feed }
 
-      async function done ({ type, peerkey }) {
+      async function done ({ type, stringtopic, peerkey }) {
         const { tasks } = account.state
         var role
+        // triggered by clients for: hoster2author (server) in hosting setup & hoster (server)
+
         // if peer has h2a & hoster role, let's not call with h2a, because
         // this will set h2a to hoster in remove_from_roles()
         // & if task hasn't been done yet, h2a will stop to lookup
         // TODO: find a solution for it
-				if (tasks[stringtopic].roles['hoster2author']) role = 'hoster2author'        
-        else if (tasks[stringtopic].roles['hoster']) role = 'hoster'
+				if (tasks[stringtopic].roles['hoster2author'].count) role = 'hoster2author'        
+        else if (tasks[stringtopic].roles['hoster'].count) role = 'hoster'
         log({ type: 'hoster', data: { text: `calling done`, role, stringtopic, peerkey } })
         await done_task_cleanup({ role, topic, remotestringkey: peerkey, state: account.state, log })                   
       }
