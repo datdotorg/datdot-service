@@ -213,8 +213,8 @@ module.exports = APIS => {
       let downloaded = []
       for (const range of ranges) { downloaded.push(download_range(feed, range)) }
       await Promise.all(downloaded)
-      // log({ type: 'hoster', data: {  text: 'all ranges downloaded', ranges } }) 
       peers = [...new Set(peers)]
+      log({ type: 'hoster', data: {  text: 'all ranges downloaded', ranges, peers } }) 
       await done_task_cleanup({ role: 'hoster2author', topic, peers, state: account.state, log }) // done for hoster2author (client)
       return { feed }
 

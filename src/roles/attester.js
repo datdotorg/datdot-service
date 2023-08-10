@@ -211,7 +211,7 @@ module.exports = APIS => {
             
             // TODO: send just a summary to the chain, not the whole array
             const nonce = await vaultAPI.getNonce()
-            log({ type: 'attester', data: `Submitting performance challenge` })
+            log({ type: 'attester', data: `Submitting performance challenge`, performanceChallengeID })
             await chainAPI.submitPerformanceChallenge({ performanceChallengeID, reports, signer, nonce })
           }
         }
