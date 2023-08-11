@@ -62,7 +62,7 @@ module.exports = APIS => {
         if (attesterAddress !== myAddress) return
 
         log({ type: 'attester', data: { text: `Attester ${attesterID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment)} })
-        const { feedKey, encoderKeys, hosterSigningKeys, hosterKeys, ranges } = await getAmendmentData({amendment, contract,log})
+        const { feedKey, encoderKeys, hosterSigningKeys, hosterKeys, ranges } = await getAmendmentData({ chainAPI, amendment, contract, log })
         
         const data = { account, amendmentID, feedKey, hosterKeys, attesterKey, encoderKeys, hosterSigningKeys, ranges, log }
         const { failedKeys, sigs } = await attest_hosting_setup(data)
@@ -88,7 +88,7 @@ module.exports = APIS => {
         if (attesterAddress !== myAddress) return
         log({ type: 'chainEvent', data: `Attester ${attesterID}:  Event received: ${event.method} ${event.data.toString()}` })      
         try {
-          const data = await get_storage_challenge_data(storageChallenge)
+          const data = await get_storage_challenge_data({ chainAPI, storageChallenge })
           const res = await attest_storage_challenge({ data, account, log })
           if (res) {
             const { proof_of_contact, reports } = res
@@ -124,62 +124,10 @@ module.exports = APIS => {
         const { reports } = await attest_performance(opts).catch(err => log({ type: 'performance challenge', data: { text: 'error: attest performance', performanceChallengeID }}))
         clearTimeout(tid)
          // TODO: send just a summary to the chain, not the whole array
-         const nonce = await vaultAPI.getNonce()
+        const nonce = await vaultAPI.getNonce()
         await chainAPI.submitPerformanceChallenge({ performanceChallengeID, reports, signer, nonce })        
       }
     }
-
-    async function get_storage_challenge_data (storageChallenge) {
-      const { id, checks, hoster: hosterID, attester: attesterID } = storageChallenge
-      const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
-      const hosterSigningKey = await chainAPI.getSigningKey(hosterID)
-      const hosterKey = await chainAPI.getHosterKey(hosterID)
-      const attesterKey = await chainAPI.getAttesterKey(attesterID)
-      var feedkey_1
-      for (var i = 0, len = contract_ids.length; i < len; i++) {
-        const contract_id = contract_ids[i]
-        const contract = await chainAPI.getItemByID(contract_id)
-        const { feed: feed_id, ranges, amendments } = await chainAPI.getContractByID(contract_id)
-        const [encoderID, pos] = await getEncoderID(amendments, hosterID)
-        const { feedkey, signatures } = await chainAPI.getFeedByID(feed_id)
-        if (!feedkey_1) feedkey_1 = feedkey
-  
-        checks[contract_id].feedKey = feedkey
-        checks[contract_id].signatures = signatures
-        checks[contract_id].ranges = ranges
-        checks[contract_id].encoderSigningKey = await chainAPI.getSigningKey(encoderID)
-        checks[contract_id].encoder_pos = pos
-        checks[contract_id].amendmentID = amendments[amendments.length - 1]
-        // checks[contract_id] = { index, feedKey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey }
-      }
-      return { id, attesterKey, hosterKey, hosterSigningKey, checks, feedkey_1 }
-    }
-  
-    async function getEncoderID (amendments, hosterID) {
-      const active_amendment = await chainAPI.getAmendmentByID(amendments[amendments.length-1])
-      const pos =  active_amendment.providers.hosters.indexOf(hosterID)
-      const encoderID = active_amendment.providers.encoders[pos]
-      return [encoderID, pos]
-    }
-  
-    async function getAmendmentData ({ amendment, contract, log }) {
-      const { encoders, hosters } = amendment.providers
-      const hosterKeysPromises = []
-      const hosterSigningKeysPromises = []
-      hosters.forEach(id => {
-        hosterKeysPromises.push(chainAPI.getHosterKey(id))
-        hosterSigningKeysPromises.push(chainAPI.getSigningKey(id))
-      })
-      const encoderKeys = await Promise.all(encoders.map((id) => chainAPI.getEncoderKey(id)))
-      const hosterKeys = await Promise.all(hosterKeysPromises)
-      const hosterSigningKeys = await Promise.all(hosterSigningKeysPromises)
-      const feedID = contract.feed
-      const feedKey = await chainAPI.getFeedKey(feedID)
-      const ranges = contract.ranges
-      log({ type: 'attester', data: { text: `Got keys for hosting setup`, data: feedKey, providers: amendment.providers, encoderKeys, hosterKeys, ranges } })
-      return { feedKey, encoderKeys, hosterSigningKeys, hosterKeys, ranges }
-    }
-  
   }
 
   /* ----------------------------------------------------------------------
@@ -528,6 +476,57 @@ module.exports = APIS => {
       }
 
     })
+  }
+
+  async function get_storage_challenge_data ({ chainAPI, storageChallenge }) {
+    const { id, checks, hoster: hosterID, attester: attesterID } = storageChallenge
+    const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
+    const hosterSigningKey = await chainAPI.getSigningKey(hosterID)
+    const hosterKey = await chainAPI.getHosterKey(hosterID)
+    const attesterKey = await chainAPI.getAttesterKey(attesterID)
+    var feedkey_1
+    for (var i = 0, len = contract_ids.length; i < len; i++) {
+      const contract_id = contract_ids[i]
+      const contract = await chainAPI.getItemByID(contract_id)
+      const { feed: feed_id, ranges, amendments } = await chainAPI.getContractByID(contract_id)
+      const [encoderID, pos] = await getEncoderID({ chainAPI, amendments, hosterID })
+      const { feedkey, signatures } = await chainAPI.getFeedByID(feed_id)
+      if (!feedkey_1) feedkey_1 = feedkey
+
+      checks[contract_id].feedKey = feedkey
+      checks[contract_id].signatures = signatures
+      checks[contract_id].ranges = ranges
+      checks[contract_id].encoderSigningKey = await chainAPI.getSigningKey(encoderID)
+      checks[contract_id].encoder_pos = pos
+      checks[contract_id].amendmentID = amendments[amendments.length - 1]
+      // checks[contract_id] = { index, feedKey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey }
+    }
+    return { id, attesterKey, hosterKey, hosterSigningKey, checks, feedkey_1 }
+  }
+
+  async function getEncoderID ({ chainAPI, amendments, hosterID }) {
+    const active_amendment = await chainAPI.getAmendmentByID(amendments[amendments.length-1])
+    const pos =  active_amendment.providers.hosters.indexOf(hosterID)
+    const encoderID = active_amendment.providers.encoders[pos]
+    return [encoderID, pos]
+  }
+
+  async function getAmendmentData ({ chainAPI, amendment, contract, log }) {
+    const { encoders, hosters } = amendment.providers
+    const hosterKeysPromises = []
+    const hosterSigningKeysPromises = []
+    hosters.forEach(id => {
+      hosterKeysPromises.push(chainAPI.getHosterKey(id))
+      hosterSigningKeysPromises.push(chainAPI.getSigningKey(id))
+    })
+    const encoderKeys = await Promise.all(encoders.map((id) => chainAPI.getEncoderKey(id)))
+    const hosterKeys = await Promise.all(hosterKeysPromises)
+    const hosterSigningKeys = await Promise.all(hosterSigningKeysPromises)
+    const feedID = contract.feed
+    const feedKey = await chainAPI.getFeedKey(feedID)
+    const ranges = contract.ranges
+    log({ type: 'attester', data: { text: `Got keys for hosting setup`, data: feedKey, providers: amendment.providers, encoderKeys, hosterKeys, ranges } })
+    return { feedKey, encoderKeys, hosterSigningKeys, hosterKeys, ranges }
   }
 
   /* ----------------------------------------------------------------------
