@@ -230,7 +230,7 @@ module.exports = APIS => {
 				if (tasks[stringtopic].roles['hoster2author'].count) role = 'hoster2author'        
         else if (tasks[stringtopic].roles['hoster'].count) role = 'hoster'
         log({ type: 'hoster', data: { text: `calling done`, role, stringtopic, peerkey } })
-        await done_task_cleanup({ role, topic, remotestringkey: peerkey, state: account.state, log })                   
+        await done_task_cleanup({ role, topic, peers: [peerkey], state: account.state, log })                   
       }
     } catch (err) {
       log({ type: 'Error', data: {  text: 'Error: loading feed data', err } })
