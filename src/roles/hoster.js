@@ -218,17 +218,9 @@ module.exports = APIS => {
       await done_task_cleanup({ role: 'hoster2author', topic, peers, state: account.state, log }) // done for hoster2author (client)
       return { feed }
 
-      async function done ({ type, stringtopic, peerkey }) {
+      async function done ({ role, stringtopic, peerkey }) {
         const { tasks } = account.state
-        var role
         // triggered by clients for: hoster2author (server) in hosting setup & hoster (server)
-
-        // if peer has h2a & hoster role, let's not call with h2a, because
-        // this will set h2a to hoster in remove_from_roles()
-        // & if task hasn't been done yet, h2a will stop to lookup
-        // TODO: find a solution for it
-				if (tasks[stringtopic].roles['hoster2author'].count) role = 'hoster2author'        
-        else if (tasks[stringtopic].roles['hoster'].count) role = 'hoster'
         log({ type: 'hoster', data: { text: `calling done`, role, stringtopic, peerkey } })
         await done_task_cleanup({ role, topic, peers: [peerkey], state: account.state, log })                   
       }
@@ -485,7 +477,6 @@ module.exports = APIS => {
       const channel = account.state.sockets[remotestringkey].channel
       const stringtopic = topic.toString('hex')
       const string_msg = channel.messages[0]
-      console.log('string msg - proof of contact', data, unique_el, proof_of_contact)
       string_msg.send(JSON.stringify({ type: 'proof-of-contact', stringtopic, proof_of_contact: proof_of_contact.toString('hex') }))
     } catch (err) {
       log({ type: 'Error', data: {  text: 'Error: send_proof_of_contact', err } })

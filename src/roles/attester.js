@@ -115,13 +115,19 @@ module.exports = APIS => {
         const feedObj = await chainAPI.getFeedByID(feedID)
         const { feedkey, contracts: contractIDs } = feedObj
         log({ type: 'challenge', data: { text: 'Performance challenge for feed', feedObj } })
-
+        const controller = new AbortController()
+        const { signal, abort } = controller
         const tid = setTimeout(() => {
-          log('performance challenge - timeout')
+          abort()
+          log({ type: 'timeout', data: { texts: 'error: performance challenge - timeout', performanceChallengeID } })
         }, DEFAULT_TIMEOUT)
 
-        const opts = { account, chainAPI, hyper, performanceChallengeID, feedkey, contractIDs, log }
-        const { reports } = await attest_performance(opts).catch(err => log({ type: 'performance challenge', data: { text: 'error: attest performance', performanceChallengeID }}))
+        const opts = { account, chainAPI, hyper, performanceChallengeID, feedkey, contractIDs, signal, log }
+        const { reports } = await attest_performance(opts).catch(err => {
+          if (signal.aborted) return
+          log({ type: 'performance challenge', data: { text: 'error: attest performance', performanceChallengeID }})
+        })
+        if (!reports) return
         clearTimeout(tid)
          // TODO: send just a summary to the chain, not the whole array
         const nonce = await vaultAPI.getNonce()
@@ -533,12 +539,17 @@ module.exports = APIS => {
                           CHECK PERFORMANCE
   ---------------------------------------------------------------------- */
 
-  async function attest_performance({ account, chainAPI, hyper, performanceChallengeID, feedkey,contractIDs, log }) {
+  async function attest_performance({ account, chainAPI, hyper, performanceChallengeID, feedkey,contractIDs, signal, log }) {
     return new Promise(async (resolve, reject) => {
       var reports = {}
       var proof_of_contact
       const { targetList, chunks, expected_chunks_len } = await get_hosters_and_challenge_chunks({ chainAPI, contractIDs, log })
       const topic =  datdot_crypto.get_discoverykey(feedkey)
+
+      signal.addEventListener("abort", () => {
+        // Stop the main operation
+        reject(signal.reason)
+      })
 
       for (const peerkey of targetList) {
         const field = `${topic.toString('hex')}-${peerkey}`
@@ -557,7 +568,7 @@ module.exports = APIS => {
           log({ type: 'attester', data: { text: 'connected to the host for performance challenge', hoster: hosterkey.toString('hex') }})
           const hoster_id = await chainAPI.getUserIDByNoiseKey(hosterkey)
           await feed.update()
-          const opts = { account, performanceChallengeID, feed, chunks: chunks[hoster_id.toString()], hosterkey, topic, log }
+          const opts = { account, performanceChallengeID, feed, chunks: chunks[hoster_id.toString()], hosterkey, topic, signal, log }
           const stats = await measure_performance(opts).catch(err => log({ type: 'fail', data: err })) || []
           reports[hoster_id] ? reports[hoster_id].stats = stats : reports[hoster_id] = { stats }
           done({ type: 'have all reports' })
@@ -632,18 +643,20 @@ module.exports = APIS => {
         log({ type: 'performance challenge', data: { text: 'targetList and chunks to test', all_ids, targetList, chunks: JSON.stringify(chunks) } })
         resolve({ chunks, targetList, expected_chunks_len })
       } catch (err) {
+        if (signal.aborted) return
         log({ type: 'performance challenge', data: { text: 'Error in get_hosters_and_challenge_chunks', err: JSON.stringify(err) } })
         reject()
       }
     })
   }
 
-  async function measure_performance ({ account, performanceChallengeID, feed, chunks, hosterkey, topic, log: parent_log }) {
+  async function measure_performance ({ account, performanceChallengeID, feed, chunks, hosterkey, topic, signal, log: parent_log }) {
     const log = parent_log.sub(`<-attester2hoster performance challenge, me: ${account.identity.myAddress.toString('hex').substring(0,5)}, peer: ${hosterkey.toString('hex').substring(0,5)}`)
     log({ type: 'challenge', data: { text: 'checking performance' } })
     return new Promise(async (resolve, reject) => {
+      signal.addEventListener("abort", () => { reject(signal.reason) })
       log({ type: 'challenge', data: { text: 'getting stats', data: chunks } })
-      const stats = await get_data_and_stats(feed, chunks, log).catch(err => log({ type: 'fail', data: err }))
+      const stats = await get_data_and_stats({ feed, chunks, signal, log }).catch(err => log({ type: 'fail', data: err }))
       // get proof of contact
       await request_proof_of_contact({ account, challenge_id: performanceChallengeID, hosterkey, topic, log })
       log({ type: 'performance check finished', data: { stats: JSON.stringify(stats) } })
@@ -662,13 +675,14 @@ module.exports = APIS => {
     // receiving proof of contact through done cb
   }
 
-  async function get_data_and_stats (feed, chunks, log) {
+  async function get_data_and_stats ({ feed, chunks, signal, log }) {
     log({ type: 'challenge', data: { text: 'Getting data and stats', chunks } })
     return new Promise (async(resolve, reject) => {
       try {
         // const stats = await getStats(feed)
         const stats = {}
         const start = performance.now()
+        signal.addEventListener("abort", () => { reject(signal.reason) })
 
         // log({ type: 'challenge', data: { text: 'Downloading range', chunks: chunks.indexes } })
         // await download_range(feed, chunks.indexes)
