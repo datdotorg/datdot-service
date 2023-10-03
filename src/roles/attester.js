@@ -60,12 +60,40 @@ module.exports = APIS => {
         const [attesterID] = amendment.providers.attesters
         const attesterAddress = await chainAPI.getUserAddress(attesterID)
         if (attesterAddress !== myAddress) return
+        const controller = new AbortController()
+        const { signal, abort } = controller
+
+        const tid = setTimeout(() => {
+          log({ type: 'timeout', data: { texts: 'error: hosting setup - timeout', amendmentID } })
+          if (signal.aborted) return
+          abort()
+        }, DEFAULT_TIMEOUT)
 
         log({ type: 'attester', data: { text: `Attester ${attesterID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment)} })
-        const { feedKey, encoderKeys, hosterSigningKeys, hosterKeys, ranges } = await getAmendmentData({ chainAPI, amendment, contract, log })
+        const { 
+          feedKey, 
+          encoderKeys, 
+          hosterSigningKeys, 
+          hosterKeys, 
+          ranges 
+        } = await getAmendmentData({ chainAPI, amendment, contract, log })
         
-        const data = { account, amendmentID, feedKey, hosterKeys, attesterKey, encoderKeys, hosterSigningKeys, ranges, log }
-        const { failedKeys, sigs } = await attest_hosting_setup(data)
+        const data = { 
+          account, 
+          amendmentID, 
+          feedKey, 
+          hosterKeys, 
+          attesterKey, 
+          encoderKeys, 
+          hosterSigningKeys, 
+          ranges, 
+          signal, 
+          log 
+        }
+        const { failedKeys, sigs } = await attest_hosting_setup(data).catch(err => {
+          if (signal.aborted) return
+          log({ type: 'hosting setup', data: { text: 'error: hosting setup', amendmentID }})
+        })
         log({ type: 'attester', data: { text: `Hosting setup done`, amendmentID, failedKeys, sigs } })
         const signatures = {}
         for (const sig of sigs) {
@@ -74,6 +102,7 @@ module.exports = APIS => {
           signatures[hoster_id] = proof_of_contact
         }
         const report = { id: amendmentID, failed: failedKeys, signatures }
+        clearTimeout(tid)
         const nonce = await vaultAPI.getNonce()
         await chainAPI.amendmentReport({ report, signer, nonce })
       }
@@ -87,21 +116,29 @@ module.exports = APIS => {
         const attesterAddress = await chainAPI.getUserAddress(attesterID)
         if (attesterAddress !== myAddress) return
         log({ type: 'chainEvent', data: `Attester ${attesterID}:  Event received: ${event.method} ${event.data.toString()}` })      
-        try {
-          const data = await get_storage_challenge_data({ chainAPI, storageChallenge })
-          const res = await attest_storage_challenge({ data, account, log })
-          if (res) {
-            const { proof_of_contact, reports } = res
-            const nonce = await vaultAPI.getNonce()
-            const attestation = { 
-              response: { storageChallengeID, proof_of_contact, reports }, 
-              signer, 
-              nonce
-            }
-            await chainAPI.submitStorageChallenge(attestation)
+        const controller = new AbortController()
+        const { signal, abort } = controller
+        const tid = setTimeout(() => {
+          log({ type: 'timeout', data: { texts: 'error: storage challenge - timeout', storageChallengeID } })
+          if (signal.aborted) return
+          abort()
+        }, DEFAULT_TIMEOUT)
+
+        const data = await get_storage_challenge_data({ chainAPI, storageChallenge })
+        const res = await attest_storage_challenge({ data, account, signal, log }).catch(err => {
+          if (signal.aborted) return
+          log({ type: 'storage challenge', data: { text: 'error: attest storage', storageChallengeID }})
+        })
+        if (res) {
+          clearTimeout(tid)
+          const { proof_of_contact, reports } = res
+          const nonce = await vaultAPI.getNonce()
+          const attestation = { 
+            response: { storageChallengeID, proof_of_contact, reports }, 
+            signer, 
+            nonce
           }
-        } catch (err) {
-          log({ type: 'error', data: { text: `Error: ${JSON.stringify(err)}` } })
+          await chainAPI.submitStorageChallenge(attestation)
         }
       }
       else if (event.method === 'NewPerformanceChallenge') {
@@ -118,8 +155,9 @@ module.exports = APIS => {
         const controller = new AbortController()
         const { signal, abort } = controller
         const tid = setTimeout(() => {
-          abort()
           log({ type: 'timeout', data: { texts: 'error: performance challenge - timeout', performanceChallengeID } })
+          if (signal.aborted) return
+          abort()
         }, DEFAULT_TIMEOUT)
 
         const opts = { account, chainAPI, hyper, performanceChallengeID, feedkey, contractIDs, signal, log }
@@ -142,32 +180,49 @@ module.exports = APIS => {
 
   async function attest_hosting_setup (data) {
     return new Promise(async (resolve, reject) => {
-      const { account, amendmentID, feedKey, hosterKeys, attesterKey, encoderKeys, hosterSigningKeys, ranges, log } = data
+      const { account, amendmentID, feedKey, hosterKeys, attesterKey, encoderKeys, hosterSigningKeys, ranges, signal, log } = data
+      const failedKeys = []
+      const sigs = []
+      signal.addEventListener("abort", ({ failedKeys, sigs }) => { 
+        reject({ abort_reason: signal.reason, failedKeys, sigs }) 
+      })
       try {
         const messages = {}
         const responses = []
         const encoders_len = encoderKeys.length
+        // Stop the main operation
         // log({ type: 'attester', data: { text: `Attest hosting setup`, amendmentID, encoderKeys } })
         for (var i = 0, len = encoders_len; i < len; i++) {
           const encoderKey = await encoderKeys[i]
           const hosterKey = await hosterKeys[i]
-          const topic1 = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attesterKey, id: amendmentID, log })
-          const topic2 = derive_topic({ senderKey: attesterKey, feedKey, receiverKey: hosterKey, id: amendmentID, log }) 
+          const id = amendmentID
+          const topic1 = derive_topic({ senderKey: encoderKey, feedKey, receiverKey: attesterKey, id, log })
+          const topic2 = derive_topic({ senderKey: attesterKey, feedKey, receiverKey: hosterKey, id, log }) 
 
           const unique_el = `${amendmentID}/${i}`
           const hosterSigningKey = hosterSigningKeys[i]
 
-          const opts = { account, topic1, topic2, encoderKey, hosterSigningKey, hosterKey, unique_el, ranges, log }
+          const opts = { 
+            account, 
+            topic1, 
+            topic2, 
+            encoderKey, 
+            hosterSigningKey, 
+            hosterKey, 
+            unique_el, 
+            ranges, 
+            signal, 
+            log 
+          }
           opts.compare_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
           responses.push(verify_and_forward_encodings(opts))
         }
         
         const resolved_responses = await Promise.all(responses) // can be 0 to 6 pubKeys of failed providers
-        const failedKeys = []
-        const sigs = []
         // log({ type: 'attester', data: { text: `Resolved responses!`, resolved_responses } })
         for (const res of resolved_responses) {
-          const { failedKeys: failed, proof_of_contact, hosterKey } = res
+          const { abort_reason, failedKeys: failed, proof_of_contact, hosterKey } = res
+          if (abort_reason) log({ type: 'attester', data: { text: 'error: in verify_and_forward_encodings', failed, failedKeys }})
           failedKeys.push(failed)
           sigs.push({ proof_of_contact, hosterKey })
         }
@@ -176,23 +231,20 @@ module.exports = APIS => {
         resolve(report)
       } catch(err) {
         log({ type: 'fail', data: { text: 'Error: attest_hosting_setup', err }})
-        const failedKeys = []
         for (const key of encoderKeys) failedKeys.push(key.toString('hex'))
         for (const key of hosterKeys) failedKeys.push(key.toString('hex'))
-        reject({ failedKeys, sigs: [] })
+        abort({ failedKeys, sigs: [] })
       }
     })
   }
     
   async function verify_and_forward_encodings (opts) {
-    const { account, topic1, topic2, encoderKey, hosterSigningKey, hosterKey, unique_el, ranges, compare_CB, log } = opts
+    const { account, topic1, topic2, encoderKey, hosterSigningKey, hosterKey, unique_el, ranges, compare_CB, signal, log } = opts
     const failedKeys = []
     return new Promise(async (resolve, reject) => {
-      const tid = setTimeout(() => {
-        log({ type: 'attester', data: { text: 'verify_and_forward_encodings timeout', hosterKey: hosterKey.toString('hex') }})
-        failedKeys.push(encoderKey.toString('hex'), hosterKey.toString('hex'))
-        reject({ failedKeys })
-      }, DEFAULT_TIMEOUT)
+      signal.addEventListener("abort", (failedKeys) => { 
+        reject({ abort_reason: signal.reason, failedKeys }) 
+      })
       try {
         // log({ type: 'attester', data: { text: 'calling connect_compare_send', encoderKey: encoderKey.toString('hex') }})
         const proof_of_contact = await connect_compare_send({
@@ -205,48 +257,59 @@ module.exports = APIS => {
           hosterSigningKey,
           unique_el,
           ranges,
+          signal,
           log
         })
         log({ type: 'attester', data: { text: 'All compared and sent, resolving now', encoderKey: encoderKey.toString('hex'), proof_of_contact }})
         if (!proof_of_contact) failedKeys.push(hosterKey)
-        clearTimeout(tid)
         resolve({ failedKeys, proof_of_contact, hosterKey })
       } catch (err) {
         log({ type: 'attester', data: { text: 'Error: verify_and_forward_encodings', hosterKey: hosterKey.toString('hex'), err }})
         failedKeys.push(encoderKey.toString('hex'), hosterKey.toString('hex'))
-        reject({ failedKeys })
+        abort({ failedKeys })
       }
     })
   }
   
   async function connect_compare_send (opts) {
-    const { account, topic1, topic2, key1, key2, hosterSigningKey, unique_el, compare_CB, ranges, log } = opts
+    const { 
+      account, 
+      topic1, 
+      topic2, 
+      key1, 
+      key2, 
+      hosterSigningKey, 
+      unique_el, 
+      compare_CB, 
+      ranges, 
+      signal,
+      log 
+    } = opts
     const { hyper } = account
     const expectedChunkCount = getRangesCount(ranges)
     const log2encoder = log.sub(`<-Attester to encoder, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${key1.toString('hex').substring(0,5)}`)
     const log2hoster = log.sub(`<-Attester to hoster, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${key2.toString('hex').substring(0,5)}`)
     
     return new Promise(async (resolve, reject) => {       
-      const tid = setTimeout(() => {
-        reject({ type: `connect_compare_send timeout` })
-      }, DEFAULT_TIMEOUT)
-      
       var feed1
       var feed2
       var sentCount = 0
       const chunks = {}
       var proof_of_contact
+
+      signal.addEventListener("abort", () => { reject(signal.reason) })
       
       try {
         // CONNECT TO ENCODER
         log2encoder({ type: 'attester', data: { text: 'load feed', encoder: key1.toString('hex'), topic: topic1.toString('hex') }})
-        await hyper.new_task({  newfeed: false, topic: topic1, log: log2encoder })
+        await hyper.new_task({  newfeed: false, topic: topic1, signal, log: log2encoder })
         
         log2encoder({ type: 'attester', data: { text: 'connect', encoder: key1.toString('hex') }})
         await hyper.connect({ 
           swarm_opts: { role: 'attester2encoder', topic: topic1, mode: { server: false, client: true } }, 
           targets: { targetList: [key1.toString('hex')], msg: { receive: { type: 'feedkey' } } },
           onpeer: onencoder,
+          signal,
           log: log2encoder
         })
         // log2encoder({ type: 'attester', data: { text: 'waiting for onencoder', key1: key1.toString('hex') }})
@@ -276,7 +339,7 @@ module.exports = APIS => {
 
 
         // CONNECT TO HOSTER
-        const { feed } = await hyper.new_task({ topic: topic2, log: log2hoster })
+        const { feed } = await hyper.new_task({ topic: topic2, signal, log: log2hoster })
         feed2 = feed
         log2hoster({ type: 'attester', data: { text: 'load feed', hoster: key2.toString('hex'), topic: topic2.toString('hex') }})
 
@@ -285,6 +348,7 @@ module.exports = APIS => {
           targets: { feed: feed2, targetList: [key2.toString('hex')], msg: { send: { type: 'feedkey' } } } ,
           onpeer: onhoster,
           done,
+          signal,
           log: log2hoster
         })
         
@@ -338,7 +402,6 @@ module.exports = APIS => {
           if (!proof_of_contact) return
           if ((sentCount !== expectedChunkCount)) return
           log({ type: 'attester', data: { text: 'have proof and all data sent', proof, sentCount, expectedChunkCount }})
-          clearTimeout(tid)
           await done_task_cleanup({ role: 'attester2encoder', topic: topic1, remotestringkey: key1.toString('hex'), state: account.state, log })
           await done_task_cleanup({ role: 'attester2hoster', topic: topic2, remotestringkey: key2.toString('hex'), state: account.state, log })
           resolve(proof_of_contact)
@@ -362,21 +425,19 @@ module.exports = APIS => {
   // make a list of all checks (all feedkeys, amendmentIDs...)
   // for each check, get data, verify and make a report => push report from each check into report_all
   // when all checks are done, report to chain
-  async function attest_storage_challenge ({ data, account, log: parent_log }) {
+  async function attest_storage_challenge ({ data, account, signal, log: parent_log }) {
     return new Promise(async (resolve, reject) => {
-      const tid = setTimeout(() => {
-        return reject({ type: `attester_timeout` })
-      }, DEFAULT_TIMEOUT)
-
       const { hyper } = account
       const { id, attesterKey, hosterKey, hosterSigningKey, checks, feedkey_1 } = data
       const logStorageChallenge = parent_log.sub(`<-attester2hoster storage challenge, me: ${attesterKey.toString('hex').substring(0,5)}, peer: ${hosterKey.toString('hex').substring(0,5)}`)
       var reports
       var proof_of_contact
       const verified = [] 
+
+      signal.addEventListener("abort", () => { reject(signal.reason) })
       
       const topic = derive_topic({ senderKey: hosterKey, feedKey: feedkey_1, receiverKey: attesterKey, id, log: logStorageChallenge })
-      await hyper.new_task({ newfeed: false, topic, log: logStorageChallenge })
+      await hyper.new_task({ newfeed: false, topic, signal, log: logStorageChallenge })
       logStorageChallenge({ type: 'attestor', data: { text: `New task (storage challenge) added` } })
 
       await hyper.connect({ 
@@ -384,6 +445,7 @@ module.exports = APIS => {
         targets: { targetList: [ hosterKey.toString('hex') ], msg: { receive: { type: 'feedkey' } } },
         onpeer: onhoster,
         done,
+        signal,
         log: logStorageChallenge
       })
 
@@ -406,7 +468,6 @@ module.exports = APIS => {
         } catch (err) {
           logStorageChallenge({ type: 'fail', data: { text: 'results error', err } })
           logStorageChallenge({ type: 'error', data: [`Error: ${err}`] })
-          clearTimeout(tid)
           // beam.destroy()
           reject({ type: `hoster_proof_fail`, data: err })
         }
@@ -425,7 +486,6 @@ module.exports = APIS => {
         if (!proof_of_contact) return
         if ((!reports || reports.length !== Object.keys(checks).length)) return
         logStorageChallenge({ type: 'attester', data: { text: 'have proof and all reports', proof_of_contact, reports_len: reports.length, checks_len: Object.keys(checks).length }})
-        clearTimeout(tid)
         done_task_cleanup({ role: 'storage_attester', topic, remotestringkey: hosterKey.toString('hex'), state: account.state, log: logStorageChallenge })
         // doesn't need to send msg with type done, because it already sent ack-proof-of-contact
         resolve({ proof_of_contact, reports })
@@ -539,21 +599,18 @@ module.exports = APIS => {
                           CHECK PERFORMANCE
   ---------------------------------------------------------------------- */
 
-  async function attest_performance({ account, chainAPI, hyper, performanceChallengeID, feedkey,contractIDs, signal, log }) {
+  async function attest_performance({ account, chainAPI, hyper, performanceChallengeID, feedkey, contractIDs, signal, log }) {
     return new Promise(async (resolve, reject) => {
       var reports = {}
       var proof_of_contact
       const { targetList, chunks, expected_chunks_len } = await get_hosters_and_challenge_chunks({ chainAPI, contractIDs, log })
       const topic =  datdot_crypto.get_discoverykey(feedkey)
 
-      signal.addEventListener("abort", () => {
-        // Stop the main operation
-        reject(signal.reason)
-      })
+      signal.addEventListener("abort", () => { reject(signal.reason) })
 
       for (const peerkey of targetList) {
         const field = `${topic.toString('hex')}-${peerkey}`
-        const { feed } = await hyper.new_task({ feedkey, topic, field, log })
+        const { feed } = await hyper.new_task({ feedkey, topic, field, signal, log })
         log({ type: 'challenge', data: { text: 'Got performance challenge feed', field, peerkey, fedkey: feed.key.toString('hex') } })
 
         await hyper.connect({ 
@@ -561,6 +618,7 @@ module.exports = APIS => {
           targets: { targetList: [peerkey], feed },
           onpeer: onhoster_for_performance_challenge,
           done,
+          signal,
           log
         })
 
@@ -677,13 +735,12 @@ module.exports = APIS => {
 
   async function get_data_and_stats ({ feed, chunks, signal, log }) {
     log({ type: 'challenge', data: { text: 'Getting data and stats', chunks } })
-    return new Promise (async(resolve, reject) => {
+    return new Promise (async (resolve, reject) => {
+      signal.addEventListener("abort", () => { reject(signal.reason) })
       try {
         // const stats = await getStats(feed)
         const stats = {}
         const start = performance.now()
-        signal.addEventListener("abort", () => { reject(signal.reason) })
-
         // log({ type: 'challenge', data: { text: 'Downloading range', chunks: chunks.indexes } })
         // await download_range(feed, chunks.indexes)
         // log({ type: 'challenge', data: { text: 'Range downloaded', index } })

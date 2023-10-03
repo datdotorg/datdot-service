@@ -54,13 +54,20 @@ module.exports = APIS => {
         const pos = await isForMe(hosters)
         if (pos === undefined) return // pos can be 0
 
+        const controller = new AbortController()
+        const { signal, abort } = controller
+        const tid = setTimeout(() => {
+          log({ type: 'timeout', data: { texts: 'error: hosting setup - timeout', amendmentID } })
+          if (signal.aborted) return
+          abort()
+        }, DEFAULT_TIMEOUT)
+
         log({ type: 'hoster', data: { text: `Event received: ${event.method} ${event.data.toString()}` } })
         const encoderSigningKey = await chainAPI.getSigningKey(encoders[pos])
         const { feedKey, attesterKey, plan, ranges, signatures } = await getAmendmentData(attesters, amendment)
         const data = {
           hyper,
           amendmentID,
-          chainAPI,
           account,
           hosterKey,
           encoderSigningKey,
@@ -68,17 +75,17 @@ module.exports = APIS => {
           attesterKey,
           plan,
           ranges,
-          signatures,
           encoder_pos: pos,
+          signal,
           log
         }
 
-        try {
-          const { feed } = await receive_data_and_start_hosting(data)
-          log({ type: 'hoster', data: {  text: `Hosting for the amendment ${amendmentID} started`, feedkey: feed.key.toString('hex') } })
-        } catch (error) { 
-          log({ type: 'error', data: { text: 'Caught error from hosting setup (hoster)', error }})
-        }
+        const { feed } = await receive_data_and_start_hosting(data).catch(err => {
+          if (signal.aborted) return
+          log({ type: 'performance challenge', data: { text: 'error: hosting setup', amendmentID }})
+        })
+        clearTimeout(tid)
+        log({ type: 'hoster', data: {  text: `Hosting for the amendment ${amendmentID} started`, feedkey: feed.key.toString('hex') } })
       }
       else if (event.method === 'HostingStarted') {
         const [amendmentID] = event.data
@@ -101,19 +108,21 @@ module.exports = APIS => {
         const hosterAddress = await chainAPI.getUserAddress(hosterID)
         if (hosterAddress !== myAddress) return
         log({ type: 'hoster', data: { text: `Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}` } })
-        try {
-          const data = await get_storage_challenge_data(storageChallenge)
-          await send_storage_proofs_to_attester({ data, account, log })
-          log({ type: 'hoster', data: { text: `sendStorageChallengeToAttester completed` } })
-        } catch (err) {
-          log({ type: 'error', data: { text: `Error: ${JSON.stringify(err)}` } })
-        }
-      }
-      else if (event.method === 'NewPerformanceChallenge') {
-        const [performance_challenge_id] = event.data
-        const performanceChallenge = await chainAPI.getPerformanceChallengeByID(performance_challenge_id)
-        const feed = await chainAPI.getFeedByID(performanceChallenge.feed)
-        const stringkey = feed.feedkey.toString('hex')
+        const controller = new AbortController()
+        const { signal, abort } = controller
+        const tid = setTimeout(() => {
+          log({ type: 'timeout', data: { texts: 'error: storage challenge - timeout', id } })
+          if (signal.aborted) return
+          abort()
+        }, DEFAULT_TIMEOUT)
+
+        const data = await get_storage_challenge_data(storageChallenge)
+        await send_storage_proofs_to_attester({ data, account, signal, log }).catch(err => {
+          if (signal.aborted) return
+          log({ type: 'storage challenge', data: { text: 'error: provide storage proof', id }})
+        })
+        clearTimeout(tid)
+        log({ type: 'hoster', data: { text: `sendStorageChallengeToAttester completed` } })
       }
     }
     // HELPERS
@@ -167,66 +176,77 @@ module.exports = APIS => {
 
   async function receive_data_and_start_hosting (data) {
     return new Promise (async (resolve,reject) => {
-      const { hyper, account, amendmentID, feedKey, hosterKey, encoderSigningKey, encoder_pos, attesterKey, plan, signatures, ranges, log } = data
-      const expectedChunkCount = getRangesCount(ranges)
-      await addKey(account, feedKey, plan)
-      const log2Author = log.sub(`Hoster to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)} `)
-      log({ type: 'hoster', data: { text: 'load feed', amendment: amendmentID } })
-      const { feed } = await loadFeedData({ account, hyper, ranges, feedKey, log: log2Author })
-      const opts = { account, hyper, amendmentID, hosterKey, attesterKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log }
-      await getEncodedDataFromAttester(opts)
-      resolve({ feed })
+      const { hyper, amendmentID, account, feedKey, plan, ranges, signal, log } = data  
+      signal.addEventListener("abort", () => { reject(signal.reason) })
+      try {
+        await addKey(account, feedKey, plan)
+        const log2Author = log.sub(`Hoster to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)} `)
+        log({ type: 'hoster', data: { text: 'load feed', amendment: amendmentID } })
+        const { feed } = await loadFeedData({ account, hyper, ranges, feedKey, signal, log: log2Author })
+        await getEncodedDataFromAttester(data)
+        resolve({ feed })
+      } catch (err) {
+        log({ type: 'Error', data: {  text: 'Error: receive_data_and_start_hosting', err } })
+        if (signal.aborted) return
+        abort()
+      }
     })
   }
 
-  async function loadFeedData({ account, hyper, ranges, feedKey, log }) {
-    try {
+  async function loadFeedData({ account, hyper, ranges, feedKey, signal, log }) {
+    return new Promise (async (resolve,reject) => {
       const topic = datdot_crypto.get_discoverykey(feedKey)
       const stringtopic = topic.toString('hex')
-      const { feed } = await hyper.new_task({ feedkey: feedKey, topic, log })
+      const { feed } = await hyper.new_task({ feedkey: feedKey, topic, signal, log })
       var peers = []
+      signal.addEventListener("abort", () => { reject(signal.reason) })
+      try {
 
-      // replicate feed from author
-      await hyper.connect({ 
-        swarm_opts: { role: 'hoster2author', topic, mode: { server: true, client: true } }, 
-        done,
-        onpeer,
-        log
-      })
+        // replicate feed from author
+        await hyper.connect({ 
+          swarm_opts: { role: 'hoster2author', topic, mode: { server: true, client: true } }, 
+          done,
+          onpeer,
+          signal,
+          log
+        })
 
-      function onpeer ({ peerkey }) {
-        log({ type: 'hoster', data: { text: `onpeer callback`, stringtopic, peerkey } })
-        peers.push(peerkey.toString('hex'))
-      }
+        function onpeer ({ peerkey }) {
+          log({ type: 'hoster', data: { text: `onpeer callback`, stringtopic, peerkey } })
+          peers.push(peerkey.toString('hex'))
+        }
+        
+        var stringkey = feed.key.toString('hex')
+        var storage
+        log({ type: 'hoster', data: { text: `load feed`, stringkey } })
+        if (!account.storages.has(stringkey)) {
+          log({ type: 'hoster', data: { text: `New storage for feed`, stringkey } })
+          const db = sub(account.db, stringkey, { valueEncoding: 'binary' })
+          storage = new hosterStorage({ db, feed, log }) // comes with interecepting the feeds
+          account.storages.set(stringkey, storage)
+        } else storage = await getStorage({account, key: feed.key, log})
       
-      var stringkey = feed.key.toString('hex')
-      var storage
-      log({ type: 'hoster', data: { text: `load feed`, stringkey } })
-      if (!account.storages.has(stringkey)) {
-        log({ type: 'hoster', data: { text: `New storage for feed`, stringkey } })
-        const db = sub(account.db, stringkey, { valueEncoding: 'binary' })
-        storage = new hosterStorage({ db, feed, log }) // comes with interecepting the feeds
-        account.storages.set(stringkey, storage)
-      } else storage = await getStorage({account, key: feed.key, log})
-     
-      // make hoster storage for feed
-      let downloaded = []
-      for (const range of ranges) { downloaded.push(download_range(feed, range)) }
-      await Promise.all(downloaded)
-      peers = [...new Set(peers)]
-      log({ type: 'hoster', data: {  text: 'all ranges downloaded', ranges, peers } }) 
-      await done_task_cleanup({ role: 'hoster2author', topic, peers, state: account.state, log }) // done for hoster2author (client)
-      return { feed }
+        // make hoster storage for feed
+        let downloaded = []
+        for (const range of ranges) { downloaded.push(download_range({ feed, range, signal })) }
+        await Promise.all(downloaded)
+        peers = [...new Set(peers)]
+        log({ type: 'hoster', data: {  text: 'all ranges downloaded', ranges, peers } }) 
+        await done_task_cleanup({ role: 'hoster2author', topic, peers, state: account.state, log }) // done for hoster2author (client)
+        resolve({ feed })
 
-      async function done ({ role, stringtopic, peerkey }) {
-        const { tasks } = account.state
-        // triggered by clients for: hoster2author (server) in hosting setup & hoster (server)
-        log({ type: 'hoster', data: { text: `calling done`, role, stringtopic, peerkey } })
-        await done_task_cleanup({ role, topic, peers: [peerkey], state: account.state, log })                   
+        async function done ({ role, stringtopic, peerkey }) {
+          const { tasks } = account.state
+          // triggered by clients for: hoster2author (server) in hosting setup & hoster (server)
+          log({ type: 'hoster', data: { text: `calling done`, role, stringtopic, peerkey } })
+          await done_task_cleanup({ role, topic, peers: [peerkey], state: account.state, log })                   
+        }
+      } catch (err) {
+        log({ type: 'Error', data: {  text: 'Error: loading feed data', err } })
+        if (signal.aborted) return
+        abort()
       }
-    } catch (err) {
-      log({ type: 'Error', data: {  text: 'Error: loading feed data', err } })
-    }
+    }) 
   }
 
   async function getStorage ({account, key, log}) {
@@ -236,23 +256,39 @@ module.exports = APIS => {
     return storage
   }
 
-  async function getEncodedDataFromAttester(opts) {
-    const { account, hyper, amendmentID, hosterKey, attesterKey, expectedChunkCount, encoderSigningKey, encoder_pos, feedKey, log } = opts
+  async function getEncodedDataFromAttester(data) {
+    const { 
+      hyper,
+      amendmentID,
+      account,
+      hosterKey,
+      encoderSigningKey,
+      feedKey,
+      attesterKey,
+      ranges,
+      encoder_pos,
+      signal,
+      log
+    } = data
+    
+    const expectedChunkCount = getRangesCount(ranges)
     const log2attester = log.sub(`hoster to attester, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attesterKey.toString('hex').substring(0,5)} amendment ${amendmentID}`)
     const remotestringkey = attesterKey.toString('hex')
     const unique_el = `${amendmentID}/${encoder_pos}`
     const topic = derive_topic({ senderKey: attesterKey, feedKey, receiverKey: hosterKey, id: amendmentID, log })
     let counter = 0
     return new Promise(async (resolve, reject) => {
+      await hyper.new_task({ newfeed: false, topic, signal, log: log2attester })
+      signal.addEventListener("abort", () => { reject(signal.reason) })
       try {
         // hoster to attester in hosting setup
-        await hyper.new_task({ newfeed: false, topic, log: log2attester })
         log2attester({ type: 'hoster', data: { text: `load feed`, attester: remotestringkey } })
         await hyper.connect({
           swarm_opts: { role: 'hoster2attester', topic, mode: { server: false, client: true } },
           targets: { targetList: [remotestringkey], msg: { receive: { type: 'feedkey' }} },
           onpeer: onattester,
           done,
+          signal,
           log: log2attester
         })
         async function onattester ({ feed }) {
@@ -388,20 +424,17 @@ module.exports = APIS => {
       2. CHALLENGES
   -------------------------------------------- */
   
-  async function send_storage_proofs_to_attester({ data, account, log: parent_log }) {
+  async function send_storage_proofs_to_attester({ data, account, signal, log: parent_log }) {
     return new Promise(async (resolve, reject) => {
-      const tid = setTimeout(() => {
-        return reject({ type: `attester_timeout` })
-      }, DEFAULT_TIMEOUT)
-      
       const { hyper } = account
-      const sent_chunks = {}
       const { challenge_id, attesterKey, hosterKey, checks, feedkey_1 } = data
       
       const log = parent_log.sub(`<-hoster2attester storage challenge, me: ${hosterKey.toString('hex').substring(0,5)}, peer: ${attesterKey.toString('hex').substring(0, 5)} `)
       
+      signal.addEventListener("abort", () => { reject(signal.reason) })
+
       const topic = derive_topic({ senderKey: hosterKey, feedKey: feedkey_1, receiverKey: attesterKey, id: challenge_id, log })
-      const { feed } = await hyper.new_task({ topic, log })
+      const { feed } = await hyper.new_task({ topic, signal, log })
       log({ type: 'hoster', data: { text: `New task added (storage hoster)` } })
       
       
@@ -410,12 +443,12 @@ module.exports = APIS => {
         targets: { feed, targetList: [ attesterKey.toString('hex') ], msg: { send: { type: 'feedkey' } } },
         onpeer: onattester,
         done,
+        signal,
         log
       })
       
       async function onattester ({ feed, remotestringkey }) {
         log({ type: 'hoster', data: { text: `Connected to the storage chalenge attester`, feedkey: feed.key.toString('hex') } })
-          
         try {
           const appended = []
           const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
@@ -440,13 +473,12 @@ module.exports = APIS => {
             topic, 
             log 
           })
-          clearTimeout(tid)
           log({ type: 'hoster', data: { text: `${appended.length} appended to the attester` } })
           resolve()
         } catch (err) {
           log({ type: 'error', data: { text: `Error: ${err}` } })
           clearTimeout(tid)
-          return reject({ type: `hoster_proof_fail`, data: err })
+          abort()
         }
             
         function send (message, i) {
