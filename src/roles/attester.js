@@ -116,7 +116,7 @@ module.exports = APIS => {
         const attesterAddress = await chainAPI.getUserAddress(attesterID)
         if (attesterAddress !== myAddress) return
         log({ type: 'chainEvent', data: `Attester ${attesterID}:  Event received: ${event.method} ${event.data.toString()}` })      
-        const attestation = { response: { storageChallengeID, reports: [] },  signer }
+        const attestation = { response: { storageChallengeID, status: undefined, reports: [] },  signer }
         var conn // set to true once connection with hoster is established
         const controller = new AbortController()
         const { signal, abort } = controller
@@ -126,7 +126,7 @@ module.exports = APIS => {
           abort()
           attestation.nonce = await vaultAPI.getNonce()
           if (conn) { // connection was established, but no data was sent
-            attestation.response.proof_of_contact = { status: 'no-proof' }
+            attestation.response.status = 'no-proof' 
           } // else: no connection was established between hoster and attester, reponse is empty
           await chainAPI.submitStorageChallenge(attestation)
         }, DEFAULT_TIMEOUT)
@@ -137,16 +137,18 @@ module.exports = APIS => {
           abort()
           log({ type: 'storage challenge', data: { text: 'error: attest storage', storageChallengeID }})
           attestation.nonce = await vaultAPI.getNonce()
-          if (err.cause === 'invalid-proof') {
-            attestation.response.proof_of_contact = { status: err.cause }
+          if (err.cause === 'invalid-proof' || err.cause === 'no-data') {
+            attestation.response.status = err.cause 
           }
           await chainAPI.submitStorageChallenge(attestation)
         })
         if (res) {
           clearTimeout(tid)
           const { proof_of_contact, reports } = res
+          const failed = reports.filter(r => r === 'failed')
           attestation.nonce = await vaultAPI.getNonce()
-          attestation.response.proof_of_contact = { status: 'valid-proof', proof: proof_of_contact }
+          attestation.response.status = failed.length? 'failed' : 'success'
+          attestation.response.proof_of_contact = proof_of_contact
           attestation.response.reports = reports
           await chainAPI.submitStorageChallenge(attestation)
         } else {
@@ -464,10 +466,10 @@ module.exports = APIS => {
         log: logStorageChallenge
       })
 
-      function onhoster ({ feed, remotestringkey }) {
+      async function onhoster ({ feed, remotestringkey }) {
         logStorageChallenge({ type: 'attestor', data: { text: `Connected to the storage chalenge hoster`, remotestringkey } })
         conn = true
-        get_data(feed)
+        await get_data(feed)
       }
 
       async function get_data (feed) {
@@ -485,10 +487,8 @@ module.exports = APIS => {
           })
           done({ type: 'got all data' })
         } catch (err) {
-          logStorageChallenge({ type: 'fail', data: { text: 'results error', err } })
-          logStorageChallenge({ type: 'error', data: [`Error: ${err}`] })
-          // beam.destroy()
-          reject({ type: `hoster_proof_fail`, data: err })
+          logStorageChallenge({ type: 'error', data: [`error in get data: ${err}`] })
+          reject(new Error('error in get data', { cause: 'no-data' }))
         }
       }
 
