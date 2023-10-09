@@ -77,7 +77,11 @@ async function run () {
     config.bootstrap = bootstrap 
     await new Promise(resolve => setTimeout(resolve, 250))
 
-    const filename = require.resolve('datdot-node-javascript')
+    // @TODO: switch to separate module in the future:
+
+    // const filename = require.resolve('datdot-node-javascript')
+    const filename = path.join(__dirname, '../src/node_modules/datdot-node-javascript-internal/chain.js')
+
     const args1 = [filename, JSON.stringify(config), /*logkeeper*/9001]
     const chain = spawn('node', args1, { stdio: 'inherit' })
     all.push(chain)    

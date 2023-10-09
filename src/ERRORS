@@ -1,7 +1,0 @@
-- 'uncaughtException Error: connection reset by peer Error: connection reset by peer uncaughtException' (user line 82)
-
-- peers keep connection although task is already done (error in done task cleanup) => see when to leavePeer / leave topic
-
-- general swarm hoster connections don't get cleaned
-
-- handle_matching_topic/ondicovery => checking if task is already being handled is not completely correct

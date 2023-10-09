@@ -116,30 +116,45 @@ module.exports = APIS => {
         const attesterAddress = await chainAPI.getUserAddress(attesterID)
         if (attesterAddress !== myAddress) return
         log({ type: 'chainEvent', data: `Attester ${attesterID}:  Event received: ${event.method} ${event.data.toString()}` })      
+        const attestation = { response: { storageChallengeID, reports: [] },  signer }
+        var conn // set to true once connection with hoster is established
         const controller = new AbortController()
         const { signal, abort } = controller
-        const tid = setTimeout(() => {
+        const tid = setTimeout(async () => {
           log({ type: 'timeout', data: { texts: 'error: storage challenge - timeout', storageChallengeID } })
           if (signal.aborted) return
           abort()
+          attestation.nonce = await vaultAPI.getNonce()
+          if (conn) { // connection was established, but no data was sent
+            attestation.response.proof_of_contact = { status: 'no-proof' }
+          } // else: no connection was established between hoster and attester, reponse is empty
+          await chainAPI.submitStorageChallenge(attestation)
         }, DEFAULT_TIMEOUT)
 
         const data = await get_storage_challenge_data({ chainAPI, storageChallenge })
-        const res = await attest_storage_challenge({ data, account, signal, log }).catch(err => {
+        const res = await attest_storage_challenge({ data, account, signal, conn, log }).catch(async err => {
           if (signal.aborted) return
+          abort()
           log({ type: 'storage challenge', data: { text: 'error: attest storage', storageChallengeID }})
+          attestation.nonce = await vaultAPI.getNonce()
+          if (err.cause === 'invalid-proof') {
+            attestation.response.proof_of_contact = { status: err.cause }
+          }
+          await chainAPI.submitStorageChallenge(attestation)
         })
         if (res) {
           clearTimeout(tid)
           const { proof_of_contact, reports } = res
-          const nonce = await vaultAPI.getNonce()
-          const attestation = { 
-            response: { storageChallengeID, proof_of_contact, reports }, 
-            signer, 
-            nonce
-          }
+          attestation.nonce = await vaultAPI.getNonce()
+          attestation.response.proof_of_contact = { status: 'valid-proof', proof: proof_of_contact }
+          attestation.response.reports = reports
+          await chainAPI.submitStorageChallenge(attestation)
+        } else {
+          log({ type: 'storage challenge', data: { text: 'error: no response', storageChallengeID }})
+          attestation.nonce = await vaultAPI.getNonce()
           await chainAPI.submitStorageChallenge(attestation)
         }
+
       }
       else if (event.method === 'NewPerformanceChallenge') {
         const [performanceChallengeID] = event.data
@@ -425,14 +440,14 @@ module.exports = APIS => {
   // make a list of all checks (all feedkeys, amendmentIDs...)
   // for each check, get data, verify and make a report => push report from each check into report_all
   // when all checks are done, report to chain
-  async function attest_storage_challenge ({ data, account, signal, log: parent_log }) {
+  async function attest_storage_challenge ({ data, account, signal, conn, log: parent_log }) {
     return new Promise(async (resolve, reject) => {
       const { hyper } = account
       const { id, attesterKey, hosterKey, hosterSigningKey, checks, feedkey_1 } = data
       const logStorageChallenge = parent_log.sub(`<-attester2hoster storage challenge, me: ${attesterKey.toString('hex').substring(0,5)}, peer: ${hosterKey.toString('hex').substring(0,5)}`)
-      var reports
+      var reports = []
       var proof_of_contact
-      const verified = [] 
+      const verifying = [] 
 
       signal.addEventListener("abort", () => { reject(signal.reason) })
       
@@ -451,6 +466,7 @@ module.exports = APIS => {
 
       function onhoster ({ feed, remotestringkey }) {
         logStorageChallenge({ type: 'attestor', data: { text: `Connected to the storage chalenge hoster`, remotestringkey } })
+        conn = true
         get_data(feed)
       }
 
@@ -460,10 +476,13 @@ module.exports = APIS => {
           const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
           for (var i = 0, len = contract_ids.length; i < len; i++) {
             const data_promise = feed.get(i)
-            verified.push(verify_chunk(data_promise))
+            verifying.push(verify_chunk(data_promise))
           }
-          reports = await Promise.all(verified).catch(err => { logStorageChallenge({ type: 'fail', data: err }) })
-          if (!reports) logStorageChallenge({ type: 'error', data: [`No reports`] })
+          const settled = await Promise.allSettled(verifying)
+          settled.forEach(res => {
+            if (res.status === 'fulfilled') reports.push(res.value)
+            if (res.status === 'rejected') reports.push('fail')
+          })
           done({ type: 'got all data' })
         } catch (err) {
           logStorageChallenge({ type: 'fail', data: { text: 'results error', err } })
@@ -480,7 +499,10 @@ module.exports = APIS => {
           const proof_buff = b4a.from(proof, 'hex')
           const unique_el = `${id}`
           const data = b4a.from(unique_el, 'binary')
-          if (!datdot_crypto.verify_signature(proof_buff, data, hosterSigningKey)) reject('not valid proof of contact')
+          if (!datdot_crypto.verify_signature(proof_buff, data, hosterSigningKey)) {
+            const err = new Error('Hoster signature could not be verified', { cause: 'invalid-signature' })
+            reject(err)
+          }
           proof_of_contact = proof
         }
         if (!proof_of_contact) return
@@ -516,13 +538,19 @@ module.exports = APIS => {
 
             if (index !== check_index) reject(index)
             // 1. verify encoder signature
-            if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
+            if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) {
+              const err = new Error('not a valid chunk', { cause: 'invalid-chunk', contractID, index })
+              reject(err)
+            }
             logStorageChallenge({ type: 'attester', data: { text: `Encoder sig verified`, index, contractID } })
 
             // 2. verify proof
             p = proof_codec.to_buffer(p)
             const proof_verified = await datdot_crypto.verify_proof(p, feedKey)
-            if (!proof_verified) return reject('not a valid proof')
+            if (!proof_verified) {
+              const err = new Error('not a valid p', { cause: 'invalid-p', contractID, index })
+              reject(err)
+            }
             logStorageChallenge({ type: 'attester', data: { text: `Proof verified`, index, contractID } })
 
             // 3. verify chunk (see if hash matches the proof node hash)
