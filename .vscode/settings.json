@@ -1,7 +1,0 @@
-{
-  "todo-tree.filtering.excludeGlobs": [],
-  "search.useIgnoreFiles": false,
-  "explorer.autoRevealExclude": {
-    "**/node_modules": false
-  }
-}

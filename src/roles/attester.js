@@ -159,8 +159,8 @@ module.exports = APIS => {
 
       }
       else if (event.method === 'NewPerformanceChallenge') {
-        const [performanceChallengeID] = event.data
-        const performanceChallenge = await chainAPI.getPerformanceChallengeByID(performanceChallengeID)
+        const [challengeID] = event.data
+        const performanceChallenge = await chainAPI.getPerformanceChallengeByID(challengeID)
         const { attesters, feed: feedID } = performanceChallenge
         const [attesterID] = attesters
         const attesterAddress = await chainAPI.getUserAddress(attesterID)
@@ -168,25 +168,60 @@ module.exports = APIS => {
         log({ type: 'chainEvent', data: { text: 'new-performance-challenge', info: `Attester ${attesterID}:  Event received: ${event.method} ${event.data.toString()}` } })
         const feedObj = await chainAPI.getFeedByID(feedID)
         const { feedkey, contracts: contractIDs } = feedObj
+        const topic = datdot_crypto.get_discoverykey(feedkey)
         log({ type: 'challenge', data: { text: 'Performance challenge for feed', feedObj } })
-        const controller = new AbortController()
-        const { signal, abort } = controller
-        const tid = setTimeout(() => {
-          log({ type: 'timeout', data: { texts: 'error: performance challenge - timeout', performanceChallengeID } })
-          if (signal.aborted) return
-          abort()
-        }, DEFAULT_TIMEOUT)
+        const { hosterkeys, hoster_ids, chunks } = await get_hosters_and_challenge_chunks({ chainAPI, contractIDs, log })
+        
+        var conns = {}
+        var attesting = []
+        var reports = {}
+        var tids = {}
 
-        const opts = { account, chainAPI, hyper, performanceChallengeID, feedkey, contractIDs, signal, log }
-        const { reports } = await attest_performance(opts).catch(err => {
-          if (signal.aborted) return
-          log({ type: 'performance challenge', data: { text: 'error: attest performance', performanceChallengeID }})
-        })
-        if (!reports) return
-        clearTimeout(tid)
+        const opts = { 
+          account, 
+          chainAPI, 
+          hyper, 
+          challengeID, 
+          reports, 
+          feedkey, 
+          topic,
+          chunks,
+          tids,
+          conns,
+          log 
+        }
+
+        for (var i = 0; i < hosterkeys.length; i++) {
+          const hoster_id = hoster_ids[i]
+          const hosterkey = hosterkeys[i]
+          const controller = new AbortController()
+          const { signal, abort } = controller
+          const tid = setTimeout(() => {
+            log({ type: 'timeout', data: { texts: 'error: performance challenge - timeout', challengeID, hoster_id } })
+            if (signal.aborted) return
+            abort()
+            reports[hoster_id].status = 'fail' 
+          }, DEFAULT_TIMEOUT)
+          tids[hoster_id] = tid
+          opts.signal = signal
+          opts.hosterkey = hosterkey
+          opts.hoster_id = hoster_id
+          attesting.push(attest_performance(opts))
+        }
+        
+        const settled = await Promise.allSettled(attesting)
+        for (var i = 0; i < settled.length; i++) {
+          log({ type: 'performance', data: { texts: 'promises settled', settled_len: settled.length } })
+          const res = settled[i]
+          const hoster_id = res.value
+          if (res.status === 'rejected') reports[hoster_id].status = 'fail'
+          const remotestringkey = hosterkeys[i]
+          done_task_cleanup({ role: 'performance_attester', topic, remotestringkey, state: account.state, log })
+        }
+
          // TODO: send just a summary to the chain, not the whole array
         const nonce = await vaultAPI.getNonce()
-        await chainAPI.submitPerformanceChallenge({ performanceChallengeID, reports, signer, nonce })        
+        await chainAPI.submitPerformanceChallenge({ challengeID, reports, signer, nonce })        
       }
     }
   }
@@ -500,7 +535,7 @@ module.exports = APIS => {
           const unique_el = `${id}`
           const data = b4a.from(unique_el, 'binary')
           if (!datdot_crypto.verify_signature(proof_buff, data, hosterSigningKey)) {
-            const err = new Error('Hoster signature could not be verified', { cause: 'invalid-signature' })
+            const err = new Error('Hoster signature could not be verified', { cause: 'invalid-proof' })
             reject(err)
           }
           proof_of_contact = proof
@@ -627,76 +662,72 @@ module.exports = APIS => {
                           CHECK PERFORMANCE
   ---------------------------------------------------------------------- */
 
-  async function attest_performance({ account, chainAPI, hyper, performanceChallengeID, feedkey, contractIDs, signal, log }) {
+  async function attest_performance (opts) {
     return new Promise(async (resolve, reject) => {
-      var reports = {}
-      var proof_of_contact
-      const { targetList, chunks, expected_chunks_len } = await get_hosters_and_challenge_chunks({ chainAPI, contractIDs, log })
-      const topic =  datdot_crypto.get_discoverykey(feedkey)
-
+      const { 
+        account, 
+        chainAPI, 
+        hyper, 
+        challengeID, 
+        hosterkey,
+        hoster_id,
+        reports, 
+        feedkey,
+        topic,
+        chunks,
+        tids,
+        conns, 
+        signal, 
+        log 
+      } = opts
       signal.addEventListener("abort", () => { reject(signal.reason) })
 
-      for (const peerkey of targetList) {
-        const field = `${topic.toString('hex')}-${peerkey}`
-        const { feed } = await hyper.new_task({ feedkey, topic, field, signal, log })
-        log({ type: 'challenge', data: { text: 'Got performance challenge feed', field, peerkey, fedkey: feed.key.toString('hex') } })
+      const field = `${topic.toString('hex')}-${hosterkey}`
+      const { feed } = await hyper.new_task({ feedkey, topic, field, signal, log })
+      log({ type: 'challenge', data: { text: 'Got performance challenge feed', field, hosterkey, fedkey: feed.key.toString('hex') } })
 
-        await hyper.connect({ 
-          swarm_opts: { role: 'performance_attester', topic, mode: { server: false, client: true } }, 
-          targets: { targetList: [peerkey], feed },
-          onpeer: onhoster_for_performance_challenge,
-          done,
-          signal,
-          log
-        })
+      await hyper.connect({ 
+        swarm_opts: { role: 'performance_attester', topic, mode: { server: false, client: true } }, 
+        targets: { targetList: [hosterkey], feed },
+        onpeer: onhoster,
+        done,
+        signal,
+        log
+      })
 
-        async function onhoster_for_performance_challenge ({ remotestringkey: hosterkey }) {
-          log({ type: 'attester', data: { text: 'connected to the host for performance challenge', hoster: hosterkey.toString('hex') }})
-          const hoster_id = await chainAPI.getUserIDByNoiseKey(hosterkey)
-          await feed.update()
-          const opts = { account, performanceChallengeID, feed, chunks: chunks[hoster_id.toString()], hosterkey, topic, signal, log }
-          const stats = await measure_performance(opts).catch(err => log({ type: 'fail', data: err })) || []
-          reports[hoster_id] ? reports[hoster_id].stats = stats : reports[hoster_id] = { stats }
-          done({ type: 'have all reports' })
-        }
-        
-        async function done ({ type = undefined, proof = undefined, hosterkey = undefined }) { // performance challenge
-          // called 2x: when (reports_promises.length === expected_chunks_len) and when hoster sends proof of contact
-          if (proof) {
-            const proof_buff = b4a.from(proof, 'hex')
-            const hoster_id = await chainAPI.getUserIDByNoiseKey(hosterkey)
-            const hostersigningkey = await chainAPI.getSigningKey(hoster_id)
-            const data = b4a.from(performanceChallengeID.toString(), 'binary')
-            log({ type: 'attester', data: { text: 'done called', proof_buff, hostersigningkey, hosterkey }})
-            if (!datdot_crypto.verify_signature(proof_buff, data, hostersigningkey)) {
-              log({ text: 'error: not valid proof of contact', hosterkey, proof, data})
-              reject()
-            }
-            proof_of_contact = proof
-            reports[hoster_id] ? reports[hoster_id].proof_of_contact = proof_of_contact : reports[hoster_id] = { proof_of_contact }
-          }          
-          if (!proof_of_contact) return
-
-          const hoster_ids = Object.keys(reports)
-          if (hoster_ids.length !== expected_chunks_len) return
-
-          // verify reports
-          for (const id of hoster_ids) {
-            const { stats, proof_of_contact } = reports[id]
-            if (!stats || !proof_of_contact) return
+      async function onhoster ({ remotestringkey: hosterkey }) {
+        log({ type: 'attester', data: { text: 'connected to the host for performance challenge', hoster: hosterkey.toString('hex') }})
+        conns[hoster_id] = true
+        await feed.update()
+        const to_check = chunks[hoster_id]
+        const opts = { account, challengeID, feed, chunks: to_check, hosterkey, topic, signal, log }
+        const stats = await measure_performance(opts).catch(err => log({ type: 'fail', data: err })) || []
+        reports[hoster_id] ? reports[hoster_id].stats = stats : reports[hoster_id] = { stats }
+        done({ type: 'have the report' })
+      }
+      
+      async function done ({ type = undefined, proof = undefined, hosterkey = undefined }) { // performance challenge
+        // called 2x: when (reports_promises.length === expected_chunks_len) and when hoster sends proof of contact
+        if (proof) {
+          const proof_buff = b4a.from(proof, 'hex')
+          const hostersigningkey = await chainAPI.getSigningKey(hoster_id)
+          const data = b4a.from(challengeID.toString(), 'binary')
+          log({ type: 'attester', data: { text: 'done called', proof_buff, hostersigningkey, hosterkey }})
+          if (!datdot_crypto.verify_signature(proof_buff, data, hostersigningkey)) {
+            log({ text: 'error: not valid proof of contact', hosterkey, proof, data})
+            abort()
+            const err = new Error('Hoster signature could not be verified', { cause: 'invalid-proof', hoster_id })
+            reject(err)
           }
-
-          log({ type: 'attester', data: { text: 'have proof and reports', proof, reports }})
-          for (const remotestringkey of targetList) {
-            done_task_cleanup({ role: 'performance_attester', topic, remotestringkey, state: account.state, log })
-          }
-          
-          log({ type: 'attester', data: `Submitting performance challenge`, performanceChallengeID })
-          resolve({ reports })
-        }
+          reports[hoster_id] ? reports[hoster_id].proof_of_contact = proof : reports[hoster_id] = { proof_of_contact: proof }
+        }          
+        const { stats, proof_of_contact } = reports[hoster_id]
+        if (!stats || !proof_of_contact) return
+        const tid = tids[hoster_id]
+        clearTimeout(tid)
+        resolve(hoster_id)
       }
     })
-
   }
 
   // get all hosters and select random chunks to check for each hoster
@@ -723,11 +754,10 @@ module.exports = APIS => {
         }
         // when we have 2x same hoster - we check chunks from all contracts at once
         hoster_ids = [...new Set(all_ids)]
-        const expected_chunks_len = hoster_ids.length
-        const targetListPromise = hoster_ids.map(async id => (await chainAPI.getHosterKey(id)).toString('hex'))
-        const targetList = await Promise.all(targetListPromise)
-        log({ type: 'performance challenge', data: { text: 'targetList and chunks to test', all_ids, targetList, chunks: JSON.stringify(chunks) } })
-        resolve({ chunks, targetList, expected_chunks_len })
+        const hosterkeysPromise = hoster_ids.map(async id => (await chainAPI.getHosterKey(id)).toString('hex'))
+        const hosterkeys = await Promise.all(hosterkeysPromise)
+        log({ type: 'performance challenge', data: { text: 'hosterkeys and chunks to test', all_ids, hosterkeys, chunks: JSON.stringify(chunks) } })
+        resolve({ hosterkeys, hoster_ids, chunks })
       } catch (err) {
         if (signal.aborted) return
         log({ type: 'performance challenge', data: { text: 'Error in get_hosters_and_challenge_chunks', err: JSON.stringify(err) } })
@@ -736,7 +766,7 @@ module.exports = APIS => {
     })
   }
 
-  async function measure_performance ({ account, performanceChallengeID, feed, chunks, hosterkey, topic, signal, log: parent_log }) {
+  async function measure_performance ({ account, challengeID, feed, chunks, hosterkey, topic, signal, log: parent_log }) {
     const log = parent_log.sub(`<-attester2hoster performance challenge, me: ${account.identity.myAddress.toString('hex').substring(0,5)}, peer: ${hosterkey.toString('hex').substring(0,5)}`)
     log({ type: 'challenge', data: { text: 'checking performance' } })
     return new Promise(async (resolve, reject) => {
@@ -744,7 +774,7 @@ module.exports = APIS => {
       log({ type: 'challenge', data: { text: 'getting stats', data: chunks } })
       const stats = await get_data_and_stats({ feed, chunks, signal, log }).catch(err => log({ type: 'fail', data: err }))
       // get proof of contact
-      await request_proof_of_contact({ account, challenge_id: performanceChallengeID, hosterkey, topic, log })
+      await request_proof_of_contact({ account, challenge_id: challengeID, hosterkey, topic, log })
       log({ type: 'performance check finished', data: { stats: JSON.stringify(stats) } })
       resolve(stats)
     })
