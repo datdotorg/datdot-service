@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 process.env.DEBUG = '*,-hypercore-protocol'
 const spawn = require('cross-spawn')
 const path = require('path')
@@ -24,7 +26,7 @@ async function run () {
   `
 
   if (!scenarioName) return console['log'](`
-    USAGE:    npm run simulation <scenario-filename>
+    USAGE:    run-datdot-simulation <scenario-filename>
 
               (To customise logs,
                edit "demo/simulation.js"
@@ -36,10 +38,10 @@ async function run () {
       ./demo/scenarios/foo.js
 
     EXAMPLE 1
-      > npm run simulation 1
+      > run-datdot-simulation 1
 
     EXAMPLE 2
-      > npm run simulation foo.js
+      > run-datdot-simulation foo.js
   `)
 
   const scenario = require(`./scenarios/${scenarioName}`)

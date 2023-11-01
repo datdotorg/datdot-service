@@ -4,14 +4,12 @@
   "description": "datdot-service interacts with a datdot-node",
   "main": "./src/datdot-service.js",
   "scripts": {
-    "start": "# node ./demo/index.js",
-    "simulation": "node ./demo/simulation.js",
-    "explorer": "npm start --prefix src/node_modules/datdot-explorer"
+    "simulation": "node ./demo/simulation.js"
   },
   "author": "@ninabreznik",
   "license": "MIT",
   "bin": {
-    "run-datdot-simulation-1": "./demo/simulation.js"
+    "run-datdot-simulation": "./demo/simulation.js"
   },
   "dependencies": {
     "@hyperswarm/dht": "github:holepunchto/hyperdht",
