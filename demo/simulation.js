@@ -46,7 +46,7 @@ async function run () {
 
   const scenario = require(`./scenarios/${scenarioName}`)
 
-  const all = [process]
+  const all_processes = [process]
   const url = 'ws://localhost'
 
   const config = { chain: [url, 3399], chat: [url, 6697], bootstrap: null }
@@ -86,14 +86,14 @@ async function run () {
 
     const args1 = [filename, JSON.stringify(config), /*logkeeper*/9001]
     const chain = spawn('node', args1, { stdio: 'inherit' })
-    all.push(chain)    
+    all_processes.push(chain)    
   }
 
 
 
   const args2 = [path.join(__dirname, '../src/node_modules/_chat/server.js'), JSON.stringify(config), /*logkeeper*/ 9002]
   const chatserver = spawn('node', args2, { stdio: 'inherit' })
-  all.push(chatserver)
+  all_processes.push(chatserver)
 
   const users = scenario
   const PORTS = [9001, 9002]
@@ -104,21 +104,27 @@ async function run () {
     PORTS.push(logkeeper_port)
     const args = [file, scenario, JSON.stringify(config), logkeeper_port]
     const child = spawn('node', args, { stdio: 'inherit' })
-    all.push(child)
+    all_processes.push(child)
   }
 
+  process.exitcode = 1
+  // todo: define exit codes (i.e. child process fails)
+  
   const args3 = [path.join(__dirname, '../src/node_modules/datdot-explorer/demo/registry.js'), JSON.stringify(PORTS)]
   const logkeeper = spawn('node', args3, { stdio: 'inherit' })
-  all.push(logkeeper)
+  all_processes.push(logkeeper)
+  
+  process.on('SIGINT', kill_processes)
+  process.on('SIGTERM', kill_processes)
 
-  process.on('SIGINT', () => {
+  function kill_processes () {
     console['log']("\n Terminating all processes")
-    const [main, ...processes] = all
+    const [main, ...processes] = all_processes
     for (var i = 0, len = processes.length; i < len; i++) {
       const child = processes[i]
       child.kill()
     }
     console['log']('done')
-    main.exit(0)
-  })
+    main.exit()
+  }
 }
