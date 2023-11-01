@@ -10,6 +10,9 @@
   },
   "author": "@ninabreznik",
   "license": "MIT",
+  "bin": {
+    "run-datdot-simulation-1": "./demo/simulation.js"
+  },
   "dependencies": {
     "@hyperswarm/dht": "github:holepunchto/hyperdht",
     "@hyperswarm/secret-stream": "^6.1.0",
