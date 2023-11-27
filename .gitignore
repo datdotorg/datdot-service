@@ -3,6 +3,7 @@
 /package-lock.json
 /pnpm-lock.yaml
 /npm-debug.log
+/bootstrap.json
 
 /yarn.lock
 /yarn-error.log

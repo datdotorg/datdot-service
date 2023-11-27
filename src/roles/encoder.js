@@ -40,12 +40,8 @@ module.exports = APIS => {
         const { feedkey: feedKey } = await chainAPI.getFeedByID(contract.feed)
         const [attesterID] = attesters
         const attesterKey = await chainAPI.getAttesterKey(attesterID)
-        const controller = new AbortController()
-        const { signal, abort } = controller
         const tid = setTimeout(() => {
           log({ type: 'timeout', data: { texts: 'error: encode hosting setup - timeout', amendmentID } })
-          if (signal.aborted) return
-          abort()
         }, DEFAULT_TIMEOUT)
         
         const data = { 
@@ -57,11 +53,9 @@ module.exports = APIS => {
           ranges: contract.ranges, 
           encoder_pos, 
           feedKey, 
-          signal, 
           log 
         }
         await encode_hosting_setup(data).catch(err => {
-          if (signal.aborted) return
           log({ type: 'hosting setup', data: { text: 'error: encode', amendmentID }})
           return
         })
@@ -88,7 +82,7 @@ module.exports = APIS => {
   ----------------------------------------- */
   
   async function encode_hosting_setup (data) {
-    const{ account, amendmentID, chainAPI, attesterKey, encoderKey, ranges, encoder_pos, feedKey: feedkey, signal, log } = data
+    const{ account, amendmentID, chainAPI, attesterKey, encoderKey, ranges, encoder_pos, feedKey: feedkey, log } = data
     const log2Attester = log.sub(`Encoder to attester, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attesterKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
     const log2Author= log.sub(`->Encoder to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
     // log2Attester({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
@@ -96,7 +90,6 @@ module.exports = APIS => {
     const { hyper } = account
 
     return new Promise(async (resolve, reject) => {
-      signal.addEventListener("abort", () => { reject(signal.reason) })
       try {
         if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
         const topic1 = datdot_crypto.get_discoverykey(feedkey)
@@ -104,14 +97,14 @@ module.exports = APIS => {
 
       
         // replicate feed from author
-        const { feed } = await hyper.new_task({ feedkey, signal, log: log2Author })
+        const { feed } = await hyper.new_task({ feedkey, log: log2Author })
         await feed.update()
         log2Author({ type: 'encoder', data: { text: `load feed` } })
         
         await hyper.connect({ 
           swarm_opts: { role: 'encoder2author', topic: topic1, mode: { server: false, client: true } },
           onpeer,
-          signal,
+        
           log: log2Author
         })
         
@@ -132,14 +125,14 @@ module.exports = APIS => {
         log2Attester({ type: 'encoder', data: { text: `Loading feed`, attester: attesterKey.toString('hex'), topic: topic2.toString('hex') } })
        
         // feed for attester
-        const { feed: temp_feed} = await hyper.new_task({  topic: topic2, signal, log: log2Attester })
+        const { feed: temp_feed} = await hyper.new_task({  topic: topic2, log: log2Attester })
 
         await hyper.connect({ 
           swarm_opts: { role: 'encoder2attester', topic: topic2, mode: { server: true, client: false } },
           targets: { feed: temp_feed, targetList: [attesterKey.toString('hex')], msg: { send: { type: 'feedkey' } } },
           onpeer: onattester,
           done: done_with_attester,
-          signal,
+        
           log: log2Attester
         })
   
@@ -147,7 +140,7 @@ module.exports = APIS => {
           log2Attester({ type: 'encoder', data: { text: `Connected to the attester`, feedkey: feed.key.toString('hex') } })
           const all = []
           for (const range of ranges) {
-            all.push(encodeAndSendRange({ account, temp_feed, range, feed, amendmentID, encoder_pos, signal, log: log2Attester })) 
+            all.push(encodeAndSendRange({ account, temp_feed, range, feed, amendmentID, encoder_pos, log: log2Attester })) 
           }
           try {
             const result = await Promise.all(all)
@@ -157,8 +150,7 @@ module.exports = APIS => {
             return resolve()
           } catch (err) {
             log2Attester({ type: 'encoder', data: { text: 'Error in result', err } })
-            if (signal.aborted) return
-            abort()
+            reject(err)
           }
         }  
         async function done_with_attester ({ type }) {
@@ -167,34 +159,30 @@ module.exports = APIS => {
       } catch(err) {
         log2Attester({ type: 'encoder', data: { text: 'Error in hosting setup', err } })
         clearTimeout(tid)
-        if (signal.aborted) return
-        abort()
+        reject(err)
       }
 
     })
 
     // HELPERS
-    async function encodeAndSendRange ({ account, temp_feed, range, feed, amendmentID, encoder_pos, signal, log }) {
+    async function encodeAndSendRange ({ account, temp_feed, range, feed, amendmentID, encoder_pos, log }) {
       return new Promise(async (resolve, reject) => {
-        signal.addEventListener("abort", () => { reject(signal.reason) })
         try {
           const sent = []
           for (let index = range[0], len = range[1] + 1; index < len; index++) {
             const proof_promise = download_and_encode({ account, index, feed, amendmentID, encoder_pos, log} )
-            sent.push(send({ account, feedkey: feed.key, task_id: amendmentID, proof_promise, temp_feed, signal, log }))
+            sent.push(send({ account, feedkey: feed.key, task_id: amendmentID, proof_promise, temp_feed, log }))
           }
           const resolved = await Promise.all(sent)
           resolve(range)
         } catch (err) {
           log({ type: 'encoder', data: {  text: 'Error in encodeAndSendRange', err } })
-          if (signal.aborted) return
-          abort()
+          reject(err)
         }
       })
     }
     async function send ({ proof_promise, temp_feed, log }) {
       return new Promise(async (resolve, reject) => {
-        signal.addEventListener("abort", () => { reject(signal.reason) })
         try {
           const proof = await proof_promise
           await temp_feed.append(proof_codec.encode(proof))
@@ -202,8 +190,7 @@ module.exports = APIS => {
           resolve(`Encoded ${proof.index} sent`)
         } catch (err) {
           log({ type: 'encoder', data: {  text: 'Error in send', err } })
-          if (signal.aborted) return
-          abort()
+          reject(err)
         }
       })
     }

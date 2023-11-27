@@ -16,7 +16,9 @@ This version is work in progress (to try previous verisons of the code, see mile
 `npm install`
 
 ### Run
-`npm run simulation 1`
+`npm run bootstrap` start the bootstrapping nodes
+`npm run simulation -- -s 1 -p bootstrap.json` run the scenario which also spawns the chain
+`npm run simulation -- -s 2 -c 10000 -p bootstrap.json -t` run the additional scenario and connect to already running chain (optional)
 
 ## Research
 

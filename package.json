@@ -4,7 +4,8 @@
   "description": "datdot-service interacts with a datdot-node",
   "main": "./src/datdot-service.js",
   "scripts": {
-    "simulation": "node ./demo/simulation.js"
+    "simulation": "node ./demo/simulation.js",
+    "bootstrap": "node demo/bootstrapper.js"
   },
   "author": "@ninabreznik",
   "license": "MIT",
