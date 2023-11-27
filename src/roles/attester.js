@@ -63,7 +63,7 @@ module.exports = APIS => {
 
         const tid = setTimeout(() => {
           log({ type: 'timeout', data: { texts: 'error: hosting setup - timeout', amendmentID } })
-          return
+
         }, DEFAULT_TIMEOUT)
 
         log({ type: 'attester', data: { text: `Attester ${attesterID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment)} })
@@ -226,7 +226,7 @@ module.exports = APIS => {
       const sigs = []
       try {
         const messages = {}
-        const responses = []
+        const promises = []
         const encoders_len = encoderKeys.length
         // Stop the main operation
         // log({ type: 'attester', data: { text: `Attest hosting setup`, amendmentID, encoderKeys } })
@@ -252,12 +252,12 @@ module.exports = APIS => {
             log 
           }
           opts.compare_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
-          responses.push(verify_and_forward_encodings(opts))
+          promises.push(verify_and_forward_encodings(opts))
         }
         
-        const resolved_responses = await Promise.all(responses) // can be 0 to 6 pubKeys of failed providers
-        // log({ type: 'attester', data: { text: `Resolved responses!`, resolved_responses } })
-        for (const res of resolved_responses) {
+        const reponses = await Promise.all(promises) // can be 0 to 6 pubKeys of failed providers
+        // log({ type: 'attester', data: { text: `Resolved responses!`, reponses } })
+        for (const res of reponses) {
           const { failedKeys: failed, proof_of_contact, hosterKey } = res
           failedKeys.push(failed)
           sigs.push({ proof_of_contact, hosterKey })
