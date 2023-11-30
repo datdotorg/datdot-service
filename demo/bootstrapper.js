@@ -3,7 +3,6 @@ const fs = require('fs').promises
 const goodbye = require('graceful-goodbye')
 
 bootstrappers()
-goodbye()
 
 var path_to_json
 

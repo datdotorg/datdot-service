@@ -412,7 +412,7 @@ module.exports = APIS => {
       const { hyper } = account
       const { challenge_id, attesterKey, hosterKey, checks, feedkey_1 } = data
       
-      const log = parent_log.sub(`<-hoster2attester storage challenge, me: ${hosterKey.toString('hex').substring(0,5)}, peer: ${attesterKey.toString('hex').substring(0, 5)} `)
+      const log = parent_log.sub(`<-hoster2attester storage challenge, me: ${account.noisePublicKey.toString('hex').substring(0,5)} peer: ${attesterKey.toString('hex').substring(0, 5)} `)
       
       const topic = derive_topic({ senderKey: hosterKey, feedKey: feedkey_1, receiverKey: attesterKey, id: challenge_id, log })
       const { feed } = await hyper.new_task({ topic, log })

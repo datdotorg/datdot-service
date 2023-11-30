@@ -1,0 +1,70 @@
+const spawn = require('cross-spawn')
+const path = require('path')
+
+process.on('SIGINT', kill_processes)
+process.on('SIGTERM', kill_processes)
+
+const all_processes = [process]
+
+run()
+/**********************************************************
+  RUN
+**********************************************************/
+async function run (params) {
+  // const default_delay = 3000
+  // console.log('0. ===== start `bootstrap nodes` =====')
+  // init()
+  // await new Promise(resolve => setTimeout(resolve, default_delay))
+  console.log('1. ===== start `one` =====')
+  params = []
+  one(params)
+  console.log('2. ===== start `two` =====')
+  const delay1 = 0 // 2000
+  params = []
+  var i = await new Promise(resolve => setTimeout(() => resolve(two(params)), delay1))
+  // console.log('3. ===== stop `two` =====')
+  // const delay2 = 0
+  // setTimeout(() => {
+  //   var child = all_processes.splice(i, 1)
+  //   child.kill()
+  // }, delay2)
+  // console.log('4. ===== just end everything =====')
+  // const delay3 = 7000
+  // setTimeout(() => process.exit(0), delay3)
+}
+/**********************************************************
+  SCENARIOS
+**********************************************************/
+function init () {
+  // run bootstrap nodes
+  const file = path.join(__dirname, 'bootstrapper.js')
+  const child = spawn('node', [file], { stdio: 'inherit' })
+  return all_processes.push(child) - 1
+}
+function one () {
+  const file = path.join(__dirname, 'simulation.js')
+  const scenario = '-s 1 -p bootstrap.json'.split(' ')
+  const args = [file].concat(scenario)
+  const child = spawn('node', args, { stdio: 'inherit' })
+  return all_processes.push(child) - 1
+}
+function two () {
+  const file = path.join(__dirname, 'simulation.js')
+  const scenario = '-s 2 -c 10000 -p bootstrap.json -t'.split(' ')
+  const args = [file].concat(scenario)
+  const child = spawn('node', args, { stdio: 'inherit' })
+  return all_processes.push(child) - 1
+}
+/**********************************************************
+  HELPERS
+**********************************************************/
+function kill_processes () {
+  console['log']("\n Terminating all processes")
+  const [main, ...processes] = all_processes
+  for (var i = 0, len = processes.length; i < len; i++) {
+    const child = processes[i]
+    child.kill()
+  }
+  console['log']('done')
+  main.exit()
+}

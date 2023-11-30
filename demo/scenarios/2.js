@@ -17,5 +17,5 @@ module.exports = [
   { "name": "jota", "behavior": ["register_chain_account", "offer_service"] },
   { "name": "serena", "behavior": ["register_chain_account", "offer_service"] },
   { "name": "gus", "behavior": ["register_chain_account", "offer_service"] },
-  { "name": "pepe", "behavior": ["register_chain_account", "offer_service"] },
+  { "name": "martin", "behavior": ["register_chain_account", "offer_service"] },
 ]

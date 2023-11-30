@@ -117,9 +117,9 @@ module.exports = APIS => {
         const tid = setTimeout(async () => {
           log({ type: 'timeout', data: { texts: 'error: storage challenge - timeout', storageChallengeID } })
           attestation.nonce = await vaultAPI.getNonce()
-          if (conn) { // connection was established, but no data was sent
-            attestation.response.status = 'no-proof' 
-          } // else: no connection was established between hoster and attester, reponse is empty
+          
+          if (conn) attestation.response.status = 'no-data' // connection was established, but no data was sent
+          else attestation.response.status = 'fail' //no connection was established between hoster and attester, reponse is empty
           await chainAPI.submitStorageChallenge(attestation)
           return
         }, DEFAULT_TIMEOUT)
@@ -189,7 +189,7 @@ module.exports = APIS => {
           const hosterkey = hosterkeys[i]
           const tid = setTimeout(() => {
             log({ type: 'timeout', data: { texts: 'error: performance challenge - timeout', challengeID, hoster_id } })
-            reports[hoster_id].status = 'fail' 
+            reports[hoster_id] = { status: 'fail' } 
             return
           }, DEFAULT_TIMEOUT)
           tids[hoster_id] = tid
@@ -456,7 +456,7 @@ module.exports = APIS => {
     return new Promise(async (resolve, reject) => {
       const { hyper } = account
       const { id, attesterKey, hosterKey, hosterSigningKey, checks, feedkey_1 } = data
-      const logStorageChallenge = parent_log.sub(`<-attester2hoster storage challenge, me: ${attesterKey.toString('hex').substring(0,5)}, peer: ${hosterKey.toString('hex').substring(0,5)}`)
+      const logStorageChallenge = parent_log.sub(`<-attester2hoster storage challenge, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${hosterKey.toString('hex').substring(0,5)}`)
       var reports = []
       var proof_of_contact
       const verifying = [] 
@@ -736,7 +736,7 @@ module.exports = APIS => {
   }
 
   async function measure_performance ({ account, challengeID, feed, chunks, hosterkey, topic, log: parent_log }) {
-    const log = parent_log.sub(`<-attester2hoster performance challenge, me: ${account.identity.myAddress.toString('hex').substring(0,5)}, peer: ${hosterkey.toString('hex').substring(0,5)}`)
+    const log = parent_log.sub(`<-attester2hoster performance challenge, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${hosterkey.toString('hex').substring(0,5)}`)
     log({ type: 'challenge', data: { text: 'checking performance' } })
     return new Promise(async (resolve, reject) => {
       log({ type: 'challenge', data: { text: 'getting stats', data: chunks } })
