@@ -20,14 +20,11 @@ async function run (params) {
   one(params)
   console.log('2. ===== start `two` =====')
   const delay1 = 0 // 2000
-  params = []
   var i = await new Promise(resolve => setTimeout(() => resolve(two(params)), delay1))
-  // console.log('3. ===== stop `two` =====')
-  // const delay2 = 0
-  // setTimeout(() => {
-  //   var child = all_processes.splice(i, 1)
-  //   child.kill()
-  // }, delay2)
+  console.log('3. ===== stop `two` =====')
+  const delay2 = 0
+  var i = await new Promise(resolve => setTimeout(() => resolve(three(params)), delay2))
+
   // console.log('4. ===== just end everything =====')
   // const delay3 = 7000
   // setTimeout(() => process.exit(0), delay3)
@@ -51,6 +48,13 @@ function one () {
 function two () {
   const file = path.join(__dirname, 'simulation.js')
   const scenario = '-s 2 -c 10000 -p bootstrap.json -t'.split(' ')
+  const args = [file].concat(scenario)
+  const child = spawn('node', args, { stdio: 'inherit' })
+  return all_processes.push(child) - 1
+}
+function three () {
+  const file = path.join(__dirname, 'simulation.js')
+  const scenario = '-s 3 -c 20000 -p bootstrap.json -t'.split(' ')
   const args = [file].concat(scenario)
   const child = spawn('node', args, { stdio: 'inherit' })
   return all_processes.push(child) - 1
