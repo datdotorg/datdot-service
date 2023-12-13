@@ -4,6 +4,8 @@
 /pnpm-lock.yaml
 /npm-debug.log
 /bootstrap.json
+/logs/*
+.vscode
 
 /yarn.lock
 /yarn-error.log

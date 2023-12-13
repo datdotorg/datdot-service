@@ -20,10 +20,21 @@ This version is work in progress (to try previous verisons of the code, see mile
 `npm run simulation -- -s 1 -p bootstrap.json` run the scenario which also spawns the chain
 `npm run simulation -- -s 2 -c 10000 -p bootstrap.json -t` run the additional scenario and connect to already running chain (optional)
 
-or run a simsim.js where you can customize the tests
+or simply run a simsim.js where you can customize how many simulations you want to run and when
 
 `npm run bootstrap` start the bootstrapping nodes
 `node demo/simsim.js`
+
+### Monitoring
+
+`npm run bootstrap` start the bootstrapping nodes
+`node demo/simsim.js &>> logs/logs.txt` save logs in a logs.txt file
+
+You can i.e. monitor:
+- successfully completed performance challenges
+`tail -f logs/logs.txt | grep -i 'Hoster successfully completed performance challenge' -B 2 -C 2`
+- errors
+`tail -f logs/logs.txt | grep -i 'error' -B 5 -C 5`
 
 ## Research
 
