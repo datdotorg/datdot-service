@@ -33,6 +33,8 @@ or simply run a simsim.js where you can customize how many simulations you want 
 You can i.e. monitor:
 - successfully completed performance challenges
 `tail -f logs/logs.txt | grep -i 'Hoster successfully completed performance challenge' -B 2 -C 2`
+- succesfully completed storage challenges
+`tail -f logs/logs.txt | grep -i 'Storage challenge analysis' -B 5 -C 4`
 - errors
 `tail -f logs/logs.txt | grep -i 'error' -B 5 -C 5`
 
