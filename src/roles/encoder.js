@@ -28,33 +28,18 @@ module.exports = APIS => {
     
     // EVENTS
     async function handleEvent (event) {
-      if (event.method === 'NewAmendment') {
+      if (event.method === 'NewAmendment' || event.method === 'hosterReplacement') {
         const [amendmentID] = event.data
         const amendment = await chainAPI.getAmendmentByID(amendmentID)
-        const contract = await chainAPI.getContractByID(amendment.contract)
-        const { encoders, attesters } = amendment.providers
-        const encoder_pos = await isForMe(encoders, event)
+        const encoder_pos = await isForMe(amendment.providers.encoders)
         if (encoder_pos === undefined) return // pos can be 0
 
-        log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })
-        const { feedkey: feedKey } = await chainAPI.getFeedByID(contract.feed)
-        const [attesterID] = attesters
-        const attesterKey = await chainAPI.getAttesterKey(attesterID)
         const tid = setTimeout(() => {
-          log({ type: 'timeout', data: { texts: 'error: encode hosting setup - timeout', amendmentID } })
+          log({ type: 'timeout', data: { texts: 'error: encoding timeout', amendmentID } })
         }, DEFAULT_TIMEOUT)
-        
-        const data = { 
-          account, 
-          amendmentID, 
-          chainAPI, 
-          attesterKey, 
-          encoderKey, 
-          ranges: contract.ranges, 
-          encoder_pos, 
-          feedKey, 
-          log 
-        }
+
+        log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
+        const data = { account, amendment, chainAPI, encoderKey, encoder_pos, log }
         await encode_hosting_setup(data).catch(err => {
           log({ type: 'hosting setup', data: { text: 'error: encode', amendmentID }})
           return
@@ -67,7 +52,7 @@ module.exports = APIS => {
       }
     }
     // HELPERS
-    async function isForMe (encoders, event) {
+    async function isForMe (encoders) {
       for (var i = 0, len = encoders.length; i < len; i++) {
         const id = encoders[i]
         const peerAddress = await chainAPI.getUserAddress(id)
@@ -82,11 +67,17 @@ module.exports = APIS => {
   ----------------------------------------- */
   
   async function encode_hosting_setup (data) {
-    const{ account, amendmentID, chainAPI, attesterKey, encoderKey, ranges, encoder_pos, feedKey: feedkey, log } = data
+    const{ account, amendment, chainAPI, encoderKey, encoder_pos, log } = data
+    const { id: amendmentID, contract, providers: { attesters } } = amendment
+    const { feed: feed_id, ranges } = await chainAPI.getContractByID(contract)
+  
+    const { feedkey } = await chainAPI.getFeedByID(feed_id)
+    const [attesterID] = attesters
+    const attesterKey = await chainAPI.getAttesterKey(attesterID)
+
     const log2Attester = log.sub(`Encoder to attester, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attesterKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
     const log2Author= log.sub(`->Encoder to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
     // log2Attester({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
-    const expectedChunkCount = getRangesCount(ranges)
     const { hyper } = account
 
     return new Promise(async (resolve, reject) => {
@@ -121,7 +112,7 @@ module.exports = APIS => {
     
         
         // create temp_feed for sending compressed and signed data to the attester
-        const topic2 = derive_topic({ senderKey: encoderKey, feedKey: feedkey, receiverKey: attesterKey, id: amendmentID, log })
+        const topic2 = derive_topic({ senderKey: encoderKey, feedkey, receiverKey: attesterKey, id: amendmentID, log })
         log2Attester({ type: 'encoder', data: { text: `Loading feed`, attester: attesterKey.toString('hex'), topic: topic2.toString('hex') } })
        
         // feed for attester

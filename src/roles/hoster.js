@@ -55,20 +55,20 @@ module.exports = APIS => {
         if (pos === undefined) return // pos can be 0
 
         const tid = setTimeout(() => {
-          log({ type: 'timeout', data: { texts: 'error: hosting setup - timeout', amendmentID } })
+          log({ type: 'hoster', data: { texts: 'error: hosting setup - timeout', amendmentID } })
           return
         }, DEFAULT_TIMEOUT)
 
         log({ type: 'hoster', data: { text: `Event received: ${event.method} ${event.data.toString()}` } })
         const encoderSigningKey = await chainAPI.getSigningKey(encoders[pos])
-        const { feedKey, attesterKey, plan, ranges, signatures } = await getAmendmentData(attesters, amendment)
+        const { feedkey, attesterKey, plan, ranges, signatures } = await getAmendmentData(attesters, amendment)
         const data = {
           hyper,
           amendmentID,
           account,
           hosterKey,
           encoderSigningKey,
-          feedKey,
+          feedkey,
           attesterKey,
           plan,
           ranges,
@@ -85,14 +85,17 @@ module.exports = APIS => {
       else if (event.method === 'HostingStarted') {
         const [amendmentID] = event.data
       }
+      else if (event.method === 'hosterReplacement') {
+        const [amendmentID] = event.data
+      }
       else if (event.method === 'DropHosting') {
-        const [feedID, hosterID] = event.data
+        const [amendmentID, hosterID] = event.data
         const hosterAddress = await chainAPI.getUserAddress(hosterID)
         if (hosterAddress === myAddress) {
           log({ type: 'hoster', data: {  text: `Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}` } })
-          // const feedKey = await chainAPI.getFeedKey(feedID)
-          // const hasKey = await account.storages.has(feedKey.toString('hex'))
-          // if (hasKey) return await removeFeed(account, feedKey, amendmentID)
+          // const feedkey = await chainAPI.getFeedKey(feedID)
+          // const hasKey = await account.storages.has(feedkey.toString('hex'))
+          // if (hasKey) return await removeFeed(account, feedkey, amendmentID)
           // TODO: cancel hosting = remove feed, get out of swarm...
         }
       }
@@ -130,10 +133,10 @@ module.exports = APIS => {
       const { ranges, feed: feedID } = contract
       const [attesterID] = attesters
       const attesterKey = await chainAPI.getAttesterKey(attesterID)
-      const { feedkey: feedKey, signatures } = await chainAPI.getFeedByID(feedID)
+      const { feedkey, signatures } = await chainAPI.getFeedByID(feedID)
       const objArr = ranges.map(range => ({ start: range[0], end: range[1] }))
       const plan = { ranges: objArr }
-      return { feedKey, attesterKey, plan, ranges, signatures }
+      return { feedkey, attesterKey, plan, ranges, signatures }
     }
 
     async function get_storage_challenge_data (storageChallenge) {
@@ -147,8 +150,8 @@ module.exports = APIS => {
         const [encoderID, pos] = await getEncoderID(amendments, hosterID)
         const { feedkey, signatures }  = await chainAPI.getFeedByID(feedID)
         if (!feedkey_1) feedkey_1 = feedkey
-        checks[id].feedKey = feedkey
-        // checks[id] = { index, feedKey }
+        checks[id].feedkey = feedkey
+        // checks[id] = { index, feedkey }
       }
       return { challenge_id, attesterKey, hosterKey, checks, feedkey_1 }
     }
@@ -168,12 +171,12 @@ module.exports = APIS => {
 
   async function receive_data_and_start_hosting (data) {
     return new Promise (async (resolve,reject) => {
-      const { hyper, amendmentID, account, feedKey, plan, ranges, log } = data  
+      const { hyper, amendmentID, account, feedkey, plan, ranges, log } = data  
       try {
-        await addKey(account, feedKey, plan)
+        await addKey(account, feedkey, plan)
         const log2Author = log.sub(`Hoster to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)} `)
         log({ type: 'hoster', data: { text: 'load feed', amendment: amendmentID } })
-        const { feed } = await loadFeedData({ account, hyper, ranges, feedKey, log: log2Author })
+        const { feed } = await loadFeedData({ account, hyper, ranges, feedkey, log: log2Author })
         await getEncodedDataFromAttester(data)
         resolve({ feed })
       } catch (err) {
@@ -183,11 +186,11 @@ module.exports = APIS => {
     })
   }
 
-  async function loadFeedData({ account, hyper, ranges, feedKey, log }) {
+  async function loadFeedData({ account, hyper, ranges, feedkey, log }) {
     return new Promise (async (resolve,reject) => {
-      const topic = datdot_crypto.get_discoverykey(feedKey)
+      const topic = datdot_crypto.get_discoverykey(feedkey)
       const stringtopic = topic.toString('hex')
-      const { feed } = await hyper.new_task({ feedkey: feedKey, topic, log })
+      const { feed } = await hyper.new_task({ feedkey, topic, log })
       var peers = []
       try {
         // replicate feed from author
@@ -249,7 +252,7 @@ module.exports = APIS => {
       account,
       hosterKey,
       encoderSigningKey,
-      feedKey,
+      feedkey,
       attesterKey,
       ranges,
       encoder_pos,
@@ -260,7 +263,7 @@ module.exports = APIS => {
     const log2attester = log.sub(`hoster to attester, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attesterKey.toString('hex').substring(0,5)} amendment ${amendmentID}`)
     const remotestringkey = attesterKey.toString('hex')
     const unique_el = `${amendmentID}/${encoder_pos}`
-    const topic = derive_topic({ senderKey: attesterKey, feedKey, receiverKey: hosterKey, id: amendmentID, log })
+    const topic = derive_topic({ senderKey: attesterKey, feedkey, receiverKey: hosterKey, id: amendmentID, log })
     let counter = 0
     return new Promise(async (resolve, reject) => {
       await hyper.new_task({ newfeed: false, topic, log: log2attester })
@@ -305,13 +308,13 @@ module.exports = APIS => {
         log2attester({ type: 'hoster', data: { text: `Got index: ${data.index}` } })
         try { 
           // TODO: Fix up the JSON serialization by converting things to buffers
-          const hasStorage = await account.storages.has(feedKey.toString('hex'))
-          if (!hasStorage) { return reject({ type: 'Error', error: 'UNKNOWN_FEED', ...{ key: feedKey.toString('hex') } }) }
+          const hasStorage = await account.storages.has(feedkey.toString('hex'))
+          if (!hasStorage) { return reject({ type: 'Error', error: 'UNKNOWN_FEED', ...{ key: feedkey.toString('hex') } }) }
           // 1. verify encoder signature
           if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) reject(index)
           // 2. verify proof
           p = proof_codec.to_buffer(p)
-          const proof_verified = await datdot_crypto.verify_proof(p, feedKey)
+          const proof_verified = await datdot_crypto.verify_proof(p, feedkey)
           if (!proof_verified) return reject('not a valid proof')
           // 3. verify chunk (see if hash matches the proof node hash)
           const decompressed = await brotli.decompress(encoded_data)
@@ -321,7 +324,7 @@ module.exports = APIS => {
           
           await store_in_hoster_storage({
             account,
-            feedKey,
+            feedkey,
             index,
             encoded_data_signature,
             encoded_data,
@@ -341,8 +344,8 @@ module.exports = APIS => {
     }
   }
 
-  async function store_in_hoster_storage({ account, feedKey, index, encoded_data_signature, encoded_data, unique_el, p, log }) {
-    const storage = await getStorage({account, key: feedKey, log})
+  async function store_in_hoster_storage({ account, feedkey, index, encoded_data_signature, encoded_data, unique_el, p, log }) {
+    const storage = await getStorage({account, key: feedkey, log})
     return storage.storeEncoded({
       index,
       encoded_data_signature,
@@ -414,7 +417,7 @@ module.exports = APIS => {
       
       const log = parent_log.sub(`<-hoster2attester storage challenge, me: ${account.noisePublicKey.toString('hex').substring(0,5)} peer: ${attesterKey.toString('hex').substring(0, 5)} `)
       
-      const topic = derive_topic({ senderKey: hosterKey, feedKey: feedkey_1, receiverKey: attesterKey, id: challenge_id, log })
+      const topic = derive_topic({ senderKey: hosterKey, feedkey: feedkey_1, receiverKey: attesterKey, id: challenge_id, log })
       const { feed } = await hyper.new_task({ topic, log })
       log({ type: 'hoster', data: { text: `New task added (storage hoster)` } })
       
@@ -434,9 +437,9 @@ module.exports = APIS => {
           const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
           for (var i = 0; i < contract_ids.length; i++) {
             const contractID = contract_ids[i]
-            const { index, feedKey } = checks[contractID]
+            const { index, feedkey } = checks[contractID]
             log({ type: 'hoster', data: { text: 'Next check', check: checks[contractID], contractID, checks} })
-            const message = await getDataFromStorage(account, feedKey, index, log)
+            const message = await getDataFromStorage(account, feedkey, index, log)
             if (!message) return
             message.type = 'proof'
             message.contractID = contractID

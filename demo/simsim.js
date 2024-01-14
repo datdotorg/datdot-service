@@ -3,6 +3,7 @@ const path = require('path')
 
 process.on('SIGINT', kill_processes)
 process.on('SIGTERM', kill_processes)
+process.on('exit', kill_processes)
 
 const all_processes = [process]
 
@@ -17,17 +18,18 @@ async function run (params) {
   // await new Promise(resolve => setTimeout(resolve, default_delay))
   console.log('1. ===== start `one` =====')
   params = []
-  one(params)
+  const pos1 = one(params)
   console.log('2. ===== start `two` =====')
   const delay1 = 0 // 2000
-  var i = await new Promise(resolve => setTimeout(() => resolve(two(params)), delay1))
+  var pos2 = await new Promise(resolve => setTimeout(() => resolve(two(params)), delay1))
+  // console.log('3. ===== start `three` =====')
+  // const delay2 = 0
+  // var i = await new Promise(resolve => setTimeout(() => resolve(three(params)), delay2))
+  
   console.log('3. ===== stop `two` =====')
-  const delay2 = 0
-  var i = await new Promise(resolve => setTimeout(() => resolve(three(params)), delay2))
-
   // console.log('4. ===== just end everything =====')
-  // const delay3 = 7000
-  // setTimeout(() => process.exit(0), delay3)
+  // const delay3 = 15000
+  // setTimeout(() => all_processes[pos2].kill('SIGINT'), delay3)
 }
 /**********************************************************
   SCENARIOS
