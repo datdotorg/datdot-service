@@ -3,215 +3,210 @@ const derive_topic = require('derive-topic')
 const {done_task_cleanup} = require('_datdot-service-helpers/done-task-cleanup')
 const proof_codec = require('datdot-codec/proof')
 const brotli = require('_datdot-service-helpers/brotli')
-const getRangesCount = require('getRangesCount')
 const serialize_before_compress = require('serialize-before-compress')
 const datdot_crypto = require('datdot-crypto')
 const cloneDeep = require('clone-deep')
+const getChunks = require('getChunks')
 const DEFAULT_TIMEOUT = 10000
 
-/******************************************************************************
-  ROLE: Encoder
-******************************************************************************/
-
 module.exports = APIS => {
-  
   return encoder 
-
+  
   async function encoder (vaultAPI) {
     const account = vaultAPI
     const { identity, log, hyper } = account
     const { chainAPI } = APIS
-    const { myAddress, noiseKey: encoderKey } = identity
-    // log({ type: 'encoder', data: [`Listening to events for encoder role`] })
-
+    const { myAddress, noiseKey: encoderkey } = identity
     await chainAPI.listenToEvents(handleEvent)
     
     // EVENTS
     async function handleEvent (event) {
-      if (event.method === 'NewAmendment' || event.method === 'hosterReplacement') {
-        const [amendmentID] = event.data
-        const amendment = await chainAPI.getAmendmentByID(amendmentID)
-        const encoder_pos = await isForMe(amendment.providers.encoders)
-        if (encoder_pos === undefined) return // pos can be 0
-
-        const tid = setTimeout(() => {
-          log({ type: 'timeout', data: { texts: 'error: encoding timeout', amendmentID } })
-        }, DEFAULT_TIMEOUT)
-
-        log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
-        const data = { account, amendment, chainAPI, encoderKey, encoder_pos, log }
-        await encode_hosting_setup(data).catch(err => {
-          log({ type: 'hosting setup', data: { text: 'error: encode', amendmentID }})
-          return
-        })
-        clearTimeout(tid)
-        log({ type: 'encoder', data: { type: `Encoding done` } })
-      }
-      else if (event.method === 'HostingStarted') {
-        const [amendmentID] = event.data
-      }
+      const args = { event, chainAPI, account, encoderkey, myAddress, log }
+      const method = event.method
+      if (method === 'NewAmendment') handle_encoding(args)
+      else if (method === 'hosterReplacement') handle_encoding(args)
+      else if (method === 'Hosting started') {}
     }
-    // HELPERS
-    async function isForMe (encoders) {
-      for (var i = 0, len = encoders.length; i < len; i++) {
-        const id = encoders[i]
-        const peerAddress = await chainAPI.getUserAddress(id)
-        if (peerAddress === myAddress) return i
-      }
-    }
-    
   }
-  
-  /* -----------------------------------------
-  Hosting setup
-  ----------------------------------------- */
-  
-  async function encode_hosting_setup (data) {
-    const{ account, amendment, chainAPI, encoderKey, encoder_pos, log } = data
-    const { id: amendmentID, contract, providers: { attesters } } = amendment
-    const { feed: feed_id, ranges } = await chainAPI.getContractByID(contract)
-  
-    const { feedkey } = await chainAPI.getFeedByID(feed_id)
-    const [attesterID] = attesters
-    const attesterKey = await chainAPI.getAttesterKey(attesterID)
+} 
 
-    const log2Attester = log.sub(`Encoder to attester, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attesterKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
-    const log2Author= log.sub(`->Encoder to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
-    // log2Attester({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
-    const { hyper } = account
+/* -----------------------------------------
+            Hosting setup
+----------------------------------------- */
+async function handle_encoding (args) {
+  const { event, chainAPI, account, encoderkey, myAddress, log } = args
+  const [amendmentID] = event.data
+  const amendment = await chainAPI.getAmendmentByID(amendmentID)
+  const encoder_pos = await isForMe(amendment.providers.encoders)
+  if (encoder_pos === undefined) return // pos can be 0
 
+  const tid = setTimeout(() => {
+    log({ type: 'timeout', data: { texts: 'error: encoding timeout', amendmentID } })
+  }, DEFAULT_TIMEOUT)
+
+  log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
+  const data = { account, amendment, chainAPI, encoderkey, encoder_pos, log }
+  await encode_hosting_setup(data).catch(err => {
+    log({ type: 'hosting setup', data: { text: 'error: encode', amendmentID }})
+    return
+  })
+  clearTimeout(tid)
+  log({ type: 'encoder', data: { type: `Encoding done` } })
+
+  async function isForMe (encoders) {
+    for (var i = 0, len = encoders.length; i < len; i++) {
+      const id = encoders[i]
+      const peerAddress = await chainAPI.getUserAddress(id)
+      if (peerAddress === myAddress) return i
+    }
+  }
+}
+
+async function encode_hosting_setup (data) {
+  const{ account, amendment, chainAPI, encoderkey, encoder_pos, log } = data
+  const { id: amendmentID, contract, providers: { attesters } } = amendment
+  const { feed: feed_id, ranges } = await chainAPI.getContractByID(contract)
+
+  const { feedkey } = await chainAPI.getFeedByID(feed_id)
+  const [attesterID] = attesters
+  const attesterkey = await chainAPI.getAttesterKey(attesterID)
+
+  const log2Attester = log.sub(`Encoder to attester, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attesterkey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
+  const log2Author= log.sub(`->Encoder to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
+  // log2Attester({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
+  const { hyper } = account
+
+  return new Promise(async (resolve, reject) => {
+    try {
+      if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
+      const topic1 = datdot_crypto.get_discoverykey(feedkey)
+      var peers = []
+
+    
+      // replicate feed from author
+      const { feed } = await hyper.new_task({ feedkey, log: log2Author })
+      await feed.update()
+      log2Author({ type: 'encoder', data: { text: `load feed` } })
+      
+      await hyper.connect({ 
+        swarm_opts: { role: 'encoder2author', topic: topic1, mode: { server: false, client: true } },
+        onpeer,
+      
+        log: log2Author
+      })
+      
+      function onpeer ({ peerkey, stringtopic }) {
+        log2Author({ type: 'encoder', data: { text: `onpeer callback`, stringtopic, peerkey } })
+        peers.push(peerkey.toString('hex'))
+      }
+      
+      async function done_with_author () {
+        peers = [...new Set(peers)]
+        log2Author({ type: 'encoder', data: { text: `calling done`, peers } })
+        await done_task_cleanup({ role: 'encoder2author', peers, topic: topic1, state: account.state, log })                   
+      }
+  
+      
+      // create temp_feed for sending compressed and signed data to the attester
+      const topic2 = derive_topic({ senderKey: encoderkey, feedkey, receiverKey: attesterkey, id: amendmentID, log })
+      log2Attester({ type: 'encoder', data: { text: `Loading feed`, attester: attesterkey.toString('hex'), topic: topic2.toString('hex') } })
+      
+      // feed for attester
+      const { feed: temp_feed} = await hyper.new_task({  topic: topic2, log: log2Attester })
+
+      await hyper.connect({ 
+        swarm_opts: { role: 'encoder2attester', topic: topic2, mode: { server: true, client: false } },
+        targets: { feed: temp_feed, targetList: [attesterkey.toString('hex')], msg: { send: { type: 'feedkey' } } },
+        onpeer: onattester,
+        done: done_with_attester,
+      
+        log: log2Attester
+      })
+
+      async function onattester () {
+        log2Attester({ type: 'encoder', data: { text: `Connected to the attester`, feedkey: feed.key.toString('hex') } })
+        const all = []
+        for (const range of ranges) {
+          all.push(encodeAndSendRange({ account, temp_feed, range, feed, amendmentID, encoder_pos, log: log2Attester })) 
+        }
+
+        try {
+          const result = await Promise.all(all)
+          log2Attester({ type: 'encoder', data: { text: `All encoded & sent`, result } })
+          done_with_author()
+          // await done_task_cleanup({ role: 'encoder2attester', remotestringkey: attesterkey.toString('hex'), topic: topic2, state: account.state, log })  
+          return resolve()
+        } catch (err) {
+          log2Attester({ type: 'encoder', data: { text: 'Error in result', err } })
+          reject(err)
+        }
+      }  
+      async function done_with_attester ({ type }) {
+        await done_task_cleanup({ role: 'encoder2attester', topic: topic2, remotestringkey: attesterkey.toString('hex'), state: account.state, log })
+      }
+    } catch(err) {
+      log2Attester({ type: 'encoder', data: { text: 'Error in hosting setup', err } })
+      clearTimeout(tid)
+      reject(err)
+    }
+
+  })
+
+  // HELPERS
+  async function encodeAndSendRange ({ account, temp_feed, range, feed, amendmentID, encoder_pos, log }) {
     return new Promise(async (resolve, reject) => {
       try {
-        if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
-        const topic1 = datdot_crypto.get_discoverykey(feedkey)
-        var peers = []
-
-      
-        // replicate feed from author
-        const { feed } = await hyper.new_task({ feedkey, log: log2Author })
-        await feed.update()
-        log2Author({ type: 'encoder', data: { text: `load feed` } })
-        
-        await hyper.connect({ 
-          swarm_opts: { role: 'encoder2author', topic: topic1, mode: { server: false, client: true } },
-          onpeer,
-        
-          log: log2Author
-        })
-        
-        function onpeer ({ peerkey, stringtopic }) {
-          log2Author({ type: 'encoder', data: { text: `onpeer callback`, stringtopic, peerkey } })
-          peers.push(peerkey.toString('hex'))
+        const sent = []
+        for (let index = range[0], len = range[1] + 1; index < len; index++) {
+          const proof_promise = download_and_encode({ account, index, feed, amendmentID, encoder_pos, log} )
+          sent.push(send({ account, feedkey: feed.key, task_id: amendmentID, proof_promise, temp_feed, log }))
         }
-        
-        async function done_with_author () {
-          peers = [...new Set(peers)]
-          log2Author({ type: 'encoder', data: { text: `calling done`, peers } })
-          await done_task_cleanup({ role: 'encoder2author', peers, topic: topic1, state: account.state, log })                   
-        }
-    
-        
-        // create temp_feed for sending compressed and signed data to the attester
-        const topic2 = derive_topic({ senderKey: encoderKey, feedkey, receiverKey: attesterKey, id: amendmentID, log })
-        log2Attester({ type: 'encoder', data: { text: `Loading feed`, attester: attesterKey.toString('hex'), topic: topic2.toString('hex') } })
-       
-        // feed for attester
-        const { feed: temp_feed} = await hyper.new_task({  topic: topic2, log: log2Attester })
-
-        await hyper.connect({ 
-          swarm_opts: { role: 'encoder2attester', topic: topic2, mode: { server: true, client: false } },
-          targets: { feed: temp_feed, targetList: [attesterKey.toString('hex')], msg: { send: { type: 'feedkey' } } },
-          onpeer: onattester,
-          done: done_with_attester,
-        
-          log: log2Attester
-        })
-  
-        async function onattester () {
-          log2Attester({ type: 'encoder', data: { text: `Connected to the attester`, feedkey: feed.key.toString('hex') } })
-          const all = []
-          for (const range of ranges) {
-            all.push(encodeAndSendRange({ account, temp_feed, range, feed, amendmentID, encoder_pos, log: log2Attester })) 
-          }
-          try {
-            const result = await Promise.all(all)
-            log2Attester({ type: 'encoder', data: { text: `All encoded & sent`, result } })
-            done_with_author()
-            // await done_task_cleanup({ role: 'encoder2attester', remotestringkey: attesterKey.toString('hex'), topic: topic2, state: account.state, log })  
-            return resolve()
-          } catch (err) {
-            log2Attester({ type: 'encoder', data: { text: 'Error in result', err } })
-            reject(err)
-          }
-        }  
-        async function done_with_attester ({ type }) {
-          await done_task_cleanup({ role: 'encoder2attester', topic: topic2, remotestringkey: attesterKey.toString('hex'), state: account.state, log })
-        }
-      } catch(err) {
-        log2Attester({ type: 'encoder', data: { text: 'Error in hosting setup', err } })
-        clearTimeout(tid)
+        const resolved = await Promise.all(sent)
+        resolve(resolved)
+      } catch (err) {
+        log({ type: 'encoder', data: {  text: 'Error in encodeAndSendRange', err } })
         reject(err)
       }
-
     })
-
-    // HELPERS
-    async function encodeAndSendRange ({ account, temp_feed, range, feed, amendmentID, encoder_pos, log }) {
-      return new Promise(async (resolve, reject) => {
-        try {
-          const sent = []
-          for (let index = range[0], len = range[1] + 1; index < len; index++) {
-            const proof_promise = download_and_encode({ account, index, feed, amendmentID, encoder_pos, log} )
-            sent.push(send({ account, feedkey: feed.key, task_id: amendmentID, proof_promise, temp_feed, log }))
-          }
-          const resolved = await Promise.all(sent)
-          resolve(range)
-        } catch (err) {
-          log({ type: 'encoder', data: {  text: 'Error in encodeAndSendRange', err } })
-          reject(err)
-        }
-      })
-    }
-    async function send ({ proof_promise, temp_feed, log }) {
-      return new Promise(async (resolve, reject) => {
-        try {
-          const proof = await proof_promise
-          await temp_feed.append(proof_codec.encode(proof))
-          log({ type: 'encoder', data: {  text:`MSG appended`, index: proof.index, amendmentID } })
-          resolve(`Encoded ${proof.index} sent`)
-        } catch (err) {
-          log({ type: 'encoder', data: {  text: 'Error in send', err } })
-          reject(err)
-        }
-      })
-    }
-    async function download_and_encode ({ account, index, feed, amendmentID, encoder_pos, log }) {
+  }
+  async function send ({ proof_promise, temp_feed, log }) {
+    return new Promise(async (resolve, reject) => {
       try {
-        log({ type: 'encoder', data: {  text: 'Get data for index', index } })
-        const data_promise = feed.get(index)
-        const data = await data_promise
-        log({ type: 'encoder', data: {  text: 'Got data', index } })
-        
-        // encode and sign the encoded data
-        const unique_el = `${amendmentID}/${encoder_pos}`
-        const to_compress = serialize_before_compress(data, unique_el, log)
-        const encoded_data = await brotli.compress(to_compress)
-        const encoded_data_signature = account.sign(encoded_data)
-        
-        // make a proof
-        const block = { index, nodes: await feed.core.tree.missingNodes(feed.length), value: true }
-        const upgrade = { start: 0, length: feed.length }
-        const p = cloneDeep(await feed.core.tree.proof({ block, upgrade }))
-        p.block.value = data // add value for this block/chunk to the proof
-        
-        log({ type: 'encoder', data: {  text: 'Returning the proof', index } })
-        return { type: 'proof', index, encoded_data, encoded_data_signature, p: proof_codec.to_string(p) }
-      } catch(err) {
-        log({ type: 'encoder', data: {  text: 'Error in download_and_encode', err } })
+        const proof = await proof_promise
+        await temp_feed.append(proof_codec.encode(proof))
+        log({ type: 'encoder', data: {  text:`MSG appended`, index: proof.index, amendmentID } })
+        resolve(`Encoded ${proof.index} sent`)
+      } catch (err) {
+        log({ type: 'encoder', data: {  text: 'Error in send', err } })
+        reject(err)
       }
+    })
+  }
+  async function download_and_encode ({ account, index, feed, amendmentID, encoder_pos, log }) {
+    try {
+      log({ type: 'encoder', data: {  text: 'Get data for index', index } })
+      const data_promise = feed.get(index)
+      const data = await data_promise
+      log({ type: 'encoder', data: {  text: 'Got data', index } })
+      
+      // encode and sign the encoded data
+      const unique_el = `${amendmentID}/${encoder_pos}`
+      const to_compress = serialize_before_compress(data, unique_el, log)
+      const encoded_data = await brotli.compress(to_compress)
+      const encoded_data_signature = account.sign(encoded_data)
+      
+      // make a proof
+      const block = { index, nodes: await feed.core.tree.missingNodes(feed.length), value: true }
+      const upgrade = { start: 0, length: feed.length }
+      const p = cloneDeep(await feed.core.tree.proof({ block, upgrade }))
+      p.block.value = data // add value for this block/chunk to the proof
+      
+      log({ type: 'encoder', data: {  text: 'Returning the proof', index } })
+      return { type: 'proof', index, encoded_data, encoded_data_signature, p: proof_codec.to_string(p) }
+    } catch(err) {
+      log({ type: 'encoder', data: {  text: 'Error in download_and_encode', err } })
     }
   }
-
 }
 
 // @NOTE:
