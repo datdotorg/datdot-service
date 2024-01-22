@@ -23,21 +23,24 @@ module.exports = APIS => {
     async function handleEvent (event) {
       const args = { event, chainAPI, account, encoderkey, myAddress, log }
       const method = event.method
-      if (method === 'NewAmendment') handle_encoding(args)
-      else if (method === 'hosterReplacement') handle_encoding(args)
-      else if (method === 'Hosting started') {}
+      if (method === 'hostingSetup') handle_hostingSetup(args)
+      else if (method === 'hosterReplacement') handle_hosterReplacement(args)
+      else if (method === 'hostingStarted') {}
     }
   }
 } 
 
 /* -----------------------------------------
-            Hosting setup
+            HOSTING SETUP
 ----------------------------------------- */
-async function handle_encoding (args) {
+async function handle_hostingSetup (args) {
   const { event, chainAPI, account, encoderkey, myAddress, log } = args
   const [amendmentID] = event.data
   const amendment = await chainAPI.getAmendmentByID(amendmentID)
-  const encoder_pos = await isForMe(amendment.providers.encoders)
+  var encoder_pos
+  if (amendment.hoster_replacement) {
+    encoder_pos = await isForMe([amendment.hoster_replacement.encoders])
+  } else encoder_pos = await isForMe(amendment.providers.encoders)
   if (encoder_pos === undefined) return // pos can be 0
 
   const tid = setTimeout(() => {
@@ -46,6 +49,41 @@ async function handle_encoding (args) {
 
   log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
   const data = { account, amendment, chainAPI, encoderkey, encoder_pos, log }
+  await encode_hosting_setup(data).catch(err => {
+    log({ type: 'hosting setup', data: { text: 'error: encode', amendmentID }})
+    return
+  })
+  clearTimeout(tid)
+  log({ type: 'encoder', data: { type: `Encoding done` } })
+
+  async function isForMe (encoders) {
+    for (var i = 0, len = encoders.length; i < len; i++) {
+      const id = encoders[i]
+      const peerAddress = await chainAPI.getUserAddress(id)
+      if (peerAddress === myAddress) return i
+    }
+  }
+}
+
+/* -----------------------------------------
+            HOSTER REPLACEMENT
+----------------------------------------- */
+async function handle_hosterReplacement (args) {
+  const { event, chainAPI, account, encoderkey, myAddress, log } = args
+  const [amendmentID] = event.data
+  const amendment = await chainAPI.getAmendmentByID(amendmentID)
+  const { providers: { hosters, attesters, encoders }, pos } = amendment
+  const encoderID = encoders[pos]
+  const encoderAddress = await chainAPI.getUserAddress(encoderID)
+  if (encoderAddress === myAddress) {
+    log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
+  }
+
+  const tid = setTimeout(() => {
+    log({ type: 'timeout', data: { texts: 'error: encoding timeout', amendmentID } })
+  }, DEFAULT_TIMEOUT)
+
+  const data = { account, amendment, chainAPI, encoderkey, encoder_pos: pos, log }
   await encode_hosting_setup(data).catch(err => {
     log({ type: 'hosting setup', data: { text: 'error: encode', amendmentID }})
     return

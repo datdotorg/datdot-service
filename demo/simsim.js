@@ -26,7 +26,7 @@ async function run (params) {
   // const delay2 = 0
   // var i = await new Promise(resolve => setTimeout(() => resolve(three(params)), delay2))
   
-  console.log('3. ===== stop `two` =====')
+  // console.log('3. ===== stop `two` =====')
   // console.log('4. ===== just end everything =====')
   // const delay3 = 15000
   // setTimeout(() => all_processes[pos2].kill('SIGINT'), delay3)

@@ -6,7 +6,7 @@ const Hyperbeam = require('hyperbeam')
 const brotli = require('_datdot-service-helpers/brotli')
 const parse_decompressed = require('_datdot-service-helpers/parse-decompressed')
 const varint = require('varint')
-const hosterStorage = require('_datdot-service-helpers/hoster-storage.js')
+const hosterStorage = require('hoster-storage')
 const sub = require('subleveldown')
 const {
   done_task_cleanup,
@@ -34,11 +34,11 @@ module.exports = APIS => {
     async function handleEvent(event) {
       const args = { event, chainAPI, account, hosterkey, myAddress, hyper, log }
       const method = event.method
-      if (method === 'NewAmendment') handle_newAmendment(args)
+      if (method === 'hostingSetup') handle_hostingSetup(args)
       else if (method === 'HostingStarted') {}
       else if (method === 'hosterReplacement') handle_hosterReplacement(args)
       else if (method === 'DropHosting') handle_dropHosting(args)
-      else if (method === 'NewStorageChallenge') handle_storageChallenge(args)
+      else if (method === 'storageChallenge') handle_storageChallenge(args)
     }
   }
 }
@@ -46,11 +46,11 @@ module.exports = APIS => {
 
 /* ----------------------------------------------------------------------------------- 
 
-      HANDLE NEW AMENDMENT = HOSTING SETUP / GET ENCODED DATA AND START HOSTING
+      HOSTING SETUP / GET ENCODED DATA AND START HOSTING
 
 --------------------------------------------------------------------------------------- */
 
-async function handle_newAmendment (args) {
+async function handle_hostingSetup (args) {
   const { event, chainAPI, account, hosterkey, myAddress, hyper, log } = args
   const [amendmentID] = event.data
   const amendment = await chainAPI.getAmendmentByID(amendmentID)
@@ -69,7 +69,7 @@ async function handle_newAmendment (args) {
   const data = {
     hyper, amendmentID, account, feedkey,
     encoderSigningKey, hosterkey, attesterkey,
-    plan, ranges,encoder_pos: pos, log
+    plan, ranges, encoder_pos: pos, log
   }
 
   const { feed } = await receive_data_and_start_hosting(data).catch(err => {
@@ -472,6 +472,80 @@ async function handle_dropHosting (args) {
 async function handle_hosterReplacement (args) {
   const { event, chainAPI, account, hosterkey, myAddress, hyper, log } = args
   const [amendmentID] = event.data
+  const { 
+    providers: { hosters, attesters, encoders }, pos, contract, id
+   } = await chainAPI.getAmendmentByID(amendmentID)
+   const [attesterID] = attesters
+   const attesterkey = await chainAPI.getAttesterKey(attesterID)
+   const { feed: feedID, ranges } = await chainAPI.getContractByID(contract)
+   const feedkey = await chainAPI.getFeedKey(feedID)
+  const addresses = hosters.map(async hosterID => await chainAPI.getUserAddress(hosterID))
+  const len = addresses.length
+  for (var i = 0; i < len; i++) {
+    const hosterAddress = addresses[i]
+    if (hosterAddress === myAddress) {
+      if (i === pos) start_hosting()
+      else {
+        const opts = { account, hosterkey, attesterkey, feedkey, ranges, id }
+        send_data_to_attester(opts)
+      }
+    } 
+  }
+}
+
+async function send_data_to_attester (opts) {
+  return new Promise (async (resolve, reject) => {
+    const { account, hosterkey, attesterkey, feedkey, ranges, id } = opts
+    const topic = derive_topic({ senderKey: hosterkey, feedkey, receiverKey: attesterkey, id, log })
+    const { feed } = await hyper.new_task({ topic, log })
+    log({ type: 'hoster', data: { text: `New task added (storage hoster)` } })
+  
+    await hyper.connect({ 
+      swarm_opts: { role: 'replacement_hoster', topic, mode: { server: true, client: false } },
+      targets: { feed, targetList: [ attesterkey.toString('hex') ], msg: { send: { type: 'feedkey' } } },
+      onpeer: onattester,
+      done,
+      log
+    })
+  
+    async function onattester ({ feed, remotestringkey }) {
+      log({ type: 'hoster', data: { text: `Connected to the storage chalenge attester`, feedkey: feed.key.toString('hex') } })
+      try {
+        const { count: expectedChunkCount, chunks } = getChunks(ranges)
+        const appended = []
+        for (const index of chunks) {
+          log({ type: 'hoster', data: { text: 'Next check', check: checks[contractID], contractID, checks} })
+          const message = await getDataFromStorage(account, feedkey, index, log)
+          if (!message) return
+          message.type = 'proof'
+          message.contractID = contractID
+          message.p = message.p.toString()
+          message.p = message.p.toString('binary')
+          log({ type: 'hoster', data: { text: `Hoster replacement: appending chunk ${i} for index ${index}` } })
+          appended.push(send(message, i))
+        }
+        await Promise.all(appended)
+        log({ type: 'hoster', data: { text: `${appended.length} appended to the attester` } })
+        resolve()
+      } catch (err) {
+        log({ type: 'error', data: { text: `Error: ${err}` } })
+        clearTimeout(tid)
+        reject(err)
+      }
+          
+      function send (message, i) {
+        return new Promise(async (resolve, reject) => {
+          await feed.append(proof_codec.encode(message))
+          resolve()
+        })
+      }
+    }
+    async function done ({ type }) {
+      if (type !== 'done') return
+      const remotestringkey = attesterkey.toString('hex')
+      await done_task_cleanup({ role: 'storage_hoster', topic, remotestringkey, state: account.state, log })
+    }
+  })
 }
 
             
