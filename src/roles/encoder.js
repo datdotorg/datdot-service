@@ -1,4 +1,3 @@
-const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
 const {done_task_cleanup} = require('_datdot-service-helpers/done-task-cleanup')
 const proof_codec = require('datdot-codec/proof')
@@ -6,7 +5,6 @@ const brotli = require('_datdot-service-helpers/brotli')
 const serialize_before_compress = require('serialize-before-compress')
 const datdot_crypto = require('datdot-crypto')
 const cloneDeep = require('clone-deep')
-const getChunks = require('getChunks')
 const DEFAULT_TIMEOUT = 10000
 
 module.exports = APIS => {
@@ -23,7 +21,7 @@ module.exports = APIS => {
     async function handleEvent (event) {
       const args = { event, chainAPI, account, encoderkey, myAddress, log }
       const method = event.method
-      if (method === 'hostingSetup') handle_hostingSetup(args)
+      if (method === 'hostingSetup' || method === 'retry_hostingSetup') handle_hostingSetup(args)
       else if (method === 'hosterReplacement') handle_hosterReplacement(args)
       else if (method === 'hostingStarted') {}
     }

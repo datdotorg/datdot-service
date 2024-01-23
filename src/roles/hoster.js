@@ -1,17 +1,13 @@
-const RAM = require('random-access-memory')
 const derive_topic = require('derive-topic')
 const download_range = require('_datdot-service-helpers/download-range')
-const hypercore = require('hypercore')
-const Hyperbeam = require('hyperbeam')
 const brotli = require('_datdot-service-helpers/brotli')
 const parse_decompressed = require('_datdot-service-helpers/parse-decompressed')
-const varint = require('varint')
 const hosterStorage = require('hoster-storage')
 const sub = require('subleveldown')
+const b4a = require('b4a')
 const {
   done_task_cleanup,
 } = require('_datdot-service-helpers/done-task-cleanup')
-const b4a = require('b4a')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
@@ -34,7 +30,7 @@ module.exports = APIS => {
     async function handleEvent(event) {
       const args = { event, chainAPI, account, hosterkey, myAddress, hyper, log }
       const method = event.method
-      if (method === 'hostingSetup') handle_hostingSetup(args)
+      if (method === 'hostingSetup' || method === 'retry_hostingSetup') handle_hostingSetup(args)
       else if (method === 'HostingStarted') {}
       else if (method === 'hosterReplacement') handle_hosterReplacement(args)
       else if (method === 'DropHosting') handle_dropHosting(args)

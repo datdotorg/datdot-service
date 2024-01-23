@@ -29,7 +29,7 @@ module.exports = APIS => {
     async function handleEvent (event) {
       const args = { event, chainAPI, account, signer, attesterkey, myAddress, hyper, log }
       const method = event.method
-      if (method === 'hostingSetup') handle_hostingSetup(args)
+      if (method === 'hostingSetup' || method === 'retry_hostingSetup') handle_hostingSetup(args)
       else if (method === 'hostingStarted') {}
       else if (method === 'storageChallenge') handle_storageChallenge(args)
       else if (method === 'performanceChallenge') handle_performanceChallenge(args)
