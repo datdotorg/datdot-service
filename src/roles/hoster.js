@@ -5,9 +5,7 @@ const parse_decompressed = require('_datdot-service-helpers/parse-decompressed')
 const hosterStorage = require('hoster-storage')
 const sub = require('subleveldown')
 const b4a = require('b4a')
-const {
-  done_task_cleanup,
-} = require('_datdot-service-helpers/done-task-cleanup')
+const { done_task_cleanup } = require('_datdot-service-helpers/done-task-cleanup')
 
 const datdot_crypto = require('datdot-crypto')
 const proof_codec = require('datdot-codec/proof')
@@ -23,18 +21,19 @@ module.exports = APIS => {
     const account = vaultAPI
     const { identity, log, hyper } = account
     const { chainAPI } = APIS
-    const { myAddress, noiseKey: hosterkey } = identity
+    const { myAddress, signer, noiseKey: hosterkey } = identity
     await chainAPI.listenToEvents(handleEvent)
 
     // EVENTS
     async function handleEvent(event) {
-      const args = { event, chainAPI, account, hosterkey, myAddress, hyper, log }
+      const args = { event, chainAPI, account, signer, hosterkey, myAddress, hyper, log }
       const method = event.method
       if (method === 'hostingSetup' || method === 'retry_hostingSetup') handle_hostingSetup(args)
       else if (method === 'HostingStarted') {}
       else if (method === 'hosterReplacement') handle_hosterReplacement(args)
-      else if (method === 'DropHosting') handle_dropHosting(args)
+      else if (method === 'dropHosting') handle_dropHosting(args)
       else if (method === 'storageChallenge') handle_storageChallenge(args)
+      // paused handled in attester
     }
   }
 }
@@ -53,19 +52,23 @@ async function handle_hostingSetup (args) {
   const { hosters, attesters, encoders } = amendment.providers
   const pos = await isForMe(hosters)
   if (pos === undefined) return // pos can be 0
+  var peers = []
+
+  const { feedkey, attesterkey, plan, ranges, signatures } = await getAmendmentData(attesters, amendment)
 
   const tid = setTimeout(() => {
     log({ type: 'hoster', data: { texts: 'error: hosting setup - timeout', amendmentID } })
+    const topic = datdot_crypto.get_discoverykey(feedkey)
+    done_task_cleanup({ role: 'hoster2author', topic, peers, state: account.state, log }) // done for hoster2author (client)
     return
   }, DEFAULT_TIMEOUT)
 
   log({ type: 'hoster', data: { text: `Event received: ${event.method} ${event.data.toString()}` } })
   const encoderSigningKey = await chainAPI.getSigningKey(encoders[pos])
-  const { feedkey, attesterkey, plan, ranges, signatures } = await getAmendmentData(attesters, amendment)
   const data = {
     hyper, amendmentID, account, feedkey,
     encoderSigningKey, hosterkey, attesterkey,
-    plan, ranges, encoder_pos: pos, log
+    plan, ranges, encoder_pos: pos, peers, log
   }
 
   const { feed } = await receive_data_and_start_hosting(data).catch(err => {
@@ -96,12 +99,12 @@ async function handle_hostingSetup (args) {
 
 async function receive_data_and_start_hosting (data) {
   return new Promise (async (resolve,reject) => {
-    const { hyper, amendmentID, account, feedkey, plan, ranges, log } = data  
+    const { hyper, amendmentID, account, feedkey, plan, ranges, peers, log } = data  
     try {
       await addKey(account, feedkey, plan)
       const log2Author = log.sub(`Hoster to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)} `)
       log({ type: 'hoster', data: { text: 'load feed', amendment: amendmentID } })
-      const { feed } = await loadFeedData({ account, hyper, ranges, feedkey, log: log2Author })
+      const { feed } = await loadFeedData({ peers, account, hyper, ranges, feedkey, log: log2Author })
       await getEncodedDataFromAttester(data)
       resolve({ feed })
     } catch (err) {
@@ -111,12 +114,11 @@ async function receive_data_and_start_hosting (data) {
   })
 }
 
-async function loadFeedData({ account, hyper, ranges, feedkey, log }) {
+async function loadFeedData({ peers, account, hyper, ranges, feedkey, log }) {
   return new Promise (async (resolve,reject) => {
     const topic = datdot_crypto.get_discoverykey(feedkey)
     const stringtopic = topic.toString('hex')
     const { feed } = await hyper.new_task({ feedkey, topic, log })
-    var peers = []
     try {
       // replicate feed from author
       await hyper.connect({ 
@@ -141,7 +143,7 @@ async function loadFeedData({ account, hyper, ranges, feedkey, log }) {
         account.storages.set(stringkey, storage)
       } else storage = await getStorage({account, key: feed.key, log})
     
-      // make hoster storage for feed
+      // make hoster-storage for feed
       let downloaded = []
       for (const range of ranges) { downloaded.push(download_range({ feed, range })) }
       await Promise.all(downloaded)
@@ -451,13 +453,25 @@ async function handle_dropHosting (args) {
   const { event, chainAPI, account, hosterkey, myAddress, hyper, log } = args
   const [amendmentID, hosterID] = event.data
   const hosterAddress = await chainAPI.getUserAddress(hosterID)
-  if (hosterAddress === myAddress) {
-    log({ type: 'hoster', data: {  text: `Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}` } })
-    // const feedkey = await chainAPI.getFeedKey(feedID)
-    // const hasKey = await account.storages.has(feedkey.toString('hex'))
-    // if (hasKey) return await removeFeed(account, feedkey, amendmentID)
-    // TODO: cancel hosting = remove feed, get out of swarm...
+  if (!hosterAddress === myAddress) return
+  log({ type: 'hoster', data: {  text: `Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}` } })
+  
+  const { 
+    providers, contract: contractID, id
+  } = await chainAPI.getAmendmentByID(amendmentID)
+   const { feed: feedID, ranges } = await chainAPI.getContractByID(contractID)
+   const feedkey = await chainAPI.getFeedKey(feedID)
+   const { tasks } = account.state
+  // call done task cleanup
+  const topic = datdot_crypto.get_discoverykey(feedkey)
+  for (const stringtopic of tasks) {
+    if (!stringtopic !== topic.toString('hex')) continue
+    done_task_cleanup({ role: 'hoster', topic, peers: [], state: account.state, log })
   }
+  // remove feed from storage
+  const hasKey = await account.storages.has(feedkey.toString('hex'))
+  if (hasKey) return await removeFeed(account, feedkey, amendmentID)
+
 }
 
 /* ------------------------------------------- 

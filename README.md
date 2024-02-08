@@ -15,9 +15,7 @@ This version is work in progress (to try previous verisons of the code, see mile
 ### Install dependencies
 `npm install`
 
-### Run
-
-1. Run bootstrapping nodes and each scenario separately
+### 1. Run bootstrapping nodes and each scenario separately
 
 #### Start the bootstrapping nodes
 `npm run bootstrap` 
@@ -29,7 +27,7 @@ This version is work in progress (to try previous verisons of the code, see mile
 #### Run the additional scenario and connect to already running chain (optional)
 `npm run simulation -- -s 2 -c 10000 -p bootstrap.json -t` 
 
-2. Or simply run a simsim.js where you can customize how many simulations you want to run and when
+### 2. Run a simulation (simsim.js) where you can customize how many simulations you want to run and when
 
 #### Start the bootstrapping nodes
 `npm run bootstrap` 
@@ -37,7 +35,7 @@ This version is work in progress (to try previous verisons of the code, see mile
 #### Run custom logic
 `node demo/simsim.js`
 
-### Monitoring
+### 3. Run the simulation and store logs in the logs.txt which you can monitor live
 
 #### Start the bootstrapping nodes
 `npm run bootstrap` 

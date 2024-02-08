@@ -16,20 +16,20 @@ async function run (params) {
   // console.log('0. ===== start `bootstrap nodes` =====')
   // init()
   // await new Promise(resolve => setTimeout(resolve, default_delay))
-  console.log('1. ===== start `one` =====')
   params = []
+  console.log('1. ===== start `one` =====')
   const pos1 = one(params)
   console.log('2. ===== start `two` =====')
   const delay1 = 0 // 2000
   var pos2 = await new Promise(resolve => setTimeout(() => resolve(two(params)), delay1))
-  // console.log('3. ===== start `three` =====')
-  // const delay2 = 0
-  // var i = await new Promise(resolve => setTimeout(() => resolve(three(params)), delay2))
+  console.log('3. ===== start `three` =====')
+  const delay2 = 0
+  var pos3 = await new Promise(resolve => setTimeout(() => resolve(three(params)), delay2))
   
-  // console.log('3. ===== stop `two` =====')
+  console.log('3. ===== stop `two` =====')
   // console.log('4. ===== just end everything =====')
-  // const delay3 = 15000
-  // setTimeout(() => all_processes[pos2].kill('SIGINT'), delay3)
+  const delay3 = 25000
+  setTimeout(() => all_processes[pos2].kill('SIGINT'), delay3)
 }
 /**********************************************************
   SCENARIOS

@@ -14,16 +14,17 @@ module.exports = APIS => {
     const account = vaultAPI
     const { identity, log, hyper } = account
     const { chainAPI } = APIS
-    const { myAddress, noiseKey: encoderkey } = identity
+    const { myAddress, signer, noiseKey: encoderkey } = identity
     await chainAPI.listenToEvents(handleEvent)
     
     // EVENTS
     async function handleEvent (event) {
-      const args = { event, chainAPI, account, encoderkey, myAddress, log }
+      const args = { event, chainAPI, account, encoderkey, signer, myAddress, log }
       const method = event.method
       if (method === 'hostingSetup' || method === 'retry_hostingSetup') handle_hostingSetup(args)
       else if (method === 'hosterReplacement') handle_hosterReplacement(args)
       else if (method === 'hostingStarted') {}
+      // paused handled in attester
     }
   }
 } 
@@ -35,10 +36,7 @@ async function handle_hostingSetup (args) {
   const { event, chainAPI, account, encoderkey, myAddress, log } = args
   const [amendmentID] = event.data
   const amendment = await chainAPI.getAmendmentByID(amendmentID)
-  var encoder_pos
-  if (amendment.hoster_replacement) {
-    encoder_pos = await isForMe([amendment.hoster_replacement.encoders])
-  } else encoder_pos = await isForMe(amendment.providers.encoders)
+  var encoder_pos = await isForMe(amendment.providers.encoders)
   if (encoder_pos === undefined) return // pos can be 0
 
   const tid = setTimeout(() => {

@@ -3,8 +3,8 @@
 // author has no additional actions
 
 module.exports = [
-  { "name": "grega", "behavior": ["register_chain_account", "sponsor_plan", "offer_service"] },
-  { "name": "marko", "behavior": ["register_chain_account", "author_hypercore"] },
+  // { "name": "grega", "behavior": ["register_chain_account", "sponsor_plan", "offer_service"] },
+  // { "name": "marko", "behavior": ["register_chain_account", "author_hypercore"] },
   { "name": "andreja", "behavior": ["register_chain_account", "offer_service"] },
   { "name": "bojan", "behavior": ["register_chain_account", "offer_service"] },
   { "name": "iztok", "behavior": ["register_chain_account", "offer_service"] },
