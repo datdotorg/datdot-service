@@ -30,6 +30,7 @@ module.exports = APIS => {
       const args = { event, chainAPI, account, signer, attesterkey, myAddress, hyper, log }
       const method = event.method
       if (method === 'hostingSetup' || method === 'retry_hostingSetup') handle_hostingSetup(args)
+      else if (method === 'hostingSetup_failed') handle_hostingSetup_failed(args)
       else if (method === 'hostingStarted') {}
       else if (method === 'storageChallenge') storageChallenge_handler(args)
       else if (method === 'performanceChallenge') performanceChallenge_handler(args)
@@ -39,6 +40,65 @@ module.exports = APIS => {
       else if (method === 'paused') paused_handler(args)
     }
   }
+}
+
+
+/* -----------------------------------------
+            HOSTING SETUP FAILED
+----------------------------------------- */
+
+async function handle_hostingSetup_failed (args) {
+  const { event, chainAPI, account, signer, attesterkey, myAddress, hyper, log } = args
+  const [amendmentID, failedIDs] = event.data
+  const amendment = await chainAPI.getAmendmentByID(amendmentID)
+  const [attesterID] = amendment.providers.attesters
+  const attesterAddress = await chainAPI.getUserAddress(attesterID)
+  if (attesterAddress !== myAddress) return
+
+  const { hosters, encoders, attesters } = amendment.providers
+  const contract = await chainAPI.getContractByID(amendment.contract)
+  const { feed: feedID } = contract
+  const { feedkey } = await chainAPI.getFeedByID(feedID)
+  const myID = await chainAPI.getUserIDByNoiseKey(attesterkey)
+  const { tasks } = account.state
+
+  log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
+
+  if (failedIDs.includes(myID)) { // disconnect from all
+    for (const id of hosters) {
+      const hosterkey = await chainAPI.getHosterKey(id)
+      const topic = derive_topic({ senderKey: attesterkey, feedkey, receiverKey: hosterkey, id: amendmentID, log }) 
+      const stringtopic = topic.toString('hex')
+      if (!tasks[stringtopic]) continue
+      await done_task_cleanup({ role: 'attester2hoster', topic, remotestringkey: hosterkey.toString('hex'), state: account.state, log })
+    }
+    for (const id of encoders) {
+      const encoderkey = await chainAPI.getEncoderKey(id)
+      const topic = derive_topic({ senderKey: encoderkey, feedkey, receiverKey: attesterkey, id: amendmentID, log })
+      const stringtopic = topic.toString('hex')
+      if (!tasks[stringtopic]) continue
+      await done_task_cleanup({ role: 'attester2encoder', topic, remotestringkey: encoderkey.toString('hex'), state: account.state, log })
+    }
+  } 
+  else { // disconnect from failed
+    for (const id of failedIDs) {
+      if (hosters.includes(id)) {
+        const hosterkey = await chainAPI.getHosterKey(id)
+        const topic = derive_topic({ senderKey: attesterkey, feedkey, receiverKey: hosterkey, id: amendmentID, log }) 
+        const stringtopic = topic.toString('hex')
+        if (!tasks[stringtopic]) continue
+        await done_task_cleanup({ role: 'attester2hoster', topic, remotestringkey: hosterkey.toString('hex'), state: account.state, log })
+      }
+      else if (encoders.includes(id)) {
+        const encoderkey = await chainAPI.getEncoderKey(id)
+        const topic = derive_topic({ senderKey: encoderkey, feedkey, receiverKey: attesterkey, id: amendmentID, log })
+        const stringtopic = topic.toString('hex')
+        if (!tasks[stringtopic]) continue
+        await done_task_cleanup({ role: 'attester2encoder', topic, remotestringkey: encoderkey.toString('hex'), state: account.state, log })
+      }
+    }
+  }
+
 }
 
 /* ----------------------------------------------------------------------
@@ -53,6 +113,9 @@ async function handle_hostingSetup (args) {
   const [attesterID] = amendment.providers.attesters
   const attesterAddress = await chainAPI.getUserAddress(attesterID)
   if (attesterAddress !== myAddress) return
+  const conn = {}
+  const failedKeys = []
+  const sigs = []
   
   log({ type: 'attester', data: { text: `Attester ${attesterID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment)} })
   
@@ -60,26 +123,25 @@ async function handle_hostingSetup (args) {
   = await getAmendmentData({ chainAPI, amendment, contract, log })
 
   const tid = setTimeout(async () => {
-    log({ type: 'attester', data: { texts: 'error: hosting setup - timeout', amendmentID } })
-    for (var i = 0; i < encoderkeys.length; i++) {
-      const encoderkey = encoderkeys[i]
-      const hosterkey = hosterkeys[i]
-      const id = amendmentID
-      const topic1 = derive_topic({ senderKey: encoderkey, feedkey, receiverKey: attesterkey, id, log })
-      const topic2 = derive_topic({ senderKey: attesterkey, feedkey, receiverKey: hosterkey, id, log }) 
-      await done_task_cleanup({ role: 'attester2encoder', topic: topic1, remotestringkey: encoderkey.toString('hex'), state: account.state, log })
-      await done_task_cleanup({ role: 'attester2hoster', topic: topic2, remotestringkey: hosterkey.toString('hex'), state: account.state, log })
+    const hosterstringkeys = hosterkeys.map(key => key.toString('hex'))
+    const encoderstringkeys = encoderkeys.map(key => key.toString('hex'))
+    const peers = [...hosterstringkeys, ...encoderstringkeys]
+    log({ type: 'attester', data: { texts: 'error: hosting setup - timeout', amendmentID, failedKeys, conn, hosterkeys, encoderkeys, peers } })
+    for (const key of peers) {
+      if (!conn[key]) failedKeys.push(key.toString('hex'))
     }
-
+    const report = { id: amendmentID, failed: failedKeys, sigs }
+    const nonce = await account.getNonce()
+    await chainAPI.amendmentReport({ report, signer, nonce })
   }, DEFAULT_TIMEOUT)
 
   
   const data = { 
     account, amendmentID, feedkey, 
     hosterkeys, attesterkey, encoderkeys, 
-    hosterSigKeys, ranges, log 
+    hosterSigKeys, ranges, conn, failedKeys, sigs, log 
   }
-  const { failedKeys, sigs } = await attest_hosting_setup(data).catch(err => {
+  await attest_hosting_setup(data).catch(err => {
     log({ type: 'hosting setup', data: { text: 'error: hosting setup', amendmentID }})
     return
   })
@@ -98,9 +160,11 @@ async function handle_hostingSetup (args) {
 
 async function attest_hosting_setup (data) {
   return new Promise(async (resolve, reject) => {
-    const { account, amendmentID, feedkey, hosterkeys, attesterkey, encoderkeys, hosterSigKeys, ranges, log } = data
-    const failedKeys = []
-    const sigs = []
+    const { 
+      account, amendmentID, feedkey, 
+      hosterkeys, attesterkey, encoderkeys, 
+      hosterSigKeys, ranges, conn, failedKeys, sigs, log 
+    } = data
     try {
       const messages = {}
       const promises = []
@@ -120,21 +184,21 @@ async function attest_hosting_setup (data) {
         const opts = { 
           account, topic1, topic2, 
           encoderkey, hosterSigningKey, hosterkey, 
-          unique_el, ranges, log 
+          unique_el, ranges, conn, log 
         }
         opts.compare_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
         promises.push(verify_and_forward_encodings(opts))
       }
       
       const reponses = await Promise.all(promises) // can be 0 to 6 pubKeys of failed providers
-      // log({ type: 'attester', data: { text: `Resolved responses!`, reponses } })
+      log({ type: 'attester', data: { text: `Resolved responses!`, reponses } })
       for (const res of reponses) {
         const { failedKeys: failed, proof_of_contact, hosterkey } = res
-        failedKeys.push(failed)
+        failedKeys.push(...failed)
         sigs.push({ proof_of_contact, hosterkey })
       }
-      // log({ type: 'attester', data: { text: 'resolved responses', amendmentID, failed, sigs_len: sigs.length } })
-      const report = { failedKeys: [...new Set(failedKeys.flat())], sigs }        
+      log({ type: 'attester', data: { text: 'resolved responses', amendmentID, failedKeys, sigs_len: sigs.length } })
+      const report = { failedKeys, sigs }        
       resolve(report)
     } catch(err) {
       log({ type: 'fail', data: { text: 'Error: attest_hosting_setup', err }})
@@ -146,7 +210,7 @@ async function attest_hosting_setup (data) {
 }
   
 async function verify_and_forward_encodings (opts) {
-  const { account, topic1, topic2, encoderkey, hosterSigningKey, hosterkey, unique_el, ranges, compare_CB, log } = opts
+  const { account, topic1, topic2, encoderkey, hosterSigningKey, hosterkey, unique_el, ranges, compare_CB, conn, log } = opts
   const failedKeys = []
   return new Promise(async (resolve, reject) => {
     try {
@@ -154,7 +218,7 @@ async function verify_and_forward_encodings (opts) {
       const proof_of_contact = await connect_compare_send({
         account, topic1, topic2, ranges,
         key1: encoderkey, key2: hosterkey, 
-        hosterSigningKey, unique_el, compare_CB, log
+        hosterSigningKey, unique_el, compare_CB, failedKeys, conn, log
       })
       log({ type: 'attester', data: { text: 'All compared and sent, resolving now', encoderkey: encoderkey.toString('hex'), proof_of_contact }})
       if (!proof_of_contact) failedKeys.push(hosterkey)
@@ -171,7 +235,7 @@ async function connect_compare_send (opts) {
   const { 
     account, topic1, topic2, ranges,
     key1, key2, hosterSigningKey, 
-    unique_el, compare_CB, log 
+    unique_el, compare_CB, conn, failedKeys, log 
   } = opts
   const { hyper } = account
   const { count: expectedChunkCount } = getChunks(ranges)
@@ -199,13 +263,14 @@ async function connect_compare_send (opts) {
       // log2encoder({ type: 'attester', data: { text: 'waiting for onencoder', key1: key1.toString('hex') }})
       
       async function onencoder ({ feed, remotestringkey }) {
+        conn[remotestringkey] = 'connected'
         log2encoder({ type: 'attester', data: { text: 'Connected to the encoder', encoder: remotestringkey, expectedChunkCount, feedkey: feed.key.toString('hex') }})
         feed1 = feed
         for (var i = 0; i < expectedChunkCount; i++) {
           get_and_compare({ 
             compared, feed: feed1, i, done, compare_CB, 
-            encoderkey: remotestringkey, expectedChunkCount, log: log2encoder 
-          })
+            encoderkey: remotestringkey, expectedChunkCount, failedKeys, log: log2encoder 
+          }).catch(err => reject(err))
         }
       }
 
@@ -223,6 +288,7 @@ async function connect_compare_send (opts) {
       })
       
       async function onhoster ({ feed, remotestringkey }) {
+        conn[remotestringkey] = 'connected'
         log2hoster({ type: 'attester', data: { text: 'connected to the hoster', hoster: remotestringkey, topic: topic2.toString('hex'), compared, feedkey: feed.key.toString('hex') }})
         for (var i = 0; i < expectedChunkCount; i++ ) {
           try_send({ compared, i, feed: feed2, done, log: log2hoster,expectedChunkCount })
@@ -623,7 +689,7 @@ async function get_challenge_data ({ chainAPI, selectedHosters, contractIDs, log
         const { amendments, ranges } = await chainAPI.getContractByID(contractID)
         const active_amendment = await chainAPI.getAmendmentByID(amendments[amendments.length-1])
         var { providers: { hosters } } = active_amendment
-        log({ type: 'challenge', data: { text: 'Getting hosters and chunks for contract' } })
+        log({ type: 'challenge', data: { text: 'Getting hosters and chunks for contract', selectedHosters: JSON.stringify(selectedHosters) } })
         for (const hosterID of hosters) {
           if (!selectedHosters.includes(hosterID)) continue
           const hoster = await chainAPI.getUserByID(hosterID)
@@ -768,8 +834,7 @@ async function hosterReplacement_handler (args) {
   const attesterAddress = await chainAPI.getUserAddress(attesterID)
   if (attesterAddress !== myAddress) return
   const compare_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
-
-  const temp = {}
+  const conn = {}
   
   const tid = setTimeout(() => {
     log({ type: 'attester', data: { texts: 'error: hoster replacement - timeout', amendmentID } })
@@ -778,7 +843,7 @@ async function hosterReplacement_handler (args) {
   
   log({ type: 'attester', data: { text: `Attester ${attesterID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment)} })
   
-  const data = { amendment, chainAPI, account, attesterkey, log }
+  const data = { amendment, chainAPI, account, attesterkey, conn, log }
   const { failedKeys, sigs } = await replaceHoster(data).catch(err => {
     log({ type: 'replace hoster', data: { text: 'error: hosterReplacement', amendmentID }})
     return
@@ -794,11 +859,12 @@ async function hosterReplacement_handler (args) {
     const { feed: feedID, ranges } = await chainAPI.getContractByID(contract)
     const feedkey = await chainAPI.getFeedKey(feedID)
     const compared = {}
+    const failedKeys = []
     log({ type: 'attester', data: { text: `replace hoster`, amendmentID: id } })    
 
     const opts = { 
       account, encoder_id: encoders[pos], feedkey, attesterkey, 
-      id, ranges, compared, log 
+      id, ranges, compared, conn, failedKeys, log 
     }
     get_encoded_data(opts)
     const replacementHosterkey = hosterkeys[pos]
@@ -829,7 +895,7 @@ async function hosterReplacement_handler (args) {
 
   async function get_encoded_data (opts) {
     const { 
-      account, encoder_id, feedkey, attesterkey, id, ranges, compared, log 
+      account, encoder_id, feedkey, attesterkey, id, ranges, compared, conn, failedKeys, log 
     } = opts
     const encoderkey = await chainAPI.getUserAddress(encoder_id)
     const encoderstringkey = encoderkey.toString('hex')
@@ -848,13 +914,14 @@ async function hosterReplacement_handler (args) {
     })
     
     async function onencoder ({ feed, remotestringkey }) {
+      conn[remotestringkey] = 'connected'
       const { count: expectedChunkCount } = getChunks(ranges)
       log2enc({ type: 'attester', data: { text: 'Connected to the hoster replacement encoder', encoder: remotestringkey, expectedChunkCount, feedkey: feed.key.toString('hex'), feed_len: feed.length }})
       const chunks = []
       for (var i = 0; i < expectedChunkCount; i++) {
         get_and_compare({ 
           compared, feed, i, encoderkey: remotestringkey, 
-          compare_CB, done, expectedChunkCount, log: log2enc 
+          compare_CB, done, expectedChunkCount, failedKeys, log: log2enc 
         })
       }
     }
@@ -993,21 +1060,28 @@ function getRandomInt (min, max) {
 }
 
 async function get_and_compare (opts) {
-  try {
-    const { 
-      compared, feed, i, compare_CB, done, 
-      encoderkey, expectedChunkCount, log 
-    } = opts
-    log({ type: 'attester', data: { text: 'getting chunks', i, encoderkey } })
-    const chunk_promise = feed.get(i)
-    const chunk = await chunk_promise
-    const res = await compare_CB(chunk_promise, encoderkey)
-    log({ type: 'attester', data: { text: 'chunk compare res', i, res: res.type, /*chunk*/ } })
-    if (res.type !== 'verified') return log({ type: 'error', data: { text: 'error: chunk not valid' }})
-    try_send({ expectedChunkCount, compared, chunk, i, feed, done, log })
-  } catch(err) {
-    log({ type: 'attester', data: { text: 'Error: get_and_compare_chunk' }})
-  }
+  return new Promise(async (resolve, reject) => {
+    try {
+      const { 
+        compared, feed, i, compare_CB, done, 
+        encoderkey, expectedChunkCount, failedKeys, log 
+      } = opts
+      log({ type: 'attester', data: { text: 'getting chunks', i, encoderkey } })
+      const chunk_promise = feed.get(i)
+      const chunk = await chunk_promise
+      const res = await compare_CB(chunk_promise, encoderkey)
+      log({ type: 'attester', data: { text: 'chunk compare res', i, res: res.type, /*chunk*/ } })
+      if (res.type !== 'verified') { 
+        log({ type: 'error', data: { text: 'error: chunk not valid' }}) 
+        failedKeys.push(encoderkey)
+        return reject()
+      }
+      try_send({ expectedChunkCount, compared, chunk, i, feed, done, log })
+    } catch(err) {
+      log({ type: 'attester', data: { text: 'Error: get_and_compare_chunk' }})
+      reject()
+    }
+  })
 }
 
 function try_send (opts) {

@@ -23,6 +23,7 @@ module.exports = APIS => {
       const method = event.method
       if (method === 'hostingSetup' || method === 'retry_hostingSetup') handle_hostingSetup(args)
       else if (method === 'hosterReplacement') handle_hosterReplacement(args)
+      else if (method === 'hostingSetup_failed') handle_hostingSetup_failed(args)
       else if (method === 'hostingStarted') {}
       // paused handled in attester
     }
@@ -36,7 +37,7 @@ async function handle_hostingSetup (args) {
   const { event, chainAPI, account, encoderkey, myAddress, log } = args
   const [amendmentID] = event.data
   const amendment = await chainAPI.getAmendmentByID(amendmentID)
-  var encoder_pos = await isForMe(amendment.providers.encoders)
+  var encoder_pos = await isForMe({ IDs: amendment.providers.encoders, myAddress, chainAPI, log })
   if (encoder_pos === undefined) return // pos can be 0
 
   const tid = setTimeout(() => {
@@ -52,13 +53,34 @@ async function handle_hostingSetup (args) {
   clearTimeout(tid)
   log({ type: 'encoder', data: { type: `Encoding done` } })
 
-  async function isForMe (encoders) {
-    for (var i = 0, len = encoders.length; i < len; i++) {
-      const id = encoders[i]
-      const peerAddress = await chainAPI.getUserAddress(id)
-      if (peerAddress === myAddress) return i
-    }
-  }
+}
+
+/* -----------------------------------------
+            HOSTING SETUP FAILED
+----------------------------------------- */
+
+async function handle_hostingSetup_failed (args) {
+  const { event, chainAPI, account, signer, encoderkey, myAddress, hyper, log } = args
+  const [amendmentID, failedIDs] = event.data
+  const pos = await isForMe({ IDs: failedIDs, myAddress, chainAPI, log })
+  if (pos === undefined) return // pos can be 0
+
+  log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
+
+  const amendment = await chainAPI.getAmendmentByID(amendmentID)
+  const contract = await chainAPI.getContractByID(amendment.contract)
+  const { feed: feedID } = contract
+  const { feedkey } = await chainAPI.getFeedByID(feedID)
+  const { tasks } = account.state
+
+  const topic = datdot_crypto.get_discoverykey(feedkey)
+  const stringtopic = topic.toString('hex')
+  if (!tasks[stringtopic]) return
+  if (!tasks[stringtopic].amendments?.[amendmentID]) return
+  const peers = tasks[stringtopic].amendments[amendmentID].peers
+  if (!peers.length) return  
+  delete tasks[stringtopic].amendments[amendmentID]
+  done_task_cleanup({ role: 'encoder2author', topic, peers, state: account.state, log })
 }
 
 /* -----------------------------------------
@@ -87,13 +109,6 @@ async function handle_hosterReplacement (args) {
   clearTimeout(tid)
   log({ type: 'encoder', data: { type: `Encoding done` } })
 
-  async function isForMe (encoders) {
-    for (var i = 0, len = encoders.length; i < len; i++) {
-      const id = encoders[i]
-      const peerAddress = await chainAPI.getUserAddress(id)
-      if (peerAddress === myAddress) return i
-    }
-  }
 }
 
 async function encode_hosting_setup (data) {
@@ -132,12 +147,19 @@ async function encode_hosting_setup (data) {
       function onpeer ({ peerkey, stringtopic }) {
         log2Author({ type: 'encoder', data: { text: `onpeer callback`, stringtopic, peerkey } })
         peers.push(peerkey.toString('hex'))
+        const { tasks } = account.state
+        if (!tasks[stringtopic].amendments?.[amendmentID]) {
+          tasks[stringtopic].amendments = { [amendmentID]: { peers: [peerkey.toString('hex')]} }
+        } else {
+          tasks[stringtopic].amendments[amendmentID].peers.push(peerkey.toString('hex'))
+        }
       }
       
       async function done_with_author () {
         peers = [...new Set(peers)]
         log2Author({ type: 'encoder', data: { text: `calling done`, peers } })
-        await done_task_cleanup({ role: 'encoder2author', peers, topic: topic1, state: account.state, log })                   
+        delete account.state.tasks[topic1.toString('hex')].amendments[amendmentID]                  
+        await done_task_cleanup({ role: 'encoder2author', peers, topic: topic1, state: account.state, log }) 
       }
   
       
@@ -168,7 +190,6 @@ async function encode_hosting_setup (data) {
           const result = await Promise.all(all)
           log2Attester({ type: 'encoder', data: { text: `All encoded & sent`, result } })
           done_with_author()
-          // await done_task_cleanup({ role: 'encoder2attester', remotestringkey: attesterkey.toString('hex'), topic: topic2, state: account.state, log })  
           return resolve()
         } catch (err) {
           log2Attester({ type: 'encoder', data: { text: 'Error in result', err } })
@@ -186,14 +207,31 @@ async function encode_hosting_setup (data) {
 
   })
 
+}
+
+// @NOTE:
+// 1. encoded chunk has to be unique ([pos of encoder in the event, data]), so that hoster can not delete and download the encoded chunk from another hoster just in time
+// 2. encoded chunk has to be signed by the original encoder so that the hoster cannot encode a chunk themselves and send it to attester
+// 3. hoster verifies unique encoding data was signed by original encoder
+
   // HELPERS
+
+  async function isForMe({ IDs, myAddress, chainAPI, log }) {
+    log({ type: 'encoder', data: {  text: 'Is for me', IDs } })
+    for (var i = 0, len = IDs.length; i < len; i++) {
+      const id = IDs[i]
+      const peerAddress = await chainAPI.getUserAddress(id)
+      if (peerAddress === myAddress) return i
+    }
+  }
+
   async function encodeAndSendRange ({ account, temp_feed, range, feed, amendmentID, encoder_pos, log }) {
     return new Promise(async (resolve, reject) => {
       try {
         const sent = []
         for (let index = range[0], len = range[1] + 1; index < len; index++) {
           const proof_promise = download_and_encode({ account, index, feed, amendmentID, encoder_pos, log} )
-          sent.push(send({ account, feedkey: feed.key, task_id: amendmentID, proof_promise, temp_feed, log }))
+          sent.push(send({ amendmentID, proof_promise, temp_feed, log }))
         }
         const resolved = await Promise.all(sent)
         resolve(resolved)
@@ -203,7 +241,7 @@ async function encode_hosting_setup (data) {
       }
     })
   }
-  async function send ({ proof_promise, temp_feed, log }) {
+  async function send ({ amendmentID, proof_promise, temp_feed, log }) {
     return new Promise(async (resolve, reject) => {
       try {
         const proof = await proof_promise
@@ -241,9 +279,3 @@ async function encode_hosting_setup (data) {
       log({ type: 'encoder', data: {  text: 'Error in download_and_encode', err } })
     }
   }
-}
-
-// @NOTE:
-// 1. encoded chunk has to be unique ([pos of encoder in the event, data]), so that hoster can not delete and download the encoded chunk from another hoster just in time
-// 2. encoded chunk has to be signed by the original encoder so that the hoster cannot encode a chunk themselves and send it to attester
-// 3. hoster verifies unique encoding data was signed by original encoder

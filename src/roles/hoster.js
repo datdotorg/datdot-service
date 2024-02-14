@@ -30,12 +30,49 @@ module.exports = APIS => {
       const method = event.method
       if (method === 'hostingSetup' || method === 'retry_hostingSetup') handle_hostingSetup(args)
       else if (method === 'HostingStarted') {}
+      else if (method === 'hostingSetup_failed') handle_hostingSetup_failed(args)
       else if (method === 'hosterReplacement') handle_hosterReplacement(args)
       else if (method === 'dropHosting') handle_dropHosting(args)
       else if (method === 'storageChallenge') handle_storageChallenge(args)
       // paused handled in attester
     }
   }
+}
+
+/* -----------------------------------------
+            HOSTING SETUP FAILED
+----------------------------------------- */
+
+async function handle_hostingSetup_failed (args) {
+  const { event, chainAPI, account, signer, hosterkey, myAddress, hyper, log } = args
+  const [amendmentID, failedIDs] = event.data
+  const pos = await isForMe({ IDs: failedIDs, myAddress, chainAPI, log })
+  if (pos === undefined) return // pos can be 0
+
+  log({ type: 'hoster', data: { text: `Event received: ${event.method} ${event.data.toString()}` }})   
+
+  const amendment = await chainAPI.getAmendmentByID(amendmentID)
+  const contract = await chainAPI.getContractByID(amendment.contract)
+  const { ranges, feed: feedID } = contract
+  const { feedkey } = await chainAPI.getFeedByID(feedID)
+  const { tasks } = account.state
+
+  const topic = datdot_crypto.get_discoverykey(feedkey)
+  const stringtopic = topic.toString('hex')
+  if (!tasks[stringtopic]) return
+  if (!tasks[stringtopic].amendments?.[amendmentID]) return
+  const peers = tasks[stringtopic].amendments[amendmentID].peers
+  if (!peers.length) return
+  delete tasks[stringtopic].amendments[amendmentID]
+  await done_task_cleanup({ role: 'hoster2author', topic, peers, state: account.state, log }) // done for hoster2author (client)
+  // remove feed from storage
+  const hasKey = await account.storages.has(feedkey.toString('hex'))
+  if (!feeds[stringtopic] && hasKey) {
+    await removeFeed(account, feedkey, amendmentID)
+  }
+  // else if (hasKey) {
+  //   // deleteDecoded and deleteEncoded ranges if stored in the DB
+  // }
 }
 
 
@@ -50,7 +87,7 @@ async function handle_hostingSetup (args) {
   const [amendmentID] = event.data
   const amendment = await chainAPI.getAmendmentByID(amendmentID)
   const { hosters, attesters, encoders } = amendment.providers
-  const pos = await isForMe(hosters)
+  const pos = await isForMe({ IDs: hosters, myAddress, chainAPI, log })
   if (pos === undefined) return // pos can be 0
   var peers = []
 
@@ -58,8 +95,6 @@ async function handle_hostingSetup (args) {
 
   const tid = setTimeout(() => {
     log({ type: 'hoster', data: { texts: 'error: hosting setup - timeout', amendmentID } })
-    const topic = datdot_crypto.get_discoverykey(feedkey)
-    done_task_cleanup({ role: 'hoster2author', topic, peers, state: account.state, log }) // done for hoster2author (client)
     return
   }, DEFAULT_TIMEOUT)
 
@@ -77,13 +112,6 @@ async function handle_hostingSetup (args) {
   clearTimeout(tid)
   log({ type: 'hoster', data: {  text: `Hosting for the amendment ${amendmentID} started`, feedkey: feed.key.toString('hex') } })
 
-  async function isForMe(hosters) {
-    for (var i = 0, len = hosters.length; i < len; i++) {
-      const id = hosters[i]
-      const peerAddress = await chainAPI.getUserAddress(id)
-      if (peerAddress === myAddress) return i
-    }
-  }
   async function getAmendmentData(attesters, amendment) {
     const contract = await chainAPI.getContractByID(amendment.contract)
     const { ranges, feed: feedID } = contract
@@ -104,7 +132,7 @@ async function receive_data_and_start_hosting (data) {
       await addKey(account, feedkey, plan)
       const log2Author = log.sub(`Hoster to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)} `)
       log({ type: 'hoster', data: { text: 'load feed', amendment: amendmentID } })
-      const { feed } = await loadFeedData({ peers, account, hyper, ranges, feedkey, log: log2Author })
+      const { feed } = await loadFeedData({ peers, account, hyper, ranges, feedkey, amendmentID, log: log2Author })
       await getEncodedDataFromAttester(data)
       resolve({ feed })
     } catch (err) {
@@ -114,7 +142,7 @@ async function receive_data_and_start_hosting (data) {
   })
 }
 
-async function loadFeedData({ peers, account, hyper, ranges, feedkey, log }) {
+async function loadFeedData({ peers, account, hyper, ranges, feedkey, amendmentID, log }) {
   return new Promise (async (resolve,reject) => {
     const topic = datdot_crypto.get_discoverykey(feedkey)
     const stringtopic = topic.toString('hex')
@@ -131,6 +159,12 @@ async function loadFeedData({ peers, account, hyper, ranges, feedkey, log }) {
       function onpeer ({ peerkey }) {
         log({ type: 'hoster', data: { text: `onpeer callback`, stringtopic, peerkey } })
         peers.push(peerkey.toString('hex'))
+        const { tasks } = account.state
+        if (!tasks[stringtopic].amendments?.[amendmentID]) {
+          tasks[stringtopic].amendments = { [amendmentID]: { peers: [peerkey.toString('hex')]} }
+        } else {
+          tasks[stringtopic].amendments[amendmentID].peers.push(peerkey.toString('hex'))
+        }
       }
       
       var stringkey = feed.key.toString('hex')
@@ -149,6 +183,7 @@ async function loadFeedData({ peers, account, hyper, ranges, feedkey, log }) {
       await Promise.all(downloaded)
       peers = [...new Set(peers)]
       log({ type: 'hoster', data: {  text: 'all ranges downloaded', ranges, peers } }) 
+      delete account.state.tasks[stringtopic].amendments[amendmentID]
       await done_task_cleanup({ role: 'hoster2author', topic, peers, state: account.state, log }) // done for hoster2author (client)
       resolve({ feed })
 
@@ -342,6 +377,7 @@ async function handle_storageChallenge (args) {
   }, DEFAULT_TIMEOUT)
 
   const data = await get_storage_challenge_data(storageChallenge)
+  data.tid = tid
   await send_storage_proofs_to_attester({ data, account, log }).catch(err => {
     log({ type: 'storage challenge', data: { text: 'error: provide storage proof', id }})
   })
@@ -377,7 +413,7 @@ async function handle_storageChallenge (args) {
 async function send_storage_proofs_to_attester({ data, account, log: parent_log }) {
   return new Promise(async (resolve, reject) => {
     const { hyper } = account
-    const { challenge_id, attesterkey, hosterkey, checks, feedkey_1 } = data
+    const { challenge_id, attesterkey, hosterkey, checks, feedkey_1, tid } = data
     
     const log = parent_log.sub(`<-hoster2attester storage challenge, me: ${account.noisePublicKey.toString('hex').substring(0,5)} peer: ${attesterkey.toString('hex').substring(0, 5)} `)
     
@@ -482,9 +518,13 @@ async function handle_dropHosting (args) {
 async function handle_hosterReplacement (args) {
   const { event, chainAPI, account, hosterkey, myAddress, hyper, log } = args
   const [amendmentID] = event.data
-  const { 
-    providers: { hosters, attesters, encoders }, pos, contract, id
+  const { providers: { hosters, attesters }, pos, contract, id
    } = await chainAPI.getAmendmentByID(amendmentID)
+   const res = await isForMe({ IDs: hosters, myAddress, chainAPI, log })
+   if (res === undefined) return // res is a pos and can be 0
+
+   log({ type: 'hoster', data: {  text: `Event received: ${event.method} ${event.data.toString()}` } })
+
    const [attesterID] = attesters
    const attesterkey = await chainAPI.getAttesterKey(attesterID)
    const { feed: feedID, ranges } = await chainAPI.getContractByID(contract)
@@ -561,6 +601,14 @@ async function send_data_to_attester (opts) {
             
 // HELPERS
 
+async function isForMe({ IDs, myAddress, chainAPI, log }) {
+  log({ type: 'hoster', data: {  text: 'Is for me', IDs } })
+  for (var i = 0, len = IDs.length; i < len; i++) {
+    const id = IDs[i]
+    const peerAddress = await chainAPI.getUserAddress(id)
+    if (peerAddress === myAddress) return i
+  }
+}
 
 async function send_proof_of_contact ({ account, unique_el, remotestringkey, topic, log }) {
   try {
