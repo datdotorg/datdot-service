@@ -130,6 +130,8 @@ async function handle_hostingSetup (args) {
     for (const key of peers) {
       if (!conn[key]) failedKeys.push(key.toString('hex'))
     }
+    // we connected to all but it still timed out
+    if (!failedKeys.length) failedKeys.push(...hosterstringkeys, ...encoderstringkeys)
     const report = { id: amendmentID, failed: failedKeys, sigs }
     const nonce = await account.getNonce()
     await chainAPI.amendmentReport({ report, signer, nonce })
@@ -575,7 +577,7 @@ async function performanceChallenge_handler (args) {
   const { feedkey, contracts: contractIDs } = feedObj
   const topic = datdot_crypto.get_discoverykey(feedkey)
   log({ type: 'challenge', data: { text: 'Performance challenge for feed', feedObj } })
-  const { hosterkeys, chunks } = await get_challenge_data({ chainAPI, selectedHosters, contractIDs, log })
+  const { hosterkeys, hosterIDs, chunks } = await get_challenge_data({ chainAPI, selectedHosters, contractIDs, log })
   
   var conns = {}
   var attesting = []
@@ -588,7 +590,7 @@ async function performanceChallenge_handler (args) {
   }
 
   for (var i = 0; i < hosterkeys.length; i++) {
-    const hoster_id = selectedHosters[i]
+    const hoster_id = hosterIDs[i]
     const hosterkey = hosterkeys[i]
 
     const tid = setTimeout(() => {
