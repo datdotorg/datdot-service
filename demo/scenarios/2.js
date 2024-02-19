@@ -1,7 +1,7 @@
 
 module.exports = [
-  // { "name": "joshua", "behavior": ["register_chain_account", "sponsor_plan", "offer_service"] },
-  // { "name": "nora", "behavior": ["register_chain_account", "author_hypercore"] },
+  { "name": "joshua", "behavior": ["register_chain_account", "sponsor_plan", "offer_service"] },
+  { "name": "nora", "behavior": ["register_chain_account", "author_hypercore"] },
   { "name": "tony", "behavior": ["register_chain_account", "offer_service"] },
   { "name": "jannis", "behavior": ["register_chain_account", "offer_service"] },
   { "name": "nina", "behavior": ["register_chain_account", "offer_service"] },

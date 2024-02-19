@@ -23,7 +23,6 @@ module.exports = APIS => {
     const { identity, log, hyper } = account
     const { myAddress, signer, noiseKey: attesterkey } = identity
     // log({ type: 'attester', data: [`I am an attester`] })
-    const jobsDB = await tempDB(attesterkey)
     chainAPI.listenToEvents(handleEvent)
 
     async function handleEvent (event) {
@@ -805,10 +804,6 @@ async function unpublishPlan_handler (args) {
 const { event, chainAPI, account, signer, attesterkey, myAddress, hyper, log } = args
 const [planID] = event.data
 // const jobIDs = unpublishedPlan_jobIDs(planID)
-// jobIDs.forEach(jobID => {
-//   const job = jobsDB.get(jobID)
-//   if (job) { /* TODO: ... */ }
-// })
 }
 /* ----------------------------------------------------------------------
                         DROP HOSTING
@@ -818,10 +813,6 @@ async function dropHosting_handler (args) {
   const { event, chainAPI, account, signer, attesterkey, myAddress, hyper, log } = args
   const [planID] = event.data
   // const jobIDs = unpublishedPlan_jobIDs(planID)
-  // jobIDs.forEach(jobID => {
-  //   const job = jobsDB.get(jobID)
-  //   if (job) { /* TODO: ... */ }
-  // })
 }
 
 /* ----------------------------------------------------------------------

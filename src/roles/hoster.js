@@ -68,7 +68,7 @@ async function handle_hostingSetup_failed (args) {
   // remove feed from storage
   const hasKey = await account.storages.has(feedkey.toString('hex'))
   if (!feeds[stringtopic] && hasKey) {
-    await removeFeed(account, feedkey, amendmentID)
+    await removeFeed({ account, key: feedkey, amendmentID, log })
   }
   // else if (hasKey) {
   //   // deleteDecoded and deleteEncoded ranges if stored in the DB
@@ -312,31 +312,34 @@ async function getDataFromStorage(account, key, index, log) {
 }
 
 async function saveKeys(account, keys) {
-  await account.hosterDB.put('all_keys', keys)
+  await account.hosterDB.put('all_keys', JSON.stringify(keys))
 }
 
 async function addKey(account, key, options) {
   const stringKey = key.toString('hex')
-  const existing = (await account.hosterDB.get('all_keys').catch(e => { })) || []
+  var existing = (await account.hosterDB.get('all_keys').catch(e => { })) || '[]'
+  existing = JSON.parse(existing)
   const data = { key: stringKey, options }
   const final = existing.concat(data)
   await saveKeys(account, final)
 }
 
-async function removeKey(account, key) {
+async function removeKey({ account, key, log }) {
   log({ type: 'hoster', data: { text: `Removing the key` } })
   const stringKey = key.toString('hex')
-  const existing = (await account.hosterDB.get('all_keys').catch(e => { })) || []
+  var existing = (await account.hosterDB.get('all_keys').catch(e => { })) || '[]'
+  existing = JSON.parse(existing)
+  console.log({ existing })
   const final = existing.filter((data) => data.key !== stringKey)
   await saveKeys(account, final)
   log({ type: 'hoster', data: { text: `Key removed` } })
 }
-async function removeFeed(account, key, log) {
+async function removeFeed({ account, key, log }) {
   log({ type: 'hoster', data: { text: `Removing the feed` } })
   const stringKey = key.toString('hex')
   const storage = await getStorage({account, key, log})
   if (storage) account.storages.delete(stringKey)
-  await removeKey(key)
+  await removeKey({ account, key, log })
 }
 async function watchFeed(account, feed) {
   warn('Watching is not supported since we cannot ask the chain for attesters')
@@ -489,7 +492,7 @@ async function handle_dropHosting (args) {
   const { event, chainAPI, account, hosterkey, myAddress, hyper, log } = args
   const [amendmentID, hosterID] = event.data
   const hosterAddress = await chainAPI.getUserAddress(hosterID)
-  if (!hosterAddress === myAddress) return
+  if (hosterAddress !== myAddress) return
   log({ type: 'hoster', data: {  text: `Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}` } })
   
   const { 
@@ -497,16 +500,22 @@ async function handle_dropHosting (args) {
   } = await chainAPI.getAmendmentByID(amendmentID)
    const { feed: feedID, ranges } = await chainAPI.getContractByID(contractID)
    const feedkey = await chainAPI.getFeedKey(feedID)
+   const stringkey = feedkey.toString('hex')
+   const topic = datdot_crypto.get_discoverykey(feedkey)
+   const stringtopic = topic.toString('hex')
+   console.log({ state: account.state, name: log.path  })
    const { tasks } = account.state
   // call done task cleanup
-  const topic = datdot_crypto.get_discoverykey(feedkey)
-  for (const stringtopic of tasks) {
-    if (!stringtopic !== topic.toString('hex')) continue
-    done_task_cleanup({ role: 'hoster', topic, peers: [], state: account.state, log })
+  for (const stringtopic of Object.keys(tasks)) {
+    if (!tasks[stringtopic] !== topic.toString('hex')) continue
+    await done_task_cleanup({ role: 'hoster', topic, peers: [], state: account.state, log })
   }
   // remove feed from storage
+  console.log({ feedz: account.state.feeds[stringtopic], feedkey, stringkey })
+  if (account.state.feeds[stringtopic][feedkey]) return
+  if (account.state.feeds[stringtopic][stringkey]) return
   const hasKey = await account.storages.has(feedkey.toString('hex'))
-  if (hasKey) return await removeFeed(account, feedkey, amendmentID)
+  if (hasKey) return await removeFeed({ account, key: feedkey, amendmentID, log })
 
 }
 
