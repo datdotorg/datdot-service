@@ -37,7 +37,7 @@ async function handle_hostingSetup (args) {
   const { event, chainAPI, account, encoderkey, myAddress, log } = args
   const [amendmentID] = event.data
   const amendment = await chainAPI.getAmendmentByID(amendmentID)
-  var encoder_pos = await isForMe({ IDs: amendment.providers.encoders, myAddress, chainAPI, log })
+  var encoder_pos = await includesMe({ IDs: amendment.providers.encoders, myAddress, chainAPI, log })
   if (encoder_pos === undefined) return // pos can be 0
 
   const tid = setTimeout(() => {
@@ -61,14 +61,20 @@ async function handle_hostingSetup (args) {
 
 async function handle_hostingSetup_failed (args) {
   const { event, chainAPI, account, signer, encoderkey, myAddress, hyper, log } = args
-  const [amendmentID, failedIDs] = event.data
-  const pos = await isForMe({ IDs: failedIDs, myAddress, chainAPI, log })
-  if (pos === undefined) return // pos can be 0
+  const [amendmentID] = event.data  
+  const amendment = await chainAPI.getAmendmentByID(amendmentID)
+  const { contract: contractID, providers: { encoders } } = amendment
+  var isForMe
+  
+  for (const id of encoders) {
+    const address = await chainAPI.getUserAddress(id)
+    if (address === myAddress) isForMe = true  
+  }
+
+  if (!isForMe) return
 
   log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
-
-  const amendment = await chainAPI.getAmendmentByID(amendmentID)
-  const contract = await chainAPI.getContractByID(amendment.contract)
+  const contract = await chainAPI.getContractByID(contractID)
   const { feed: feedID } = contract
   const { feedkey } = await chainAPI.getFeedByID(feedID)
   const { tasks } = account.state
@@ -216,7 +222,7 @@ async function encode_hosting_setup (data) {
 
   // HELPERS
 
-  async function isForMe({ IDs, myAddress, chainAPI, log }) {
+  async function includesMe({ IDs, myAddress, chainAPI, log }) {
     log({ type: 'encoder', data: {  text: 'Is for me', IDs } })
     for (var i = 0, len = IDs.length; i < len; i++) {
       const id = IDs[i]

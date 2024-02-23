@@ -44,18 +44,23 @@ module.exports = APIS => {
 ----------------------------------------- */
 
 async function handle_hostingSetup_failed (args) {
-  const { event, chainAPI, account, signer, hosterkey, myAddress, hyper, log } = args
-  const [amendmentID, failedIDs] = event.data
-  const pos = await isForMe({ IDs: failedIDs, myAddress, chainAPI, log })
-  if (pos === undefined) return // pos can be 0
-
-  log({ type: 'hoster', data: { text: `Event received: ${event.method} ${event.data.toString()}` }})   
-
+  const { event, chainAPI, account, signer, encoderkey, myAddress, hyper, log } = args
+  const [amendmentID] = event.data  
   const amendment = await chainAPI.getAmendmentByID(amendmentID)
-  const contract = await chainAPI.getContractByID(amendment.contract)
+  const { contract: contractID, providers: { hosters } } = amendment
+  var isForMe
+  for (const id of hosters) {
+    const address = await chainAPI.getUserAddress(id)
+    if (address === myAddress) isForMe = true  
+  }
+
+  if (!isForMe) return
+  
+  log({ type: 'hoster', data: { text: `Event received: ${event.method} ${event.data.toString()}` }})   
+  const contract = await chainAPI.getContractByID(contractID)
   const { ranges, feed: feedID } = contract
   const { feedkey } = await chainAPI.getFeedByID(feedID)
-  const { tasks } = account.state
+  const { tasks, feeds } = account.state
 
   const topic = datdot_crypto.get_discoverykey(feedkey)
   const stringtopic = topic.toString('hex')

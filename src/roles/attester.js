@@ -48,54 +48,34 @@ module.exports = APIS => {
 
 async function handle_hostingSetup_failed (args) {
   const { event, chainAPI, account, signer, attesterkey, myAddress, hyper, log } = args
-  const [amendmentID, failedIDs] = event.data
+  const [amendmentID] = event.data
   const amendment = await chainAPI.getAmendmentByID(amendmentID)
-  const [attesterID] = amendment.providers.attesters
-  const attesterAddress = await chainAPI.getUserAddress(attesterID)
-  if (attesterAddress !== myAddress) return
+  const { providers: { hosters, encoders, attesters } } = amendment
+  const [attesterID] = attesters
+  const address = await chainAPI.getUserAddress(attesterID)
+  if (address !== myAddress) return
 
-  const { hosters, encoders, attesters } = amendment.providers
   const contract = await chainAPI.getContractByID(amendment.contract)
   const { feed: feedID } = contract
   const { feedkey } = await chainAPI.getFeedByID(feedID)
   const myID = await chainAPI.getUserIDByNoiseKey(attesterkey)
   const { tasks } = account.state
 
-  log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
+  log({ type: 'attester', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
 
-  if (failedIDs.includes(myID)) { // disconnect from all
-    for (const id of hosters) {
-      const hosterkey = await chainAPI.getHosterKey(id)
-      const topic = derive_topic({ senderKey: attesterkey, feedkey, receiverKey: hosterkey, id: amendmentID, log }) 
-      const stringtopic = topic.toString('hex')
-      if (!tasks[stringtopic]) continue
-      await done_task_cleanup({ role: 'attester2hoster', topic, remotestringkey: hosterkey.toString('hex'), state: account.state, log })
-    }
-    for (const id of encoders) {
-      const encoderkey = await chainAPI.getEncoderKey(id)
-      const topic = derive_topic({ senderKey: encoderkey, feedkey, receiverKey: attesterkey, id: amendmentID, log })
-      const stringtopic = topic.toString('hex')
-      if (!tasks[stringtopic]) continue
-      await done_task_cleanup({ role: 'attester2encoder', topic, remotestringkey: encoderkey.toString('hex'), state: account.state, log })
-    }
-  } 
-  else { // disconnect from failed
-    for (const id of failedIDs) {
-      if (hosters.includes(id)) {
-        const hosterkey = await chainAPI.getHosterKey(id)
-        const topic = derive_topic({ senderKey: attesterkey, feedkey, receiverKey: hosterkey, id: amendmentID, log }) 
-        const stringtopic = topic.toString('hex')
-        if (!tasks[stringtopic]) continue
-        await done_task_cleanup({ role: 'attester2hoster', topic, remotestringkey: hosterkey.toString('hex'), state: account.state, log })
-      }
-      else if (encoders.includes(id)) {
-        const encoderkey = await chainAPI.getEncoderKey(id)
-        const topic = derive_topic({ senderKey: encoderkey, feedkey, receiverKey: attesterkey, id: amendmentID, log })
-        const stringtopic = topic.toString('hex')
-        if (!tasks[stringtopic]) continue
-        await done_task_cleanup({ role: 'attester2encoder', topic, remotestringkey: encoderkey.toString('hex'), state: account.state, log })
-      }
-    }
+  for (const id of hosters) {
+    const hosterkey = await chainAPI.getHosterKey(id)
+    const topic = derive_topic({ senderKey: attesterkey, feedkey, receiverKey: hosterkey, id: amendmentID, log }) 
+    const stringtopic = topic.toString('hex')
+    if (!tasks[stringtopic]) continue
+    await done_task_cleanup({ role: 'attester2hoster', topic, remotestringkey: hosterkey.toString('hex'), state: account.state, log })
+  }
+  for (const id of encoders) {
+    const encoderkey = await chainAPI.getEncoderKey(id)
+    const topic = derive_topic({ senderKey: encoderkey, feedkey, receiverKey: attesterkey, id: amendmentID, log })
+    const stringtopic = topic.toString('hex')
+    if (!tasks[stringtopic]) continue
+    await done_task_cleanup({ role: 'attester2encoder', topic, remotestringkey: encoderkey.toString('hex'), state: account.state, log })
   }
 
 }
@@ -125,12 +105,12 @@ async function handle_hostingSetup (args) {
     const hosterstringkeys = hosterkeys.map(key => key.toString('hex'))
     const encoderstringkeys = encoderkeys.map(key => key.toString('hex'))
     const peers = [...hosterstringkeys, ...encoderstringkeys]
-    log({ type: 'attester', data: { texts: 'error: hosting setup - timeout', amendmentID, failedKeys, conn, hosterkeys, encoderkeys, peers } })
     for (const key of peers) {
       if (!conn[key]) failedKeys.push(key.toString('hex'))
     }
-    // we connected to all but it still timed out
-    if (!failedKeys.length) failedKeys.push(...hosterstringkeys, ...encoderstringkeys)
+  // we connected to all but it still timed out
+  if (!failedKeys.length) failedKeys.push(...hosterstringkeys, ...encoderstringkeys)
+  log({ type: 'attester', data: { texts: 'error: hosting setup - timeout', amendmentID, failedKeys, conn, hosterkeys, encoderkeys, peers } })
     const report = { id: amendmentID, failed: failedKeys, sigs }
     const nonce = await account.getNonce()
     await chainAPI.amendmentReport({ report, signer, nonce })
