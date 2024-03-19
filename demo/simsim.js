@@ -28,7 +28,7 @@ async function run (params) {
   
   console.log('3. ===== stop `two` =====')
   // console.log('4. ===== just end everything =====')
-  const delay3 = 10000
+  const delay3 = 60000
   // setTimeout(() => all_processes[pos2].kill('SIGINT'), delay3)
 }
 /**********************************************************

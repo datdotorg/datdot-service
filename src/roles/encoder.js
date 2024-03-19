@@ -99,12 +99,12 @@ async function handle_hosterReplacement (args) {
   const { providers: { hosters, attesters, encoders }, pos } = amendment
   const encoderID = encoders[pos]
   const encoderAddress = await chainAPI.getUserAddress(encoderID)
-  if (encoderAddress === myAddress) {
-    log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
-  }
+  if (encoderAddress !== myAddress) return
+  
+  log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
 
   const tid = setTimeout(() => {
-    log({ type: 'timeout', data: { texts: 'error: encoding timeout', amendmentID } })
+    log({ type: 'encoder', data: { texts: 'error: hosterReplacement timeout', amendmentID } })
   }, DEFAULT_TIMEOUT)
 
   const data = { account, amendment, chainAPI, encoderkey, encoder_pos: pos, log }
@@ -117,110 +117,14 @@ async function handle_hosterReplacement (args) {
 
 }
 
-async function encode_hosting_setup (data) {
-  const{ account, amendment, chainAPI, encoderkey, encoder_pos, log } = data
-  const { id: amendmentID, contract, providers: { attesters } } = amendment
-  const { feed: feed_id, ranges } = await chainAPI.getContractByID(contract)
-
-  const { feedkey } = await chainAPI.getFeedByID(feed_id)
-  const [attesterID] = attesters
-  const attesterkey = await chainAPI.getAttesterKey(attesterID)
-
-  const log2Attester = log.sub(`Encoder to attester, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attesterkey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
-  const log2Author= log.sub(`->Encoder to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
-  // log2Attester({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
-  const { hyper } = account
-
-  return new Promise(async (resolve, reject) => {
-    try {
-      if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
-      const topic1 = datdot_crypto.get_discoverykey(feedkey)
-      var peers = []
-
-    
-      // replicate feed from author
-      const { feed } = await hyper.new_task({ feedkey, log: log2Author })
-      await feed.update()
-      log2Author({ type: 'encoder', data: { text: `load feed` } })
-      
-      await hyper.connect({ 
-        swarm_opts: { role: 'encoder2author', topic: topic1, mode: { server: false, client: true } },
-        onpeer,
-      
-        log: log2Author
-      })
-      
-      function onpeer ({ peerkey, stringtopic }) {
-        log2Author({ type: 'encoder', data: { text: `onpeer callback`, stringtopic, peerkey } })
-        peers.push(peerkey.toString('hex'))
-        const { tasks } = account.state
-        if (!tasks[stringtopic].amendments?.[amendmentID]) {
-          tasks[stringtopic].amendments = { [amendmentID]: { peers: [peerkey.toString('hex')]} }
-        } else {
-          tasks[stringtopic].amendments[amendmentID].peers.push(peerkey.toString('hex'))
-        }
-      }
-      
-      async function done_with_author () {
-        peers = [...new Set(peers)]
-        log2Author({ type: 'encoder', data: { text: `calling done`, peers } })
-        delete account.state.tasks[topic1.toString('hex')].amendments[amendmentID]                  
-        await done_task_cleanup({ role: 'encoder2author', peers, topic: topic1, state: account.state, log }) 
-      }
-  
-      
-      // create temp_feed for sending compressed and signed data to the attester
-      const topic2 = derive_topic({ senderKey: encoderkey, feedkey, receiverKey: attesterkey, id: amendmentID, log })
-      log2Attester({ type: 'encoder', data: { text: `Loading feed`, attester: attesterkey.toString('hex'), topic: topic2.toString('hex') } })
-      
-      // feed for attester
-      const { feed: temp_feed} = await hyper.new_task({  topic: topic2, log: log2Attester })
-
-      await hyper.connect({ 
-        swarm_opts: { role: 'encoder2attester', topic: topic2, mode: { server: true, client: false } },
-        targets: { feed: temp_feed, targetList: [attesterkey.toString('hex')], msg: { send: { type: 'feedkey' } } },
-        onpeer: onattester,
-        done: done_with_attester,
-      
-        log: log2Attester
-      })
-
-      async function onattester () {
-        log2Attester({ type: 'encoder', data: { text: `Connected to the attester`, feedkey: feed.key.toString('hex') } })
-        const all = []
-        for (const range of ranges) {
-          all.push(encodeAndSendRange({ account, temp_feed, range, feed, amendmentID, encoder_pos, log: log2Attester })) 
-        }
-
-        try {
-          const result = await Promise.all(all)
-          log2Attester({ type: 'encoder', data: { text: `All encoded & sent`, result } })
-          done_with_author()
-          return resolve()
-        } catch (err) {
-          log2Attester({ type: 'encoder', data: { text: 'Error in result', err } })
-          reject(err)
-        }
-      }  
-      async function done_with_attester ({ type }) {
-        await done_task_cleanup({ role: 'encoder2attester', topic: topic2, remotestringkey: attesterkey.toString('hex'), state: account.state, log })
-      }
-    } catch(err) {
-      log2Attester({ type: 'encoder', data: { text: 'Error in hosting setup', err } })
-      clearTimeout(tid)
-      reject(err)
-    }
-
-  })
-
-}
-
 // @NOTE:
 // 1. encoded chunk has to be unique ([pos of encoder in the event, data]), so that hoster can not delete and download the encoded chunk from another hoster just in time
 // 2. encoded chunk has to be signed by the original encoder so that the hoster cannot encode a chunk themselves and send it to attester
 // 3. hoster verifies unique encoding data was signed by original encoder
 
-  // HELPERS
+/* -----------------------------------------
+            HELPERS
+----------------------------------------- */
 
   async function includesMe({ IDs, myAddress, chainAPI, log }) {
     log({ type: 'encoder', data: {  text: 'Is for me', IDs } })
@@ -284,4 +188,108 @@ async function encode_hosting_setup (data) {
     } catch(err) {
       log({ type: 'encoder', data: {  text: 'Error in download_and_encode', err } })
     }
+  }
+
+  async function encode_hosting_setup (data) {
+    const{ account, amendment, chainAPI, encoderkey, encoder_pos, log } = data
+    const { id: amendmentID, contract, providers: { attesters } } = amendment
+    const { feed: feed_id, ranges } = await chainAPI.getContractByID(contract)
+  
+    const { feedkey } = await chainAPI.getFeedByID(feed_id)
+    const [attesterID] = attesters
+    const attesterkey = await chainAPI.getAttesterKey(attesterID)
+  
+    const log2Attester = log.sub(`Encoder to attester, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attesterkey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
+    const log2Author= log.sub(`->Encoder to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
+    // log2Attester({ type: 'encoder', data: { text: 'Starting the hosting setup' } })
+    const { hyper } = account
+  
+    return new Promise(async (resolve, reject) => {
+      try {
+        if (!Array.isArray(ranges)) ranges = [[ranges, ranges]]
+        const topic1 = datdot_crypto.get_discoverykey(feedkey)
+        var peers = []
+  
+      
+        // replicate feed from author
+        const { feed } = await hyper.new_task({ feedkey, log: log2Author })
+        await feed.update()
+        log2Author({ type: 'encoder', data: { text: `load feed` } })
+        
+        await hyper.connect({ 
+          swarm_opts: { role: 'encoder2author', topic: topic1, mode: { server: false, client: true } },
+          onpeer,
+        
+          log: log2Author
+        })
+        
+        function onpeer ({ peerkey, stringtopic }) {
+          const { tasks } = account.state
+          log2Author({ type: 'encoder', data: { text: `onpeer callback`, stringtopic, peerkey, amendmentID, tasks: JSON.stringify(tasks[stringtopic]) } })
+          peers.push(peerkey.toString('hex'))
+          // if (!tasks[stringtopic].amendments) {
+          //   tasks[stringtopic].amendments = { [amendmentID]: { peers: [peerkey.toString('hex')]} }
+          // } else {
+          //   if (tasks[stringtopic].amendments[amendmentID]) tasks[stringtopic].amendments[amendmentID].peers.push(peerkey.toString('hex'))
+          //   else tasks[stringtopic].amendments[amendmentID] = { peers: [peerkey.toString('hex')]}
+          // }
+        }
+        
+        async function done_with_author () {
+          const stringtopic = topic1.toString('hex')
+          const { tasks } = account.state
+          log2Author({ type: 'encoder', data: { text: `calling done`, amendmentID, tasks: JSON.stringify(tasks[stringtopic]) } })
+          // const peers = tasks[stringtopic].amendments[amendmentID].peers
+          // if (!peers.length) return
+          // delete account.state.tasks[stringtopic].amendments[amendmentID]  
+          peers = [...new Set(peers)]                
+          await done_task_cleanup({ role: 'encoder2author', peers, topic: topic1, state: account.state, log }) 
+          peers = []
+        }
+    
+        
+        // create temp_feed for sending compressed and signed data to the attester
+        const topic2 = derive_topic({ senderKey: encoderkey, feedkey, receiverKey: attesterkey, id: amendmentID, log })
+        log2Attester({ type: 'encoder', data: { text: `Loading feed`, attester: attesterkey.toString('hex'), topic: topic2.toString('hex') } })
+        
+        // feed for attester
+        const { feed: temp_feed} = await hyper.new_task({  topic: topic2, log: log2Attester })
+  
+        await hyper.connect({ 
+          swarm_opts: { role: 'encoder2attester', topic: topic2, mode: { server: true, client: false } },
+          targets: { feed: temp_feed, targetList: [attesterkey.toString('hex')], msg: { send: { type: 'feedkey' } } },
+          onpeer: onattester,
+          done: done_with_attester,
+        
+          log: log2Attester
+        })
+  
+        async function onattester () {
+          log2Attester({ type: 'encoder', data: { text: `Connected to the attester`, amendmentID, feedkey: feed.key.toString('hex') } })
+          const all = []
+          for (const range of ranges) {
+            all.push(encodeAndSendRange({ account, temp_feed, range, feed, amendmentID, encoder_pos, log: log2Attester })) 
+          }
+  
+          try {
+            const result = await Promise.all(all)
+            log2Attester({ type: 'encoder', data: { text: `All encoded & sent`, result } })
+            done_with_author()
+            return resolve()
+          } catch (err) {
+            log2Attester({ type: 'encoder', data: { text: 'Error in result', err } })
+            reject(err)
+          }
+        }  
+        async function done_with_attester ({ type }) {
+          await done_task_cleanup({ role: 'encoder2attester', topic: topic2, remotestringkey: attesterkey.toString('hex'), state: account.state, log })
+        }
+      } catch(err) {
+        log2Attester({ type: 'encoder', data: { text: 'Error in hosting setup', err } })
+        clearTimeout(tid)
+        reject(err)
+      }
+  
+    })
+  
   }
