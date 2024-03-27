@@ -409,7 +409,6 @@ async function attest_storage_challenge ({ data, account, conn, log: parent_log 
           verifying.push(verify_stored_chunk(data_promise))
         }
         const settled = await Promise.allSettled(verifying)
-        console.log({settled})
         settled.forEach(res => {
           logStorageChallenge({ type: 'attestor', data: { text: `settled`, res: JSON.stringify(res) } })
           if (res.status === 'fulfilled') reports.push(res.value)
@@ -582,24 +581,31 @@ async function performanceChallenge_handler (args) {
     const hoster_id = hosterIDs[i]
     const hosterkey = hosterkeys[i]
 
-    const tid = setTimeout(() => {
-      log({ type: 'timeout', data: { texts: 'error: performance challenge - timeout', challengeID, hoster_id } })
+    const htid = setTimeout(async () => {
+      log({ type: 'timeout', data: { texts: `error: performance challenge - timeout for hoster ${hoster_id}`, challengeID } })
       done_task_cleanup({ role: 'performance_attester', topic, remotestringkey: hosterkey, state: account.state, log })
       reports[hoster_id] = { status: 'fail' } 
     }, DEFAULT_TIMEOUT)
 
-    tids[hoster_id] = tid
+    tids[hoster_id] = htid
     opts.hosterkey = hosterkey
     opts.hoster_id = hoster_id
     attesting.push(attest_performance(opts))
   }
+
+  const tid = setTimeout(async () => {
+    log({ type: 'timeout', data: { texts: 'error: performance challenge - timeout', challengeID, reports } })
+    const nonce = await account.getNonce()
+    await chainAPI.submitPerformanceChallenge({ challengeID, reports, signer, nonce })  
+  }, DEFAULT_TIMEOUT)
   
   const settled = await Promise.allSettled(attesting)
+  clearTimeout(tid)
   for (var i = 0; i < settled.length; i++) {
-    log({ type: 'performance', data: { texts: 'promises settled', settled_len: settled.length } })
+    log({ type: 'performance', data: { texts: 'promises settled', challengeID, settled_len: settled.length, reports } })
     const res = settled[i]
     const hoster_id = res.value
-    if (res.status === 'rejected') reports[hoster_id].status = 'fail'
+    if (res.status === 'rejected') reports[hoster_id] = { status: 'fail' }
     const remotestringkey = hosterkeys[i]
     done_task_cleanup({ role: 'performance_attester', topic, remotestringkey, state: account.state, log })
   }

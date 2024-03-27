@@ -267,7 +267,6 @@ async function handle_dropHosting (args) {
    const stringkey = feedkey.toString('hex')
    const topic = datdot_crypto.get_discoverykey(feedkey)
    const stringtopic = topic.toString('hex')
-   console.log({ state: account.state, name: log.path  })
    const { tasks } = account.state
   // call done task cleanup
   for (const stringtopic of Object.keys(tasks)) {
@@ -275,7 +274,6 @@ async function handle_dropHosting (args) {
     await done_task_cleanup({ role: 'hoster', topic, peers: [], state: account.state, log })
   }
   // remove feed from storage
-  console.log({ feedz: account.state.feeds[stringtopic], feedkey, stringkey })
   if (account.state.feeds[stringtopic][feedkey]) return
   if (account.state.feeds[stringtopic][stringkey]) return
   const hasKey = await account.storages.has(feedkey.toString('hex'))
@@ -601,7 +599,6 @@ async function removeKey({ account, key, log }) {
   const stringKey = key.toString('hex')
   var existing = (await account.hosterDB.get('all_keys').catch(e => { })) || '[]'
   existing = JSON.parse(existing)
-  console.log({ existing })
   const final = existing.filter((data) => data.key !== stringKey)
   await saveKeys(account, final)
   log({ type: 'hoster', data: { text: `Key removed` } })
@@ -634,7 +631,6 @@ async function getStorage ({account, key, log}) {
   const stringkey = key.toString('hex')
   const storage = await account.storages.get(stringkey)
   log({ type: 'hoster', data: { text: `Existing storage`, stringkey } })
-  if (!storage) console.log({ error_storages: account.storages })
   return storage
 }
 
@@ -652,7 +648,6 @@ async function store_in_hoster_storage(opts) {
 async function getDataFromStorage(account, key, index, log) {
   const storage = await getStorage({account, key, log})
   log({ type: 'hoster', data: { text: 'Got the storage', key, index }})
-  console.log({ storage })
   const data = await storage.getProofOfStorage(index)
   log({ type: 'hoster', data: { text: 'Got encoded data from storage', key, index, data }})
   return data
