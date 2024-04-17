@@ -12,7 +12,7 @@ const proof_codec = require('datdot-codec/proof')
 
 const getChunks = require('getChunks')
 
-const DEFAULT_TIMEOUT = 10000 // has to be high
+const DEFAULT_TIMEOUT = 12000 // has to be high
 
 module.exports = APIS => { 
   return hoster
@@ -289,8 +289,7 @@ async function handle_dropHosting (args) {
 async function handle_hosterReplacement (args) {
   const { event, chainAPI, account, hosterkey, myAddress, hyper, log } = args
   const [amendmentID] = event.data
-  const { providers: { hosters, attesters, encoders }, pos, contract, id
-  } = await chainAPI.getAmendmentByID(amendmentID)
+  const { providers: { hosters, attesters, encoders }, positions, contract, id } = await chainAPI.getAmendmentByID(amendmentID)
   const [attesterID] = attesters
   const attesterkey = await chainAPI.getAttesterKey(attesterID)
   const { feed: feedID, ranges } = await chainAPI.getContractByID(contract)
@@ -300,23 +299,26 @@ async function handle_hosterReplacement (args) {
   const len = addresses.length
   const peers = []
 
-  const tid = setTimeout(() => {
+  const tid = setTimeout(async () => {
     log({ type: 'timeout', data: { texts: 'error: hoster replacement - timeout', id } })
+    const topic = derive_topic({ senderKey: hosterkey, feedkey, receiverKey: attesterkey, id, log })
+    const remotestringkey = attesterkey.toString('hex')
+    await done_task_cleanup({ role: 'active_hoster2attester', topic, remotestringkey, state: account.state, log })
     return
   }, DEFAULT_TIMEOUT)
 
   for (var i = 0; i < len; i++) {
     const hosterAddress = addresses[i]
     if (hosterAddress !== myAddress) continue
-    if (i === pos) {
+    if (positions.includes(i)) {
       log({ type: 'hoster', data: { type: `Event received: ${event.method} ${event.data.toString()}`, role: 'replacementHoster' } })   
       const objArr = ranges.map(range => ({ start: range[0], end: range[1] }))
       const plan = { ranges: objArr }
-      const encoderSigningKey = await chainAPI.getSigningKey(encoders[pos])
+      const encoderSigningKey = await chainAPI.getSigningKey(encoders[i])
       const data = {
         hyper, amendmentID, account, feedkey,
         encoderSigningKey, hosterkey, attesterkey,
-        plan, ranges, encoder_pos: pos, peers,log
+        plan, ranges, encoder_pos: i, peers,log
       }
       const { feed } = await receive_data_and_start_hosting(data).catch(err => {
         log({ type: 'hosting setup', data: { text: 'error: hosting setup', amendmentID }})
@@ -536,7 +538,7 @@ async function getEncodedDataFromAttester(data) {
         for (var i = 0; i < expectedChunkCount; i++) all.push(store_data(feed.get(i)))
         try {
           const results = await Promise.all(all)
-          log2attester({ type: 'hoster', data: { text: `All chunks hosted`, len: results.length, expectedChunkCount } })
+          log2attester({ type: 'hoster', data: { text: `All chunks hosted`, len: results.length, expectedChunkCount, feedkey: feedkey.toString('hex') } })
           await send_proof_of_contact({ account, unique_el, remotestringkey, topic, log })
           return resolve()
         } catch (err) {
@@ -556,6 +558,7 @@ async function getEncodedDataFromAttester(data) {
     return new Promise(async (resolve, reject) => {
       const chunk = await chunk_promise
       const json = chunk.toString()
+      log2attester({ type: 'hoster', data: { text: `Got json`, chunk, json, json: JSON.stringify(json) } })
       const data = proof_codec.decode(json)
       let { index, encoded_data, encoded_data_signature, p } = data
       log2attester({ type: 'hoster', data: { text: `Got index: ${data.index}`, expectedChunkCount, ranges } })
@@ -634,12 +637,13 @@ async function getStorage ({account, key, log}) {
   return storage
 }
 
-async function store_in_hoster_storage(opts) {
+async function store_in_hoster_storage (opts) {
   const { 
     account, feedkey, index, encoded_data_signature, 
     encoded_data, unique_el, p, log 
   } = opts
   const storage = await getStorage({account, key: feedkey, log})
+  log({ type: 'hoster', data: { text: 'Storing in storage', key: feedkey.toString('hex') }})
   return storage.storeEncoded({
     index, encoded_data_signature, encoded_data, unique_el, p
   })
@@ -647,7 +651,7 @@ async function store_in_hoster_storage(opts) {
 
 async function getDataFromStorage(account, key, index, log) {
   const storage = await getStorage({account, key, log})
-  log({ type: 'hoster', data: { text: 'Got the storage', key, index }})
+  log({ type: 'hoster', data: { text: 'Got the storage', key: key.toString('hex'), index }})
   const data = await storage.getProofOfStorage(index)
   log({ type: 'hoster', data: { text: 'Got encoded data from storage', key, index, data }})
   return data

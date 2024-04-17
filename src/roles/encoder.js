@@ -5,7 +5,7 @@ const brotli = require('_datdot-service-helpers/brotli')
 const serialize_before_compress = require('serialize-before-compress')
 const datdot_crypto = require('datdot-crypto')
 const cloneDeep = require('clone-deep')
-const DEFAULT_TIMEOUT = 10000
+const DEFAULT_TIMEOUT = 12000
 
 module.exports = APIS => {
   return encoder 
@@ -96,10 +96,18 @@ async function handle_hosterReplacement (args) {
   const { event, chainAPI, account, encoderkey, myAddress, log } = args
   const [amendmentID] = event.data
   const amendment = await chainAPI.getAmendmentByID(amendmentID)
-  const { providers: { hosters, attesters, encoders }, pos } = amendment
-  const encoderID = encoders[pos]
-  const encoderAddress = await chainAPI.getUserAddress(encoderID)
-  if (encoderAddress !== myAddress) return
+  const { providers: { encoders }, positions } = amendment
+  var pos
+  for (const position of positions) {
+    const encoderID = encoders[position]
+    const encoderAddress = await chainAPI.getUserAddress(encoderID)
+    if (encoderAddress === myAddress) {
+      pos = position
+      // break
+    }
+  }
+
+  if (!pos) return
   
   log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
 

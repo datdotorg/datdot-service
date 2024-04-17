@@ -12,7 +12,7 @@ const parse_decompressed = require('_datdot-service-helpers/parse-decompressed')
 const tempDB = require('_tempdb')
 const getChunks = require('getChunks')
 const compare_encodings = require('compare-encodings')
-const DEFAULT_TIMEOUT = 10000
+const DEFAULT_TIMEOUT = 12000
 
 module.exports = APIS => { 
   return attester
@@ -412,7 +412,10 @@ async function attest_storage_challenge ({ data, account, conn, log: parent_log 
         settled.forEach(res => {
           logStorageChallenge({ type: 'attestor', data: { text: `settled`, res: JSON.stringify(res) } })
           if (res.status === 'fulfilled') reports.push(res.value)
-          if (res.status === 'rejected') reports.push('fail')
+          if (res.status === 'rejected') {
+            logStorageChallenge({ type: 'attestor', data: { text: `error: get data promise in storage challenge rejected` } })
+            reports.push('fail')
+          }
         })
         done({ type: 'got all data' })
       } catch (err) {
@@ -819,7 +822,7 @@ async function hosterReplacement_handler (args) {
   const { event, chainAPI, account, signer, attesterkey, myAddress, hyper, log } = args
   const [amendmentID] = event.data
   const amendment = await chainAPI.getAmendmentByID(amendmentID)
-  const { providers: { encoders, hosters, attesters }, pos, contract, ref } = amendment
+  const { providers: { encoders, hosters, attesters }, positions, contract, ref } = amendment
   const { feed: feedID, ranges } = await chainAPI.getContractByID(contract)
   const feedkey = await chainAPI.getFeedKey(feedID)
   const [attesterID] = attesters
@@ -832,21 +835,23 @@ async function hosterReplacement_handler (args) {
   const compare_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
   const conn = {}
   const failedKeys = []
-  var replacementHoster_topic
-  var replacementEncoder_topic
-  var replacementHosterkey
-  var replacementEncoderkey
-  const hosterSigningKey = await chainAPI.getSigningKey(hosters[pos])
-  const compared = {}
+  var replacement_hosters = []
+  var replacement_encoders = []
+  const all_compared = {}
+  var finished = 0
 
   const tid = setTimeout(async () => {
     const hoster_promises = await Promise.all(hosters.map((id) => chainAPI.getHosterKey(id)))
-    const encoderkey = await chainAPI.getEncoderKey(encoders[pos])
+    const booked_encoders = []
+    positions.forEach(pos => booked_encoders.push(encoders[pos]))
+    const encoder_promises = await Promise.all(booked_encoders.map((id) => chainAPI.getEncoderKey(id)))
     const hosterkeys = await Promise.all(hoster_promises)
+    const encoderkeys = await Promise.all(encoder_promises)
     const hosterstringkeys = hosterkeys.map(key => key.toString('hex'))
-    const encoderstringkey = encoderkey.toString('hex')
-    const peers = [...hosterstringkeys, encoderstringkey]
-    log({ type: 'attester', data: { texts: 'error: hoster replacement - timeout', amendmentID, peers, conn: Object.keys(conn) } })
+    const encoderstringkeys = encoderkeys.map(key => key.toString('hex'))
+
+    const peers = [...hosterstringkeys, ...encoderstringkeys]
+    log({ type: 'attester', data: { texts: 'error: hoster replacement -- timeout', amendmentID, peers, conn: Object.keys(conn) } })
     const id = amendmentID
     for (const key of peers) {
       if (conn[key]) continue
@@ -854,14 +859,19 @@ async function hosterReplacement_handler (args) {
     }
     for (var i = 0; i < hosterstringkeys; i++) {
       const key = hosterstringkeys[i]
-      if (i === pos) continue // we only call done task for active hoster & not for the replacement hoster
+      if (positions.includes(i)) continue // we only call done task for active hoster & not for the replacement hoster
+      if (!all_compared[key]) all_compared[key] = {}
       const topic = derive_topic({ senderKey: attesterkey, feedkey, receiverKey: key, id, log }) 
       await done_task_cleanup({ role: 'attester2active_hoster', topic, remotestringkey:key, state: account.state, log })
     }
-    const topic = derive_topic({ senderKey: encoderstringkey, feedkey, receiverKey: attesterkey, id, log })
-    await done_task_cleanup({ role: 'attester2replacement_encoder', topic, remotestringkey: encoderstringkey, state: account.state, log })
+    for (var i = 0; i < encoderstringkeys; i++) {
+      if (!positions.includes(i)) continue // encoders that haven't been replaced are not booked for the task
+      const key = encoderstringkeys[i]
+      const topic = derive_topic({ senderKey: key, feedkey, receiverKey: attesterkey, id, log })
+      await done_task_cleanup({ role: 'attester2replacement_encoder', topic, remotestringkey: key, state: account.state, log })
+    }
 
-    if (!failedKeys.length) failedKeys.push(...hosterstringkeys, encoderstringkey)
+    // if (!failedKeys.length) failedKeys.push(...hosterstringkeys, encoderstringkey)
     log({ type: 'attester', data: { texts: 'hoster replacement timeout', amendmentID, failedKeys } })
     const report = { id: amendmentID, failed: failedKeys }
     const nonce = await account.getNonce()
@@ -870,7 +880,7 @@ async function hosterReplacement_handler (args) {
   
   
   log({ type: 'attester', data: { text: `Attester ${attesterID}: Event received: ${event.method} ${event.data.toString()}`, amendment: JSON.stringify(amendment), attesterAddress, myAddress } })
-  const data = { amendment, chainAPI, account, attesterkey, conn, failedKeys, signer, log }
+  const data = { amendment, chainAPI, account, attesterkey, conn, failedKeys, log }
   await replaceHoster(data).catch(err => {
     log({ type: 'replace hoster', data: { text: 'error: hosterReplacement', amendmentID }})
     return
@@ -879,38 +889,45 @@ async function hosterReplacement_handler (args) {
   // TODO: send report and proofs of successful hosterReplacement
 
   async function replaceHoster (data) {
-    const { amendment, chainAPI, account, attesterkey, conn, failedKeys, signer, log } = data
-    const { providers: { encoders, hosters }, contract, pos, id, ref } = amendment
+    const { amendment, chainAPI, account, attesterkey, conn, failedKeys, log } = data
+    const { providers: { encoders, hosters }, contract, positions, id, ref } = amendment
     const hosterkeys_promise = hosters.map(hosterID => chainAPI.getHosterKey(hosterID))
     const hosterkeys = await Promise.all(hosterkeys_promise)
-    replacementHosterkey = hosterkeys[pos]
 
     const { feed: feedID, ranges } = await chainAPI.getContractByID(contract)
     const feedkey = await chainAPI.getFeedKey(feedID)
     var hosterFeed
     const hostedDataVerified = []
-    log({ type: 'attester', data: { text: `replace hoster`, amendmentID: id, hosterkeys } })    
+    log({ type: 'attester', data: { text: `replace hoster`, amendmentID: id, hosterkeys, positions } })    
     
-    // from new encoder
-    get_encoded_data({ 
-      account, encoder_id: encoders[pos], feedkey, attesterkey, 
-      id, ranges, compared, conn, failedKeys, log 
-    })
+    // from new encoders
+    for (var i = 0; i < encoders.length; i++) {
+      if (!positions.includes(i)) continue
+      const encoder_id = encoders[i]
+      const stringkey = hosterkeys[i].toString('hex')
+      if (!all_compared[stringkey]) all_compared[stringkey] = {}
+      get_encoded_data({ 
+        account, encoder_id, feedkey, attesterkey, 
+        id, compared: all_compared[stringkey], conn, failedKeys, log 
+      })
+    }
 
-    // from new encoder to replacement hoster
-    send_encoded_data({ 
-      amendmentID: id, replacementHosterkey, compared, feedkey,
-      attesterkey, ranges, hosterFeed, log 
-    })
-    
-    // from active hosters
-    for (var i = 0; i < hosterkeys.length; i++) {
-      if (i === pos) continue
-      const hosterkey = hosterkeys[i]
-      const encoderSigningKey = await chainAPI.getSigningKey(encoders[i])
-      const unique_el = `${ref}/${i}`
-      log({ type: 'attester', data: { text: `get data from active hoster`, amendmentID: id, i, pos,  hosterkey, hosterkeys } })    
-      hostedDataVerified.push(get_hosted_data({ hosterkey, encoder_id: encoders[i], unique_el, feedkey, id, ranges, encoderSigningKey, log}))
+    for (var i = 0; i < hosterkeys.length; i++) { 
+      if (positions.includes(i)) { // from new encoders to replacement hosters
+        const replacementHosterkey = hosterkeys[i]
+        const stringkey = replacementHosterkey.toString('hex')
+        if (!all_compared[stringkey]) all_compared[stringkey] = {}
+        send_encoded_data({ 
+          amendmentID: id, replacementHosterkey, compared: all_compared[stringkey], feedkey,
+          attesterkey, hosterFeed, log 
+        })
+      } else { // from active hosters
+        const hosterkey = hosterkeys[i]
+        const encoderSigningKey = await chainAPI.getSigningKey(encoders[i])
+        const unique_el = `${ref}/${i}`
+        log({ type: 'attester', data: { text: `get data from active hoster`, amendmentID: id, i,  hosterkey, hosterkeys } })    
+        hostedDataVerified.push(get_hosted_data({ hosterkey, encoder_id: encoders[i], unique_el, feedkey, id, ranges, encoderSigningKey, log}))
+      }
     }
     
     // await Promise.all(hostedDataVerified)
@@ -922,13 +939,13 @@ async function hosterReplacement_handler (args) {
 
   async function get_encoded_data (opts) {
     const { 
-      account, encoder_id, feedkey, attesterkey, id, ranges, compared, conn, failedKeys, hosterFeed, log 
+      account, encoder_id, feedkey, attesterkey, id, compared, conn, failedKeys, hosterFeed, log 
     } = opts
     const encoderkey = await chainAPI.getEncoderKey(encoder_id)
     const encoderstringkey = encoderkey.toString('hex')
     const log2enc = log.sub(`<-Attester to replacement encoder, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${encoderstringkey.substring(0,5)}`)
     const topic = derive_topic({ senderKey: encoderkey, feedkey, receiverKey: attesterkey, id, log })
-    replacementEncoder_topic = topic
+    replacement_encoders.push([topic, encoderstringkey])
     
     log2enc({ type: 'attester', data: { text: 'load feed', encoder: encoderstringkey, topic: topic.toString('hex') }})
     await hyper.new_task({  newfeed: false, topic, log: log2enc })
@@ -944,7 +961,6 @@ async function hosterReplacement_handler (args) {
     
     async function onencoder ({ feed, remotestringkey }) {
       conn[remotestringkey] = 'connected'
-      replacementEncoderkey = remotestringkey
       log2enc({ type: 'attester', data: { text: 'Connected to the hoster replacement encoder' }})
       // log2enc({ type: 'attester', data: { text: 'Connected to the hoster replacement encoder', encoder: remotestringkey, expectedChunkCount, feedkey: feed.key.toString('hex'), feed_len: feed.length }})
       const chunks = []
@@ -959,9 +975,9 @@ async function hosterReplacement_handler (args) {
   }
 
   async function send_encoded_data (data) {
-    const { amendmentID, replacementHosterkey, compared, ranges, feedkey, attesterkey, log } = data
+    const { amendmentID, replacementHosterkey, compared, feedkey, attesterkey, log } = data
     const topic = derive_topic({ senderKey: attesterkey, feedkey, receiverKey: replacementHosterkey, id: amendmentID, log })
-    replacementHoster_topic = topic
+    replacement_hosters.push([topic, replacementHosterkey.toString('hex')])
     const { feed } = await hyper.new_task({ topic, log })
     log({ type: 'attestor', data: { text: `New task (attester2replacement_hoster) added`, topic: topic.toString('hex') } })
 
@@ -986,7 +1002,7 @@ async function hosterReplacement_handler (args) {
   async function get_hosted_data ({ hosterkey, encoder_id, unique_el, feedkey, id, ranges, encoderSigningKey, log }) {
     return new Promise (async (resolve, reject) => {
       const hosterstringkey = hosterkey.toString('hex')
-      const log2hoster = log.sub(`<-Attester to replacement hoster, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${hosterstringkey.substring(0,5)}`)
+      const log2hoster = log.sub(`<-Attester to active hoster, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${hosterstringkey.substring(0,5)}`)
       const topic = derive_topic({ senderKey: hosterkey, feedkey, receiverKey: attesterkey, id, log: log2hoster })
       await hyper.new_task({ newfeed: false, topic, log: log2hoster })
       log2hoster({ type: 'attestor', data: { text: `New task (attester2active_hoster) added` } })
@@ -1006,8 +1022,8 @@ async function hosterReplacement_handler (args) {
         conn[remotestringkey] = 'connected'
         log2hoster({ type: 'attestor', data: { text: `Connected to the active hoster`, remotestringkey, amendment: id } })
         const opts = { 
-          account, unique_el, encoder_id, chunks, feed, feedkey, expectedChunkCount, 
-          encoderSigningKey, remotestringkey, topic, log: log2hoster 
+          unique_el, encoder_id, chunks, feed, feedkey, expectedChunkCount, 
+          encoderSigningKey, log: log2hoster 
         }
         await get_data(opts)
         await done_task_cleanup({ role: 'attester2active_hoster', topic, remotestringkey, state: account.state, log })
@@ -1018,29 +1034,24 @@ async function hosterReplacement_handler (args) {
   async function get_data (opts) {
     return new Promise (async (resolve, reject) => {
       const { 
-        account, unique_el, encoder_id, chunks, feed, feedkey, expectedChunkCount, 
-        encoderSigningKey, remotestringkey, topic, log 
+        unique_el, encoder_id, chunks, feed, feedkey, expectedChunkCount, 
+        encoderSigningKey, log 
       } = opts
-      const verifying = []
       for (var i = 0; i < expectedChunkCount; i++) {
         const chunk_promise = feed.get(i)
         log({ type: 'attester', data: { text: 'chunk promise for replaceHoster received', i } })
-        verifying.push(verify_chunk({ unique_el, feedkey, chunks, chunk_promise, encoderSigningKey, log }))
+        const json = await verify_chunk({ unique_el, feedkey, chunks, chunk_promise, encoderSigningKey, log }).catch(err => {
+          log({ type: 'hosting setup', data: { text: 'error: verify chunk in replace hoster' }})
+          return reject('error: chunk not valid')
+        })
+        log({ type: 'attester', data: { text: 'got json by active hoster for hosterReplacement', i, json, jsonstring: json.toString() } })
+        const chunk = decode_stored_chunk(json) 
+        let { index }  = chunk
+        const encoderkey = await chainAPI.getUserAddress(encoder_id)
+        const response = await compare_CB(chunk_promise, encoderkey)
+        log({ type: 'attester', data: { text: 'chunk for replaceHoster compared', index, response: response.type } })
+        if (response.type !== 'verified') return reject('error: chunk failed in comparison')
       }
-      const settled = await Promise.allSettled(verifying)
-      log({ type: 'attester', data: { text: 'settled in replaceHoster', settled } })
-      settled.forEach(async res => {
-        const { value: { chunk_promise }, status } = res
-        if (status === 'fulfilled') {
-          const json = await chunk_promise
-          const chunk = decode_stored_chunk(json) 
-          let { index }  = chunk
-          const encoderkey = await chainAPI.getUserAddress(encoder_id)
-          const response = await compare_CB(chunk_promise, encoderkey)
-          log({ type: 'attester', data: { text: 'chunk for replaceHoster compared', index, response: response.type } })
-          if (response.type !== 'verified') return reject('error: chunk not valid')
-        }
-      })
       resolve()
     })
   }
@@ -1091,7 +1102,7 @@ async function hosterReplacement_handler (args) {
           return reject('chunk hash not valid' )
         }
         log({ type: 'attester', data: { text: `Chunk hash verified in replaceHoster`, index, block_verified, chunk, decoded: decoded.toString('binary') } })
-        resolve({ chunk_promise })
+        resolve(chunk)
         // resolve({ chunk, decoded, p: proof_codec.to_string(p) })
       } catch (err) {
         reject('verify chunk failed')
@@ -1102,41 +1113,56 @@ async function hosterReplacement_handler (args) {
   }
 
   async function done ({  type = undefined, proof = undefined, hkey = undefined }) {
-    // called 2x: when all sentCount === expectedChunkCount and when hoster sends proof of contact
-    const unique_el = `${amendmentID}/${pos}` // unique el for proof of contact (for verifying hoster event sig)
-    const sentCount = compared['sentCount']
-    log({ type: 'attester', data: { text: 'done called', sentCount }})
+    // called by each replacement hoster 2x: when all sentCount === expectedChunkCount and when hoster sends proof of contact
+    log({ type: 'attester', data: { text: 'done called in hosterReplacement', hkey, proof, finished, all_compared: Object.keys(all_compared) }})
     if (proof) {
+      const hosterID = await chainAPI.getUserIDByNoiseKey(hkey)
+      const pos = hosters.indexOf(hosterID)
+      const hosterSigningKey = await chainAPI.getSigningKey(hosterID)
+      const unique_el = `${amendment.id}/${pos}` // unique el for proof of contact (for verifying hoster event sig)
       const proof_buff = b4a.from(proof, 'hex')
       const data = b4a.from(unique_el, 'binary')
-      log({ type: 'attester', data: { text: 'got the proof in done', proof, proof_buff, data, hosterSigningKey }})
+      log({ type: 'attester', data: { text: 'got the proof in done', ref, pos, unique_el, proof, proof_buff, data, hosterSigningKey }})
       if (!datdot_crypto.verify_signature(proof_buff, data, hosterSigningKey)) {
         log({ type: 'attester', data: { text: 'error: not a valid proof of contact' } })
         return
       }
       proof_of_contact = proof
     }          
-    if (!proof_of_contact) {
-      // done called for the first time (sentCount === expectedChunkCounts)
+    // done called for the first time (sentCount === expectedChunkCounts)
+    if (!proof_of_contact) return
+
+    // if (!all_compared[hkey]['sentCount']) return
+
+    const sentCount = all_compared[hkey]['sentCount']
+    if ((sentCount !== expectedChunkCount)) return
+    finishAndSendReport()
+  }
+  
+  async function finishAndSendReport () {   
+    // called for each replacement hoster 
+    log({ type: 'attester', data: { text: 'all sent to hoster in hoster replacement', finished }})
+    finished++            
+    if (finished !== positions.length) return
+    clearTimeout(tid)
+    for (const [topic, remotestringkey] of replacement_encoders) {
       await done_task_cleanup({ 
         role: 'attester2replacement_encoder', 
-        topic: replacementEncoder_topic, 
-        remotestringkey: replacementEncoderkey.toString('hex'), 
+        topic, 
+        remotestringkey, 
         state: account.state, 
         log 
       })
-      return
     }
-    if ((sentCount !== expectedChunkCount)) return
-    log({ type: 'attester', data: { text: 'all sent to hoster in hoster replacement' }})
-    clearTimeout(tid)
-    await done_task_cleanup({ 
-      role: 'attester2replacement_hoster', 
-      topic: replacementHoster_topic, 
-      remotestringkey: replacementHosterkey.toString('hex'), 
-      state: account.state, 
-      log 
-    })
+    for (const [topic, remotestringkey] of replacement_hosters) {
+      await done_task_cleanup({ 
+        role: 'attester2replacement_hoster', 
+        topic, 
+        remotestringkey, 
+        state: account.state, 
+        log 
+      })
+    }
     const report = { id: amendmentID, failed: [] }
     const nonce = await account.getNonce()
     await chainAPI.hosterReplacementReport({ report, signer, nonce })
@@ -1184,6 +1210,7 @@ async function get_and_compare (opts) {
     try {
       const chunk_promise = feed.get(i)
       const chunk = await chunk_promise
+      log({ type: 'attester', data: { text: 'got a chunk', i, chunk, string: chunk.toString('hex') } })
       const res = await compare_CB(chunk_promise, encoderkey)
       log({ type: 'attester', data: { text: 'chunk compare res', i, res: res.type, /*chunk*/ } })
       if (res.type !== 'verified') { 
@@ -1220,7 +1247,7 @@ function try_send (opts) {
   }
   else { // onhoster
     if (compared[i]) {
-      log({ type: 'attester', data: { text: 'try send', feedkey: feed.key.toString('hex') }})
+      log({ type: 'attester', data: { text: 'try send', chunk: compared[i], feedkey: feed.key.toString('hex') }})
       feed.append(compared[i].chunk)
       log({ type: 'attester', data: { text: 'chunk appended - onhoster', i, sentCount: compared['sentCount'], expectedChunkCount }})
       compared['sentCount']++
