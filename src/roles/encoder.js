@@ -97,31 +97,33 @@ async function handle_hosterReplacement (args) {
   const [amendmentID] = event.data
   const amendment = await chainAPI.getAmendmentByID(amendmentID)
   const { providers: { encoders }, positions } = amendment
+  const len = encoders.length
   var pos
-  for (const position of positions) {
-    const encoderID = encoders[position]
+  log({ type: 'encoder', type: 'hoster replacement', data: { text: 'got event - hoster replacement', amendmentID, positions, encoders, len } })   
+  for (var i = 0; i < len; i++) {
+    if (!positions.includes(i)) continue
+    const encoderID = encoders[i]
     const encoderAddress = await chainAPI.getUserAddress(encoderID)
+    log({ type: 'encoder', type: 'hoster replacement', data: { text: 'looping', amendmentID, i, encoderID, encoderAddress, myAddress } })   
     if (encoderAddress === myAddress) {
-      pos = position
-      // break
+      pos = i
     }
   }
-
-  if (!pos) return
+  if (pos === undefined) return
   
   log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
 
   const tid = setTimeout(() => {
-    log({ type: 'encoder', data: { texts: 'error: hosterReplacement timeout', amendmentID } })
+    log({ type: 'encoder', type: 'hoster replacement', data: { text: 'error: hosterReplacement timeout', amendmentID } })
   }, DEFAULT_TIMEOUT)
 
   const data = { account, amendment, chainAPI, encoderkey, encoder_pos: pos, log }
   await encode_hosting_setup(data).catch(err => {
-    log({ type: 'hosting setup', data: { text: 'error: encode', amendmentID }})
+    log({ type: 'hoster replacement', data: { type: 'error', text: 'error: encode', amendmentID }})
     return
   })
   clearTimeout(tid)
-  log({ type: 'encoder', data: { type: `Encoding done` } })
+  log({ type: 'hoster replacement', data: { text: `Encoding done` } })
 
 }
 
