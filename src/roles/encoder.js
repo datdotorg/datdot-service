@@ -41,7 +41,7 @@ async function handle_hostingSetup (args) {
   if (encoder_pos === undefined) return // pos can be 0
 
   const tid = setTimeout(() => {
-    log({ type: 'timeout', data: { texts: 'error: encoding timeout', amendmentID } })
+    log({ type: 'timeout', data: { texts: 'encoding timeout', amendmentID } })
   }, DEFAULT_TIMEOUT)
 
   log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
@@ -114,7 +114,7 @@ async function handle_hosterReplacement (args) {
   log({ type: 'encoder', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
 
   const tid = setTimeout(() => {
-    log({ type: 'encoder', type: 'hoster replacement', data: { text: 'error: hosterReplacement timeout', amendmentID } })
+    log({ type: 'encoder', type: 'hoster replacement', data: { text: 'hosterReplacement timeout', amendmentID } })
   }, DEFAULT_TIMEOUT)
 
   const data = { account, amendment, chainAPI, encoderkey, encoder_pos: pos, log }

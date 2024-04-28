@@ -99,7 +99,7 @@ async function handle_hostingSetup (args) {
   const { feedkey, attesterkey, plan, ranges, signatures } = await getAmendmentData(attesters, amendment)
 
   const tid = setTimeout(() => {
-    log({ type: 'hoster', data: { texts: 'error: hosting setup - timeout', amendmentID } })
+    log({ type: 'hoster', data: { texts: 'hosting setup - timeout', amendmentID } })
     return
   }, DEFAULT_TIMEOUT)
 
@@ -146,7 +146,7 @@ async function handle_storageChallenge (args) {
   log({ type: 'hoster', data: { text: `Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}` } })
   const controller = new AbortController()
   const tid = setTimeout(() => {
-    log({ type: 'timeout', data: { texts: 'error: storage challenge - timeout', id } })
+    log({ type: 'timeout', data: { texts: 'storage challenge - timeout', id } })
     return
   }, DEFAULT_TIMEOUT)
 
@@ -300,7 +300,7 @@ async function handle_hosterReplacement (args) {
   const peers = []
 
   const tid = setTimeout(async () => {
-    log({ type: 'timeout', data: { texts: 'error: hoster replacement - timeout', id } })
+    log({ type: 'timeout', data: { texts: 'hoster replacement - timeout', id } })
     const topic = derive_topic({ senderKey: hosterkey, feedkey, receiverKey: attesterkey, id, log })
     const remotestringkey = attesterkey.toString('hex')
     await done_task_cleanup({ role: 'active_hoster2attester', topic, remotestringkey, state: account.state, log })

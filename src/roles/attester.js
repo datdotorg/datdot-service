@@ -120,7 +120,7 @@ async function handle_hostingSetup (args) {
     }
     // we connected to all but it still timed out
     if (!failedKeys.length) failedKeys.push(...hosterstringkeys, ...encoderstringkeys)
-    log({ type: 'attester', data: { texts: 'error: hosting setup - timeout', amendmentID, failedKeys, conn, hosterkeys, encoderkeys, peers } })
+    log({ type: 'attester', data: { texts: 'hosting setup - timeout', amendmentID, failedKeys, conn, hosterkeys, encoderkeys, peers } })
       const report = { id: amendmentID, failed: failedKeys, sigs }
       const nonce = await account.getNonce()
       await chainAPI.hostingSetupReport({ report, signer, nonce })
@@ -329,11 +329,11 @@ async function storageChallenge_handler (args) {
   const attestation = { response: { storageChallengeID, status: undefined, reports: [] },  signer }
   var conn // set to true once connection with hoster is established
 
-  const data = await get_storage_challenge_data({ chainAPI, storageChallenge })
+  const data = await get_storage_challenge_data({ chainAPI, storageChallenge, log })
   
   
   const tid = setTimeout(async () => {
-    log({ type: 'timeout', data: { texts: 'error: storage challenge - timeout', storageChallengeID } })
+    log({ type: 'timeout', data: { texts: 'storage challenge - timeout', storageChallengeID } })
     const { hosterkey, feedkey_1 } = data
     const topic = derive_topic({ senderKey: hosterkey, feedkey: feedkey_1, receiverKey: attesterkey, id: storageChallengeID, log })
     done_task_cleanup({ role: 'storage_attester', topic, remotestringkey: hosterkey.toString('hex'), state: account.state, log })
@@ -445,7 +445,7 @@ async function attest_storage_challenge ({ data, account, conn, log: parent_log 
       resolve({ proof_of_contact, reports })
     }
 
-    function verify_stored_chunk (data_promise) {
+    async function verify_stored_chunk (data_promise) {
       return new Promise(async (resolve, reject) => {
         try {
           const chunk = await data_promise
@@ -453,20 +453,33 @@ async function attest_storage_challenge ({ data, account, conn, log: parent_log 
           let { 
             contractID, index, encoded_data, encoded_data_signature, p 
           } = decode_stored_chunk(chunk) 
+          
           logStorageChallenge({ type: 'attester', data: { text: `Storage proof received`, index, contractID, p } })
-    
+          
           const check = checks[`${contractID}`] // { index, feedkey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey }
-          const { index: check_index, feedkey, signatures, ranges, encoderSigningKey, encoder_pos, amendmentID  } = check
+          const { index: check_index, feedkey, encoderSigningKey, encoder_pos, amendmentID  } = check
+          
           const unique_el = `${amendmentID}/${encoder_pos}`
-    
+          // TODO: some issues here, not sure if with unique_el or something else 
+          // const amendment = await chainAPI.getAmendmentByID(amendmentID)
+          // var unique_el
+          // if (!amendment.positions) { // storage challenge
+          //   unique_el = `${amendmentID}/${encoder_pos}`
+          // } else { // hoster replacement
+          //   unique_el = amendment.positions.includes(encoder_pos) ? 
+          //     `${amendmentID}/${encoder_pos}` : `${amendment.ref}/${encoder_pos}`
+          // }
+          
           if (index !== check_index) reject(index)
-          // 1. verify encoder signature
-          if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) {
-            const err = new Error('not a valid chunk', { cause: 'invalid-chunk', contractID, index })
-            reject(err)
+          logStorageChallenge({ type: 'attester', data: { text: `valid index`, index, check_index, amendmentID } })
+        
+        // 1. verify encoder signature
+        if (!datdot_crypto.verify_signature(encoded_data_signature, encoded_data, encoderSigningKey)) {
+          const err = new Error('not a valid chunk', { cause: 'invalid-chunk', contractID, index })
+          reject(err)
           }
           logStorageChallenge({ type: 'attester', data: { text: `Encoder sig verified`, index, unique_el, contractID } })
-    
+          
           // 2. verify proof
           p = proof_codec.to_buffer(p)
           const proof_verified = await datdot_crypto.verify_proof(p, feedkey)
@@ -474,11 +487,13 @@ async function attest_storage_challenge ({ data, account, conn, log: parent_log 
             const err = new Error('not a valid p', { cause: 'invalid-p', contractID, index })
             reject(err)
           }
-          logStorageChallenge({ type: 'attester', data: { text: `Proof verified`, index, contractID } })
-    
+          logStorageChallenge({ type: 'attester', data: { text: `Proof verified`, index, contractID, encoded_data } })
+          
           // 3. verify chunk (see if hash matches the proof node hash)
           const decompressed = await brotli.decompress(encoded_data)
+          logStorageChallenge({ type: 'attester', data: { text: `got decompressed`, index, amendmentID } })
           const decoded = parse_decompressed(decompressed, unique_el)
+          logStorageChallenge({ type: 'attester', data: { text: `got decoded`, index, amendmentID, decoded } })
           if (!decoded) return reject('parsing decompressed unsuccessful')
           const block_verified = await datdot_crypto.verify_block(p, decoded)
           if (!block_verified) return reject('chunk hash not valid' )
@@ -502,7 +517,7 @@ async function attest_storage_challenge ({ data, account, conn, log: parent_log 
     // attester merkle verifies the data: (feedkey, root signature from the chain (published by attester after published plan)  )
     // attester sends to the chain: nodes, signature, hash of the data & signed event
 
-async function get_storage_challenge_data ({ chainAPI, storageChallenge }) {
+async function get_storage_challenge_data ({ chainAPI, storageChallenge, log }) {
   const { id, checks, hoster: hosterID, attester: attesterID } = storageChallenge
   const contract_ids = Object.keys(checks).map(stringID => Number(stringID))
   const hosterSigningKey = await chainAPI.getSigningKey(hosterID)
@@ -522,6 +537,8 @@ async function get_storage_challenge_data ({ chainAPI, storageChallenge }) {
     checks[contract_id].encoderSigningKey = await chainAPI.getSigningKey(encoderID)
     checks[contract_id].encoder_pos = pos
     checks[contract_id].amendmentID = amendments[amendments.length - 1]
+
+    log({ type: 'timeout', data: { text: 'gettting checks for', storageChallenge: id, amendment: checks[contract_id].amendmentID } })
     // checks[contract_id] = { index, feedkey, signatures, ranges, amendmentID, encoder_pos, encoderSigningKey }
   }
   return { id, attesterkey, hosterkey, hosterSigningKey, checks, feedkey_1 }
@@ -585,7 +602,7 @@ async function performanceChallenge_handler (args) {
     const hosterkey = hosterkeys[i]
 
     const htid = setTimeout(async () => {
-      log({ type: 'timeout', data: { texts: `error: performance challenge - timeout for hoster ${hoster_id}`, challengeID } })
+      log({ type: 'timeout', data: { texts: `performance challenge - timeout for hoster ${hoster_id}`, is_conn: conns[hoster_id ], challengeID } })
       done_task_cleanup({ role: 'performance_attester', topic, remotestringkey: hosterkey, state: account.state, log })
       reports[hoster_id] = { status: 'fail' } 
     }, DEFAULT_TIMEOUT)
@@ -597,7 +614,7 @@ async function performanceChallenge_handler (args) {
   }
 
   const tid = setTimeout(async () => {
-    log({ type: 'timeout', data: { texts: 'error: performance challenge - timeout', challengeID, reports } })
+    log({ type: 'timeout', data: { texts: 'performance challenge - timeout', challengeID, reports } })
     const nonce = await account.getNonce()
     await chainAPI.submitPerformanceChallenge({ challengeID, reports, signer, nonce })  
   }, DEFAULT_TIMEOUT)
@@ -830,7 +847,7 @@ async function hosterReplacement_handler (args) {
   if (attesterAddress !== myAddress) return
 
   const { count: expectedChunkCount, chunks } = getChunks(ranges)
-  var proof_of_contact
+  var proofs_of_contact = {}
   const messages = {}
   const compare_CB = (msg, key) => compare_encodings({ messages, key, msg, log })
   const conn = {}
@@ -851,7 +868,7 @@ async function hosterReplacement_handler (args) {
     const encoderstringkeys = encoderkeys.map(key => key.toString('hex'))
 
     const peers = [...hosterstringkeys, ...encoderstringkeys]
-    log({ type: 'attester', data: { texts: 'error: hoster replacement -- timeout', amendmentID, peers, conn: Object.keys(conn) } })
+    log({ type: 'attester', data: { texts: 'hoster replacement -- timeout', amendmentID, peers, conn: Object.keys(conn) } })
     const id = amendmentID
     for (const key of peers) {
       if (conn[key]) continue
@@ -1127,16 +1144,16 @@ async function hosterReplacement_handler (args) {
         log({ type: 'attester', data: { text: 'error: not a valid proof of contact' } })
         return
       }
-      proof_of_contact = proof
-    }          
-    // done called for the first time (sentCount === expectedChunkCounts)
-    if (!proof_of_contact) return
+      proofs_of_contact[hkey] = proof
+    } 
 
-    // if (!all_compared[hkey]['sentCount']) return
-
-    const sentCount = all_compared[hkey]['sentCount']
-    if ((sentCount !== expectedChunkCount)) return
-    finishAndSendReport()
+    for (const hosterkey of Object.keys(proofs_of_contact)) {
+      // if no hoster key, done called for the first time (sentCount === expectedChunkCounts)
+      // if (!all_compared[hkey]['sentCount']) return
+      const sentCount = all_compared[hosterkey]['sentCount']
+      if ((sentCount !== expectedChunkCount)) return
+      finishAndSendReport()
+    }    
   }
   
   async function finishAndSendReport () {   
@@ -1221,7 +1238,7 @@ async function get_and_compare (opts) {
       try_send({ expectedChunkCount, compared, chunk, i, feed: hosterFeed, done, log })
       resolve()
     } catch(err) {
-      log({ type: 'attester', data: { text: 'Error: get_and_compare_chunk' }})
+      log({ type: 'attester', data: { text: 'Error: get_and_compare_chunk', err }})
       reject()
     }
   })
