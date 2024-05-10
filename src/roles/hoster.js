@@ -535,11 +535,19 @@ async function getEncodedDataFromAttester(data) {
       async function onattester ({ feed }) {
         log2attester({ type: 'hoster', data: { text: `Connected to the attester`, chunks } })
         const all = []
+        const results = []
         for (var i = 0; i < expectedChunkCount; i++) all.push(store_data(feed.get(i)))
         try {
-          const results = await Promise.all(all)
+          const settled = await Promise.allSettled(all)
+          for (const res of settled) {
+            if (res.status === 'fulfilled') results.push(res.value)
+            if (res.status === 'rejected') {
+              logStorageChallenge({ type: 'attestor', data: { text: `error: failed to store the data` } })
+            }          
+          }
+          if (results.length !== expectedChunkCount) return reject(new Error({ type: 'fail', data: 'Error in storing data', results }))
           log2attester({ type: 'hoster', data: { text: `All chunks hosted`, len: results.length, expectedChunkCount, feedkey: feedkey.toString('hex') } })
-          await send_proof_of_contact({ account, unique_el, remotestringkey, topic, log })
+          await send_proof_of_contact({ account, unique_el: amendmentID.toString(), remotestringkey, topic, log })
           return resolve()
         } catch (err) {
           log({ type: 'error', data: { text: `Error getting results` } })
@@ -581,6 +589,8 @@ async function getEncodedDataFromAttester(data) {
         const block_verified = await datdot_crypto.verify_block(p, decoded)
         if (!block_verified) return reject('not a valid chunk hash')
         
+        // TODO!!! If there is more plans with same feed and same chunks, we need to store them in the hoster storage
+        // under feed/contractID or amendmentID, so we can have multiple proofs stored in parallel
         await store_in_hoster_storage({ // need to store unique_el, to be able to decompress and serve chunks as hosters
           account, feedkey, index, encoded_data_signature,
           encoded_data, unique_el, p, log: log2attester
