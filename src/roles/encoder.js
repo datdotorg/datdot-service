@@ -77,7 +77,8 @@ async function handle_hostingSetup_failed (args) {
   const contract = await chainAPI.getContractByID(contractID)
   const { feed: feedID } = contract
   const { feedkey } = await chainAPI.getFeedByID(feedID)
-  const { tasks } = account.state
+  const pubkey = account.noisePublicKey.toString('hex')
+  const { tasks } = account.state[pubkey]
 
   const topic = datdot_crypto.get_discoverykey(feedkey)
   const stringtopic = topic.toString('hex')
@@ -86,7 +87,7 @@ async function handle_hostingSetup_failed (args) {
   const peers = tasks[stringtopic].amendments[amendmentID].peers
   if (!peers.length) return  
   delete tasks[stringtopic].amendments[amendmentID]
-  done_task_cleanup({ role: 'encoder2author', topic, peers, state: account.state, log })
+  done_task_cleanup({ role: 'encoder2author', topic, peers, state: account.state[pubkey], log })
 }
 
 /* -----------------------------------------
@@ -208,6 +209,7 @@ async function handle_hosterReplacement (args) {
     const { feedkey } = await chainAPI.getFeedByID(feed_id)
     const [attesterID] = attesters
     const attesterkey = await chainAPI.getAttesterKey(attesterID)
+    const pubkey = account.noisePublicKey.toString('hex')
   
     const log2Attester = log.sub(`Encoder to attester, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${attesterkey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
     const log2Author= log.sub(`->Encoder to author, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, amendment: ${amendmentID}`)
@@ -234,7 +236,7 @@ async function handle_hosterReplacement (args) {
         })
         
         function onpeer ({ peerkey, stringtopic }) {
-          const { tasks } = account.state
+          const { tasks } = account.state[pubkey]
           log2Author({ type: 'encoder', data: { text: `onpeer callback`, stringtopic, peerkey, amendmentID, tasks: JSON.stringify(tasks[stringtopic]) } })
           peers.push(peerkey.toString('hex'))
           // if (!tasks[stringtopic].amendments) {
@@ -245,15 +247,16 @@ async function handle_hosterReplacement (args) {
           // }
         }
         
-        async function done_with_author () {
+        async function done_with_author () { // or any hoster for this feed
           const stringtopic = topic1.toString('hex')
-          const { tasks } = account.state
+          const pubkey = account.noisePublicKey.toString('hex')           
+          const { tasks } = account.state[pubkey]
           log2Author({ type: 'encoder', data: { text: `calling done`, amendmentID, tasks: JSON.stringify(tasks[stringtopic]) } })
           // const peers = tasks[stringtopic].amendments[amendmentID].peers
           // if (!peers.length) return
-          // delete account.state.tasks[stringtopic].amendments[amendmentID]  
-          peers = [...new Set(peers)]                
-          await done_task_cleanup({ role: 'encoder2author', peers, topic: topic1, state: account.state, log }) 
+          // delete account.state[pubkey].tasks[stringtopic].amendments[amendmentID]  
+          peers = [...new Set(peers)]     
+          await done_task_cleanup({ role: 'encoder2author', peers, topic: topic1, state: account.state[pubkey], log }) 
           peers = []
         }
     
@@ -292,7 +295,8 @@ async function handle_hosterReplacement (args) {
           }
         }  
         async function done_with_attester ({ type }) {
-          await done_task_cleanup({ role: 'encoder2attester', topic: topic2, remotestringkey: attesterkey.toString('hex'), state: account.state, log })
+          const pubkey = account.noisePublicKey.toString('hex')
+          await done_task_cleanup({ role: 'encoder2attester', topic: topic2, remotestringkey: attesterkey.toString('hex'), state: account.state[pubkey], log })
         }
       } catch(err) {
         log2Attester({ type: 'encoder', data: { text: 'Error in hosting setup', err } })

@@ -60,7 +60,8 @@ async function handle_hostingSetup_failed (args) {
   const contract = await chainAPI.getContractByID(contractID)
   const { ranges, feed: feedID } = contract
   const { feedkey } = await chainAPI.getFeedByID(feedID)
-  const { tasks, feeds } = account.state
+  const pubkey = account.noisePublicKey.toString('hex')
+  const { tasks, feeds } = account.state[pubkey]
 
   const topic = datdot_crypto.get_discoverykey(feedkey)
   const stringtopic = topic.toString('hex')
@@ -69,7 +70,7 @@ async function handle_hostingSetup_failed (args) {
   const peers = tasks[stringtopic].amendments[amendmentID].peers
   if (!peers.length) return
   delete tasks[stringtopic].amendments[amendmentID]
-  await done_task_cleanup({ role: 'hoster2author', topic, peers, state: account.state, log }) // done for hoster2author (client)
+  await done_task_cleanup({ role: 'hoster2author', topic, peers, state: account.state[pubkey], log }) // done for hoster2author (client)
   // remove feed from storage
   const hasKey = await account.storages.has(feedkey.toString('hex'))
   if (!feeds[stringtopic] && hasKey) {
@@ -241,7 +242,8 @@ async function send_storage_proofs_to_attester({ data, account, log: parent_log 
     async function done ({ type }) {
       if (type !== 'done') return
       const remotestringkey = attesterkey.toString('hex')
-      await done_task_cleanup({ role: 'storage_hoster', topic, remotestringkey, state: account.state, log })
+      const pubkey = account.noisePublicKey.toString('hex')
+      await done_task_cleanup({ role: 'storage_hoster', topic, remotestringkey, state: account.state[pubkey], log })
     }
   })
   
@@ -267,15 +269,16 @@ async function handle_dropHosting (args) {
    const stringkey = feedkey.toString('hex')
    const topic = datdot_crypto.get_discoverykey(feedkey)
    const stringtopic = topic.toString('hex')
-   const { tasks } = account.state
+   const pubkey = account.noisePublicKey.toString('hex')
+   const { tasks } = account.state[pubkey]
   // call done task cleanup
   for (const stringtopic of Object.keys(tasks)) {
     if (!tasks[stringtopic] !== topic.toString('hex')) continue
-    await done_task_cleanup({ role: 'hoster', topic, peers: [], state: account.state, log })
+    await done_task_cleanup({ role: 'hoster', topic, peers: [], state: account.state[pubkey], log })
   }
   // remove feed from storage
-  if (account.state.feeds[stringtopic][feedkey]) return
-  if (account.state.feeds[stringtopic][stringkey]) return
+  if (account.state[pubkey].feeds[stringtopic][feedkey]) return
+  if (account.state[pubkey].feeds[stringtopic][stringkey]) return
   const hasKey = await account.storages.has(feedkey.toString('hex'))
   if (hasKey) return await removeFeed({ account, key: feedkey, amendmentID, log })
 
@@ -298,12 +301,13 @@ async function handle_hosterReplacement (args) {
   const addresses = await Promise.all(addresses_promise)
   const len = addresses.length
   const peers = []
+  const pubkey = account.noisePublicKey.toString('hex')
 
   const tid = setTimeout(async () => {
     log({ type: 'timeout', data: { texts: 'hoster replacement - timeout', id } })
     const topic = derive_topic({ senderKey: hosterkey, feedkey, receiverKey: attesterkey, id, log })
     const remotestringkey = attesterkey.toString('hex')
-    await done_task_cleanup({ role: 'active_hoster2attester', topic, remotestringkey, state: account.state, log })
+    await done_task_cleanup({ role: 'active_hoster2attester', topic, remotestringkey, state: account.state[pubkey], log })
     return
   }, DEFAULT_TIMEOUT)
 
@@ -375,7 +379,7 @@ async function send_data_to_attester (opts) {
     async function done ({ type }) {
       if (type !== 'done') return
       const remotestringkey = attesterkey.toString('hex')
-      await done_task_cleanup({ role: 'active_hoster2attester', topic, remotestringkey, state: account.state, log })
+      await done_task_cleanup({ role: 'active_hoster2attester', topic, remotestringkey, state: account.state[pubkey], log })
     }
   })
 }
@@ -400,7 +404,8 @@ async function send_proof_of_contact ({ account, unique_el, remotestringkey, top
   try {
     const data = b4a.from(unique_el, 'binary')
     const proof_of_contact = account.sign(data)
-    const channel = account.state.sockets[remotestringkey].channel
+    const pubkey = account.noisePublicKey.toString('hex')
+    const channel = account.state[pubkey].sockets[remotestringkey].channel
     const stringtopic = topic.toString('hex')
     const string_msg = channel.messages[0]
     string_msg.send(JSON.stringify({ type: 'proof-of-contact', stringtopic, proof_of_contact: proof_of_contact.toString('hex') }))
@@ -452,6 +457,7 @@ async function loadFeedData({ peers, account, hyper, ranges, feedkey, amendmentI
     const topic = datdot_crypto.get_discoverykey(feedkey)
     const stringtopic = topic.toString('hex')
     const { feed } = await hyper.new_task({ feedkey, topic, log })
+    const pubkey = account.noisePublicKey.toString('hex')
     try {
       // replicate feed from author
       await hyper.connect({ 
@@ -464,7 +470,8 @@ async function loadFeedData({ peers, account, hyper, ranges, feedkey, amendmentI
       function onpeer ({ peerkey }) {
         log({ type: 'hoster', data: { text: `onpeer callback`, stringtopic, peerkey } })
         peers.push(peerkey.toString('hex'))
-        // const { tasks } = account.state
+        // const pubkey = account.noisePublicKey.toString('hex')
+        // const { tasks } = account.state[pubkey]
         // if (!tasks[stringtopic].amendments) {
         //   tasks[stringtopic].amendments = { [amendmentID]: { peers: [peerkey.toString('hex')]} }
         // } else {
@@ -489,16 +496,16 @@ async function loadFeedData({ peers, account, hyper, ranges, feedkey, amendmentI
       await Promise.all(downloaded)
       peers = [...new Set(peers)]
       log({ type: 'hoster', data: {  text: 'all ranges downloaded', ranges, peers } }) 
-      // delete account.state.tasks[stringtopic].amendments[amendmentID]
-      await done_task_cleanup({ role: 'hoster2author', topic, peers, state: account.state, log }) // done for hoster2author (client)
+      // delete account.state[pubkey].tasks[stringtopic].amendments[amendmentID]
+      await done_task_cleanup({ role: 'hoster2author', topic, peers, state: account.state[pubkey], log }) // done for hoster2author (client)
       peers = []
       resolve({ feed })
 
       async function done ({ role, stringtopic, peerkey }) {
-        const { tasks } = account.state
+        const { tasks } = account.state[pubkey]
         // triggered by clients for: hoster2author (server) in hosting setup & hoster (server)
         log({ type: 'hoster', data: { text: `calling done`, role, stringtopic, peerkey } })
-        await done_task_cleanup({ role, topic, peers: [peerkey], state: account.state, log })                   
+        await done_task_cleanup({ role, topic, peers: [peerkey], state: account.state[pubkey], log })                   
       }
     } catch (err) {
       log({ type: 'Error', data: {  text: 'Error: loading feed data', err } })
@@ -555,7 +562,8 @@ async function getEncodedDataFromAttester(data) {
         }
       }
       async function done ({ type }) {
-        await done_task_cleanup({ role: 'hoster2attester', topic, remotestringkey, state: account.state, log: log2attester })
+        const pubkey = account.noisePublicKey.toString('hex')
+        await done_task_cleanup({ role: 'hoster2attester', topic, remotestringkey, state: account.state[pubkey], log: log2attester })
       }
     } catch (err) {
       return reject(err)
@@ -648,14 +656,17 @@ async function getStorage ({account, key, log}) {
 }
 
 async function store_in_hoster_storage (opts) {
-  const { 
-    account, feedkey, index, encoded_data_signature, 
-    encoded_data, unique_el, p, log 
-  } = opts
-  const storage = await getStorage({account, key: feedkey, log})
-  log({ type: 'hoster', data: { text: 'Storing in storage', key: feedkey.toString('hex') }})
-  return storage.storeEncoded({
-    index, encoded_data_signature, encoded_data, unique_el, p
+  return new Promise (async (resolve, reject) => {
+    const { 
+      account, feedkey, index, encoded_data_signature, 
+      encoded_data, unique_el, p, log 
+    } = opts
+    const storage = await getStorage({account, key: feedkey, log})
+    log({ type: 'hoster', data: { text: 'Storing in storage', key: feedkey.toString('hex'), index }})
+    await storage.storeEncoded({
+      index, encoded_data_signature, encoded_data, unique_el, p
+    })
+    resolve()
   })
 }
 

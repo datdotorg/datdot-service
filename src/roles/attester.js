@@ -59,7 +59,9 @@ async function handle_hostingSetup_failed (args) {
   const { feed: feedID } = contract
   const { feedkey } = await chainAPI.getFeedByID(feedID)
   const myID = await chainAPI.getUserIDByNoiseKey(attesterkey)
-  const { tasks } = account.state
+  const pubkey = account.noisePublicKey.toString('hex')
+  const { tasks } = account.state[pubkey]
+
 
   log({ type: 'attester', data: [`Event received: ${event.method} ${event.data.toString()}`] })   
 
@@ -68,14 +70,14 @@ async function handle_hostingSetup_failed (args) {
     const topic = derive_topic({ senderKey: attesterkey, feedkey, receiverKey: hosterkey, id: amendmentID, log }) 
     const stringtopic = topic.toString('hex')
     if (!tasks[stringtopic]) continue
-    await done_task_cleanup({ role: 'attester2hoster', topic, remotestringkey: hosterkey.toString('hex'), state: account.state, log })
+    await done_task_cleanup({ role: 'attester2hoster', topic, remotestringkey: hosterkey.toString('hex'), state: account.state[pubkey], log })
   }
   for (const id of encoders) {
     const encoderkey = await chainAPI.getEncoderKey(id)
     const topic = derive_topic({ senderKey: encoderkey, feedkey, receiverKey: attesterkey, id: amendmentID, log })
     const stringtopic = topic.toString('hex')
     if (!tasks[stringtopic]) continue
-    await done_task_cleanup({ role: 'attester2encoder', topic, remotestringkey: encoderkey.toString('hex'), state: account.state, log })
+    await done_task_cleanup({ role: 'attester2encoder', topic, remotestringkey: encoderkey.toString('hex'), state: account.state[pubkey], log })
   }
 
 }
@@ -92,6 +94,7 @@ async function handle_hostingSetup (args) {
   const [attesterID] = amendment.providers.attesters
   const attesterAddress = await chainAPI.getUserAddress(attesterID)
   if (attesterAddress !== myAddress) return
+  const pubkey = account.noisePublicKey.toString('hex')
   const conn = {}
   const failedKeys = []
   const sigs = []
@@ -112,11 +115,11 @@ async function handle_hostingSetup (args) {
     }
     for (const key of hosterstringkeys) {
       const topic = derive_topic({ senderKey: attesterkey, feedkey, receiverKey: key, id, log }) 
-      await done_task_cleanup({ role: 'attester2hoster', topic, remotestringkey:key, state: account.state, log })
+      await done_task_cleanup({ role: 'attester2hoster', topic, remotestringkey:key, state: account.state[pubkey], log })
     }
     for (const key of encoderstringkeys) {
       const topic = derive_topic({ senderKey: key, feedkey, receiverKey: attesterkey, id, log })
-      await done_task_cleanup({ role: 'attester2encoder', topic, remotestringkey: key, state: account.state, log })
+      await done_task_cleanup({ role: 'attester2encoder', topic, remotestringkey: key, state: account.state[pubkey], log })
     }
     // we connected to all but it still timed out
     if (!failedKeys.length) failedKeys.push(...hosterstringkeys, ...encoderstringkeys)
@@ -231,7 +234,8 @@ async function connect_compare_send (opts) {
   const { count: expectedChunkCount } = getChunks(ranges)
   const log2encoder = log.sub(`<-Attester to encoder, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${key1.toString('hex').substring(0,5)}`)
   const log2hoster = log.sub(`<-Attester to hoster, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${key2.toString('hex').substring(0,5)}`)
-  
+  const pubkey = account.noisePublicKey.toString('hex')
+
   return new Promise(async (resolve, reject) => {       
     var feed1
     var feed2
@@ -297,12 +301,12 @@ async function connect_compare_send (opts) {
         }          
         if (!proof_of_contact) {
           // done called for the first time (sentCount === expectedChunkCounts)
-          await done_task_cleanup({ role: 'attester2encoder', topic: topic1, remotestringkey: key1.toString('hex'), state: account.state, log })
+          await done_task_cleanup({ role: 'attester2encoder', topic: topic1, remotestringkey: key1.toString('hex'), state: account.state[pubkey], log })
           return
         }
         if ((sentCount !== expectedChunkCount)) return
         log({ type: 'attester', data: { text: 'have proof and all data sent', proof, sentCount, expectedChunkCount }})
-        await done_task_cleanup({ role: 'attester2hoster', topic: topic2, remotestringkey: key2.toString('hex'), state: account.state, log })
+        await done_task_cleanup({ role: 'attester2hoster', topic: topic2, remotestringkey: key2.toString('hex'), state: account.state[pubkey], log })
         resolve(proof_of_contact)
       }
 
@@ -326,6 +330,7 @@ async function storageChallenge_handler (args) {
   if (attesterAddress !== myAddress) return
   log({ type: 'chainEvent', data: `Attester ${attesterID}:  Event received: ${event.method} ${event.data.toString()}` })      
   const attestation = { response: { storageChallengeID, status: undefined, reports: [] },  signer }
+  const pubkey = account.noisePublicKey.toString('hex')
   var conn // set to true once connection with hoster is established
 
   const data = await get_storage_challenge_data({ chainAPI, storageChallenge, log })
@@ -335,7 +340,7 @@ async function storageChallenge_handler (args) {
     log({ type: 'timeout', data: { texts: 'storage challenge - timeout', storageChallengeID } })
     const { hosterkey, feedkey_1 } = data
     const topic = derive_topic({ senderKey: hosterkey, feedkey: feedkey_1, receiverKey: attesterkey, id: storageChallengeID, log })
-    done_task_cleanup({ role: 'storage_attester', topic, remotestringkey: hosterkey.toString('hex'), state: account.state, log })
+    done_task_cleanup({ role: 'storage_attester', topic, remotestringkey: hosterkey.toString('hex'), state: account.state[pubkey], log })
     attestation.nonce = await account.getNonce()
     if (conn) attestation.response.status = 'no-data' // connection was established, but no data was sent
     else attestation.response.status = 'fail' //no connection was established between hoster and attester, reponse is empty
@@ -376,6 +381,7 @@ async function attest_storage_challenge ({ data, chainAPI, account, conn, log: p
   return new Promise(async (resolve, reject) => {
     const { hyper } = account
     const { id, attesterkey, hosterkey, hosterSigningKey, checks, feedkey_1 } = data
+    const pubkey = account.noisePublicKey.toString('hex')
     const logStorageChallenge = parent_log.sub(`<-attester2hoster storage challenge ${id}, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${hosterkey.toString('hex').substring(0,5)}`)
     var reports = []
     var proof_of_contact
@@ -383,7 +389,7 @@ async function attest_storage_challenge ({ data, chainAPI, account, conn, log: p
     
     const topic = derive_topic({ senderKey: hosterkey, feedkey: feedkey_1, receiverKey: attesterkey, id, log: logStorageChallenge })
     await hyper.new_task({ newfeed: false, topic, log: logStorageChallenge })
-    logStorageChallenge({ type: 'attestor', data: { text: `New task (storage challenge) added` } })
+    logStorageChallenge({ type: 'attester', data: { text: `New task (storage challenge) added` } })
 
     await hyper.connect({ 
       swarm_opts: { role: 'storage_attester', topic, mode: { server: false, client: true } },
@@ -394,14 +400,14 @@ async function attest_storage_challenge ({ data, chainAPI, account, conn, log: p
     })
 
     async function onhoster ({ feed, remotestringkey }) {
-      logStorageChallenge({ type: 'attestor', data: { text: `Connected to the storage chalenge hoster`, remotestringkey } })
+      logStorageChallenge({ type: 'attester', data: { text: `Connected to the storage chalenge hoster`, remotestringkey } })
       conn = true
       await get_data(feed)
     }
     
     async function get_data (feed) {
       try {
-        logStorageChallenge({ type: 'attestor', data: { text: `Get storage data`, feedkey: feed.key.toString('hex') } })
+        logStorageChallenge({ type: 'attester', data: { text: `Get storage data`, feedkey: feed.key.toString('hex') } })
         // get chunks from hoster for all the checks
         const expectedChunkCount = Object.keys(checks).length
         for (var i = 0; i < expectedChunkCount; i++) {
@@ -410,10 +416,10 @@ async function attest_storage_challenge ({ data, chainAPI, account, conn, log: p
         }
         const settled = await Promise.allSettled(verifying)
         settled.forEach(res => {
-          logStorageChallenge({ type: 'attestor', data: { text: `settled`, res: JSON.stringify(res) } })
+          logStorageChallenge({ type: 'attester', data: { text: `settled`, res: JSON.stringify(res) } })
           if (res.status === 'fulfilled') reports.push(res.value)
           if (res.status === 'rejected') {
-            logStorageChallenge({ type: 'attestor', data: { text: `error: get data promise in storage challenge rejected` } })
+            logStorageChallenge({ type: 'attester', data: { text: `error: get data promise in storage challenge rejected` } })
             reports.push('fail')
           }
         })
@@ -439,7 +445,7 @@ async function attest_storage_challenge ({ data, chainAPI, account, conn, log: p
       if (!proof_of_contact) return
       if ((!reports || reports.length !== Object.keys(checks).length)) return
       logStorageChallenge({ type: 'attester', data: { text: 'have proof and all reports', proof_of_contact, reports_len: reports.length, checks_len: Object.keys(checks).length, hosterkey }})
-      done_task_cleanup({ role: 'storage_attester', topic, remotestringkey: hosterkey.toString('hex'), state: account.state, log: logStorageChallenge })
+      done_task_cleanup({ role: 'storage_attester', topic, remotestringkey: hosterkey.toString('hex'), state: account.state[pubkey], log: logStorageChallenge })
       // doesn't need to send msg with type done, because it already sent ack-proof-of-contact
       resolve({ proof_of_contact, reports })
     }
@@ -592,18 +598,30 @@ async function performanceChallenge_handler (args) {
   var reports = {}
   var tids = {}
 
+  const singleUseKeys = datdot_crypto.create_noise_keypair({
+    namespace: 'datdot-performance-attester', 
+    seed: datdot_crypto.random_bytes(32), 
+    name: 'noise' 
+  })
+
+  const pubkey = singleUseKeys.publicKey.toString('hex')
+
+
   const opts = { 
     account, chainAPI, hyper, challengeID, reports, 
-    feedkey, topic, chunks, tids, conns, log 
+    feedkey, topic, chunks, tids, conns, singleUseKeys, log 
   }
-
+  
   for (var i = 0; i < hosterkeys.length; i++) {
     const hoster_id = hosterIDs[i]
     const hosterkey = hosterkeys[i]
 
     const htid = setTimeout(async () => {
-      log({ type: 'timeout', data: { texts: `performance challenge - timeout for hoster ${hoster_id}`, is_conn: conns[hoster_id ], challengeID } })
-      done_task_cleanup({ role: 'performance_attester', topic, remotestringkey: hosterkey, state: account.state, log })
+      log({ type: 'timeout', data: { texts: `performance challenge - timeout for hoster ${hoster_id}`, is_conn: conns[hoster_id], challengeID } })
+      done_task_cleanup({ 
+        role: 'performance_attester', topic, 
+        remotestringkey: hosterkey, state: account.state[pubkey], log 
+      })
       reports[hoster_id] = { status: 'fail' } 
     }, DEFAULT_TIMEOUT)
 
@@ -627,8 +645,9 @@ async function performanceChallenge_handler (args) {
     const hoster_id = res.value
     if (res.status === 'rejected') reports[hoster_id] = { status: 'fail' }
     const remotestringkey = hosterkeys[i]
-    done_task_cleanup({ role: 'performance_attester', topic, remotestringkey, state: account.state, log })
-  }
+    done_task_cleanup({ 
+      role: 'performance_attester', topic, remotestringkey, state: account.state[pubkey], log })
+    }
 
     // TODO: send just a summary to the chain, not the whole array
   const nonce = await account.getNonce()
@@ -640,17 +659,25 @@ async function attest_performance (opts) {
     const { 
       account, chainAPI, hyper, challengeID, 
       hosterkey, hoster_id, reports, feedkey,
-      topic, chunks, tids, conns, log 
+      topic, chunks, tids, conns, singleUseKeys, log 
     } = opts
 
     try {
   
       const field = `${topic.toString('hex')}-${hosterkey}`
-      const { feed } = await hyper.new_task({ feedkey, topic, field, log })
+      const singleUseKey = singleUseKeys.publicKey.toString('hex')
+      const { feed } = await hyper.new_task({ singleUseKey, feedkey, topic, field, log })
       log({ type: 'challenge', data: { text: 'Got performance challenge feed', field, hosterkey, fedkey: feed.key.toString('hex') } })
   
+      // TODO: we need to track state (sockets, targets, connections...) separately for each pubkey
+      // because we have a new feedkey, we need a new state
       await hyper.connect({ 
-        swarm_opts: { role: 'performance_attester', topic, mode: { server: false, client: true } }, 
+        swarm_opts: { 
+          role: 'performance_attester', 
+          singleUseKeys, 
+          topic, 
+          mode: { server: false, client: true } 
+        }, 
         targets: { targetList: [hosterkey], feed },
         onpeer: onhoster,
         done,
@@ -662,7 +689,7 @@ async function attest_performance (opts) {
         conns[hoster_id] = true
         await feed.update()
         const to_check = chunks[hoster_id]
-        const opts = { account, challengeID, feed, chunks: to_check, hosterkey, topic, log }
+        const opts = { account, pubkey: singleUseKey, challengeID, feed, chunks: to_check, hosterkey, topic, log }
         const stats = await measure_performance(opts).catch(err => log({ type: 'fail', data: err })) || []
         reports[hoster_id] ? reports[hoster_id].stats = stats : reports[hoster_id] = { stats }
         done({ type: 'have the report' })
@@ -736,23 +763,23 @@ async function get_challenge_data ({ chainAPI, selectedHosters, contractIDs, log
   })
 }
 
-async function measure_performance ({ account, challengeID, feed, chunks, hosterkey, topic, log: parent_log }) {
+async function measure_performance ({ account, pubkey, challengeID, feed, chunks, hosterkey, topic, log: parent_log }) {
   const log = parent_log.sub(`<-attester2hoster performance challenge, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${hosterkey.toString('hex').substring(0,5)}`)
   log({ type: 'challenge', data: { text: 'checking performance' } })
   return new Promise(async (resolve, reject) => {
     log({ type: 'challenge', data: { text: 'getting stats', data: chunks } })
     const stats = await get_data_and_stats({ feed, chunks, log }).catch(err => log({ type: 'fail', data: err }))
     // get proof of contact
-    await request_proof_of_contact({ account, challenge_id: challengeID, hosterkey, topic, log })
+    await request_proof_of_contact({ account, pubkey, challenge_id: challengeID, hosterkey, topic, log })
     log({ type: 'performance check finished', data: { stats: JSON.stringify(stats) } })
     resolve(stats)
   })
 }
 
-async function request_proof_of_contact ({ account, challenge_id, hosterkey, topic, log }) {
+async function request_proof_of_contact ({ account, pubkey, challenge_id, hosterkey, topic, log }) {
   // request proof
   const remotestringkey = hosterkey.toString('hex')
-  const channel = account.state.sockets[remotestringkey].channel
+  const channel = account.state[pubkey].sockets[remotestringkey].channel
   const stringtopic = topic.toString('hex')
   const string_msg = channel.messages[0]
   log({ type: 'challenge', data: { text: 'requesting proof of contact', challenge_id, stringtopic, remotestringkey } })
@@ -857,6 +884,7 @@ async function hosterReplacement_handler (args) {
   var replacement_encoders = []
   const all_compared = {}
   var finished = 0
+  const pubkey = account.noisePublicKey.toString('hex')
 
   const tid = setTimeout(async () => {
     const hoster_promises = await Promise.all(hosters.map((id) => chainAPI.getHosterKey(id)))
@@ -880,13 +908,13 @@ async function hosterReplacement_handler (args) {
       if (positions.includes(i)) continue // we only call done task for active hoster & not for the replacement hoster
       if (!all_compared[key]) all_compared[key] = {}
       const topic = derive_topic({ senderKey: attesterkey, feedkey, receiverKey: key, id, log }) 
-      await done_task_cleanup({ role: 'attester2active_hoster', topic, remotestringkey:key, state: account.state, log })
+      await done_task_cleanup({ role: 'attester2active_hoster', topic, remotestringkey:key, state: account.state[pubkey], log })
     }
     for (var i = 0; i < encoderstringkeys; i++) {
       if (!positions.includes(i)) continue // encoders that haven't been replaced are not booked for the task
       const key = encoderstringkeys[i]
       const topic = derive_topic({ senderKey: key, feedkey, receiverKey: attesterkey, id, log })
-      await done_task_cleanup({ role: 'attester2replacement_encoder', topic, remotestringkey: key, state: account.state, log })
+      await done_task_cleanup({ role: 'attester2replacement_encoder', topic, remotestringkey: key, state: account.state[pubkey], log })
     }
 
     // if (!failedKeys.length) failedKeys.push(...hosterstringkeys, encoderstringkey)
@@ -944,7 +972,7 @@ async function hosterReplacement_handler (args) {
         const encoderSigningKey = await chainAPI.getSigningKey(encoders[i])
         const unique_el = await get_unique_el({ chainAPI, contractID: contract.id, pos: i, log })
         log({ type: 'attester', data: { text: `get data from active hoster`, amendmentID: id, i,  hosterkey, hosterkeys } })    
-        hostedDataVerified.push(get_hosted_data({ hosterkey, encoder_id: encoders[i], unique_el, feedkey, id, ranges, encoderSigningKey, log}))
+        hostedDataVerified.push(get_hosted_data({ account, hosterkey, encoder_id: encoders[i], unique_el, feedkey, id, ranges, encoderSigningKey, log}))
       }
     }
     
@@ -993,7 +1021,7 @@ async function hosterReplacement_handler (args) {
       settled.forEach(res => {
         if (res.status === 'fulfilled') results.push(res.value)
         if (res.status === 'rejected') {
-          log2enc({ type: 'attestor', data: { text: `error: get and compare error`, reason: res.reason } })
+          log2enc({ type: 'attester', data: { text: `error: get and compare error`, reason: res.reason } })
         }
       })
       log2enc({ type: 'attester', data: { text: 'All chunks in hoster replacement sent to comparison' }})
@@ -1005,7 +1033,7 @@ async function hosterReplacement_handler (args) {
     const topic = derive_topic({ senderKey: attesterkey, feedkey, receiverKey: replacementHosterkey, id: amendmentID, log })
     replacement_hosters.push([topic, replacementHosterkey.toString('hex')])
     const { feed } = await hyper.new_task({ topic, log })
-    log({ type: 'attestor', data: { text: `New task (attester2replacement_hoster) added`, topic: topic.toString('hex') } })
+    log({ type: 'attester', data: { text: `New task (attester2replacement_hoster) added`, topic: topic.toString('hex') } })
 
     await hyper.connect({ 
       swarm_opts: { role: 'attester2replacement_hoster', topic, mode: { server: true, client: false } }, 
@@ -1018,20 +1046,21 @@ async function hosterReplacement_handler (args) {
     async function onhoster ({ feed, remotestringkey }) {
       conn[remotestringkey] = 'connected'
       hosterFeed = feed
-      log({ type: 'attestor', data: { text: `Connected to the replacement hoster`, remotestringkey, amendmentID } })
+      log({ type: 'attester', data: { text: `Connected to the replacement hoster`, remotestringkey, amendmentID } })
       for (var i = 0; i < expectedChunkCount; i++ ) {
         try_send({ compared, i, feed: hosterFeed, done, log, expectedChunkCount })
       }
     }
   }
 
-  async function get_hosted_data ({ hosterkey, encoder_id, unique_el, feedkey, id, ranges, encoderSigningKey, log }) {
+  async function get_hosted_data ({ account, hosterkey, encoder_id, unique_el, feedkey, id, ranges, encoderSigningKey, log }) {
     return new Promise (async (resolve, reject) => {
+      const pubkey = account.noisePublicKey.toString('hex')
       const hosterstringkey = hosterkey.toString('hex')
       const log2hoster = log.sub(`<-Attester to active hoster, me: ${account.noisePublicKey.toString('hex').substring(0,5)}, peer: ${hosterstringkey.substring(0,5)}`)
       const topic = derive_topic({ senderKey: hosterkey, feedkey, receiverKey: attesterkey, id, log: log2hoster })
       await hyper.new_task({ newfeed: false, topic, log: log2hoster })
-      log2hoster({ type: 'attestor', data: { text: `New task (attester2active_hoster) added` } })
+      log2hoster({ type: 'attester', data: { text: `New task (attester2active_hoster) added` } })
   
       await hyper.connect({ 
         swarm_opts: { role: 'attester2active_hoster', topic, mode: { server: false, client: true } },
@@ -1046,13 +1075,13 @@ async function hosterReplacement_handler (args) {
         // so we have to make sure not to run this 2x
         if (conn[remotestringkey]) return
         conn[remotestringkey] = 'connected'
-        log2hoster({ type: 'attestor', data: { text: `Connected to the active hoster`, remotestringkey, amendment: id } })
+        log2hoster({ type: 'attester', data: { text: `Connected to the active hoster`, remotestringkey, amendment: id } })
         const opts = { 
           unique_el, encoder_id, chunks, feed, feedkey, expectedChunkCount, 
           encoderSigningKey, log: log2hoster 
         }
         await download_and_verify(opts)
-        await done_task_cleanup({ role: 'attester2active_hoster', topic, remotestringkey, state: account.state, log })
+        await done_task_cleanup({ role: 'attester2active_hoster', topic, remotestringkey, state: account.state[pubkey], log })
       }
     })
   }
@@ -1176,7 +1205,7 @@ async function hosterReplacement_handler (args) {
         role: 'attester2replacement_encoder', 
         topic, 
         remotestringkey, 
-        state: account.state, 
+        state: account.state[pubkey], 
         log 
       })
     }
@@ -1185,7 +1214,7 @@ async function hosterReplacement_handler (args) {
         role: 'attester2replacement_hoster', 
         topic, 
         remotestringkey, 
-        state: account.state, 
+        state: account.state[pubkey], 
         log 
       })
     }
@@ -1206,10 +1235,11 @@ async function paused_handler (args) {
   if (user.address === myAddress && user.status.paused) {
     log({ type: 'user', data: { text: `User ${user.id}: Event received: ${event.method} ${event.data.toString()}`} })
     // reset state
-    // account.state.sockets = {}
-    // account.state.feeds = {} 
-    // account.state.targets = {} 
-    // account.state.tasks = {}
+    // const pubkey = account.noisePublicKey.toString('hex')
+    // account.state[pubkey].sockets = {}
+    // account.state[pubkey].feeds = {} 
+    // account.state[pubkey].targets = {} 
+    // account.state[pubkey].tasks = {}
     const nonce = await account.getNonce()
     await chainAPI.unpause({ signer, nonce })
   }
