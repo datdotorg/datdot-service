@@ -339,6 +339,7 @@ async function handle_hosterReplacement (args) {
 async function send_data_to_attester (opts) {
   return new Promise (async (resolve, reject) => {
     const { account, hyper, hosterkey, attesterkey, feedkey, ranges, id, tid, log } = opts
+    const pubkey = account.noisePublicKey.toString('hex')
     const topic = derive_topic({ senderKey: hosterkey, feedkey, receiverKey: attesterkey, id, log })
     const { feed } = await hyper.new_task({ topic, log })
     log({ type: 'hoster', data: { text: `New task added (active hoster)` } })
