@@ -332,12 +332,15 @@ async function storageChallenge_handler (args) {
   const attestation = { response: { storageChallengeID, status: undefined, reports: [] },  signer }
   const pubkey = account.noisePublicKey.toString('hex')
   var conn // set to true once connection with hoster is established
+  const controller = new AbortController();
+  const signal = controller.signal
 
   const data = await get_storage_challenge_data({ chainAPI, storageChallenge, log })
   
   
   const tid = setTimeout(async () => {
     log({ type: 'timeout', data: { texts: 'storage challenge - timeout', storageChallengeID } })
+    controller.abort()
     const { hosterkey, feedkey_1 } = data
     const topic = derive_topic({ senderKey: hosterkey, feedkey: feedkey_1, receiverKey: attesterkey, id: storageChallengeID, log })
     done_task_cleanup({ role: 'storage_attester', topic, remotestringkey: hosterkey.toString('hex'), state: account.state[pubkey], log })
@@ -348,7 +351,8 @@ async function storageChallenge_handler (args) {
     return
   }, DEFAULT_TIMEOUT)
   
-  const res = await attest_storage_challenge({ data, chainAPI, account, conn, log }).catch(async err => {
+  const res = await attest_storage_challenge({ data, chainAPI, account, conn, signal, log }).catch(async err => {
+    if (signal.aborted) return log({ type: 'storage challenge', data: { text: 'attest storage aborted', storageChallengeID }})
     log({ type: 'storage challenge', data: { text: 'error: attest storage', storageChallengeID }})
     attestation.nonce = await account.getNonce()
     if (err.cause === 'invalid-proof' || err.cause === 'no-data') {
@@ -367,18 +371,17 @@ async function storageChallenge_handler (args) {
     attestation.response.proof_of_contact = proof_of_contact
     attestation.response.reports = reports
     await chainAPI.submitStorageChallenge(attestation)
-  } else {
-    log({ type: 'storage challenge', data: { text: 'error: no response', storageChallengeID }})
-    attestation.nonce = await account.getNonce()
-    await chainAPI.submitStorageChallenge(attestation)
-  }
+  } 
 }
 // connect to the hoster (get the feedkey, then start getting data)
 // make a list of all checks (all feedkeys, amendmentIDs...)
 // for each check, get data, verify and make a report => push report from each check into report_all
 // when all checks are done, report to chain
-async function attest_storage_challenge ({ data, chainAPI, account, conn, log: parent_log }) {
+async function attest_storage_challenge ({ data, chainAPI, account, conn, signal, log: parent_log }) {
   return new Promise(async (resolve, reject) => {
+    signal.addEventListener("abort", () => {
+      reject(signal.reason);
+    });
     const { hyper } = account
     const { id, attesterkey, hosterkey, hosterSigningKey, checks, feedkey_1 } = data
     const pubkey = account.noisePublicKey.toString('hex')
@@ -1044,6 +1047,7 @@ async function hosterReplacement_handler (args) {
     })
     
     async function onhoster ({ feed, remotestringkey }) {
+      if (conn[remotestringkey]) return
       conn[remotestringkey] = 'connected'
       hosterFeed = feed
       log({ type: 'attester', data: { text: `Connected to the replacement hoster`, remotestringkey, amendmentID } })

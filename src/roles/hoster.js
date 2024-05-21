@@ -145,18 +145,13 @@ async function handle_storageChallenge (args) {
   const hosterAddress = await chainAPI.getUserAddress(hosterID)
   if (hosterAddress !== myAddress) return
   log({ type: 'hoster', data: { text: `Hoster ${hosterID}:  Event received: ${event.method} ${event.data.toString()}` } })
-  const controller = new AbortController()
-  const tid = setTimeout(() => {
-    log({ type: 'timeout', data: { texts: 'storage challenge - timeout', id } })
-    return
-  }, DEFAULT_TIMEOUT)
 
   const data = await get_storage_challenge_data(storageChallenge)
-  data.tid = tid
+
   await send_storage_proofs_to_attester({ data, account, log }).catch(err => {
     log({ type: 'storage challenge', data: { text: 'error: provide storage proof', id }})
   })
-  clearTimeout(tid)
+
   log({ type: 'hoster', data: { text: `sendStorageChallengeToAttester completed` } })
 
   async function get_storage_challenge_data (storageChallenge) {
@@ -188,7 +183,7 @@ async function handle_storageChallenge (args) {
 async function send_storage_proofs_to_attester({ data, account, log: parent_log }) {
   return new Promise(async (resolve, reject) => {
     const { hyper } = account
-    const { challenge_id, attesterkey, hosterkey, checks, feedkey_1, tid } = data
+    const { challenge_id, attesterkey, hosterkey, checks, feedkey_1 } = data
     
     const log = parent_log.sub(`<-hoster2attester storage challenge, me: ${account.noisePublicKey.toString('hex').substring(0,5)} peer: ${attesterkey.toString('hex').substring(0, 5)} `)
     
@@ -235,7 +230,6 @@ async function send_storage_proofs_to_attester({ data, account, log: parent_log 
         resolve()
       } catch (err) {
         log({ type: 'error', data: { text: `Error: ${err}` } })
-        clearTimeout(tid)
         reject(err)
       }
     }
