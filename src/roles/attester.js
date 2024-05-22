@@ -1201,8 +1201,9 @@ async function hosterReplacement_handler (args) {
   
   async function finishAndSendReport () {   
     // called for each replacement hoster 
-    log({ type: 'attester', data: { text: 'all sent to hoster in hoster replacement', finished, pos_len: positions.length }})
     finished++            
+    log({ type: 'attester', data: { text: 'all sent to hoster in hoster replacement', finished, pos_len: positions.length }})
+    if (finished !== positions.length) return
     clearTimeout(tid)
     for (const [topic, remotestringkey] of replacement_encoders) {
       await done_task_cleanup({ 
